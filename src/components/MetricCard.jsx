@@ -16,8 +16,8 @@ export default function MetricCard({ title, subtitle, value, badge, footer, acce
         <div className="usage-stack">
           <div className="usage-value">{value}</div>
           <div className="usage-ring">
-            <div className="ring">
-              <div className="ring-inner">
+            <div className="usage-progress-ring">
+              <div className="usage-progress-ring-inner">
                 <strong>94%</strong>
                 <span>of goal</span>
               </div>

@@ -398,7 +398,7 @@ svg {
   white-space: nowrap;
 }
 
-.ring {
+.usage-progress-ring {
   width: 96px;
   height: 96px;
   border-radius: 50%;
@@ -407,7 +407,7 @@ svg {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8);
 }
 
-.ring-inner {
+.usage-progress-ring-inner {
   width: 100%;
   height: 100%;
   border-radius: 50%;
@@ -417,11 +417,11 @@ svg {
   text-align: center;
 }
 
-.ring-inner strong {
+.usage-progress-ring-inner strong {
   font-size: 1.25rem;
 }
 
-.ring-inner span {
+.usage-progress-ring-inner span {
   margin-top: -6px;
   color: var(--muted);
   font-size: 0.8rem;
