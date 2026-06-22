@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import GlassCard from '../components/GlassCard';
 import { FileIcon, DownloadIcon, ShareIcon, InfoIcon } from '../components/Icons';
+import { useTherapy } from '../context/TherapyContext';
 
 const mockReports = [
   { id: '1', date: '2026-06-08', usage: '7h 32m', ahi: 2.1, leak: '24 L/min', pressure: '11.8 cmH₂O', compliance: 'Yes' },
@@ -13,9 +14,43 @@ const mockReports = [
 ];
 
 export default function Reports() {
-  const [patient, setPatient] = useState('Divyansh');
+  const { deviceData } = useTherapy();
+  
+  const sessions = useMemo(() => {
+    return deviceData ? deviceData.sessions : [];
+  }, [deviceData]);
+
+  const activePatientName = useMemo(() => {
+    return deviceData ? deviceData.patient.name : 'Divyansh';
+  }, [deviceData]);
+
+  const [patient, setPatient] = useState(activePatientName);
   const [startDate, setStartDate] = useState('2026-06-01');
   const [endDate, setEndDate] = useState('2026-06-08');
+
+  // Sync state if active patient changes
+  useEffect(() => {
+    setPatient(activePatientName);
+  }, [activePatientName]);
+
+  const reportEntries = useMemo(() => {
+    if (sessions.length) {
+      return [...sessions].reverse().map((s, idx) => {
+        const hoursInt = Math.floor(s.usage_hours);
+        const minsInt = Math.round((s.usage_hours - hoursInt) * 60);
+        return {
+          id: idx.toString(),
+          date: s.date,
+          usage: `${hoursInt}h ${minsInt}m`,
+          ahi: s.ahi,
+          leak: `${s.mask_leak} L/min`,
+          pressure: `${s.pressure_95} cmH₂O`,
+          compliance: s.usage_hours >= 4.0 ? 'Yes' : 'No'
+        };
+      });
+    }
+    return mockReports;
+  }, [sessions]);
 
   const handleAction = (action) => {
     alert(`${action} triggered for Patient: ${patient} from ${startDate} to ${endDate}`);
@@ -37,9 +72,10 @@ export default function Reports() {
               onChange={(e) => setPatient(e.target.value)}
               aria-label="Select Patient"
             >
-              <option value="Divyansh">Divyansh</option>
-              <option value="John Doe">John Doe</option>
-              <option value="Jane Smith">Jane Smith</option>
+              <option value={activePatientName}>{activePatientName}</option>
+              {activePatientName !== 'Divyansh' && <option value="Divyansh">Divyansh</option>}
+              {activePatientName !== 'John Doe' && <option value="John Doe">John Doe</option>}
+              {activePatientName !== 'Jane Smith' && <option value="Jane Smith">Jane Smith</option>}
             </select>
           </div>
           <div className="input-field">
@@ -102,7 +138,7 @@ export default function Reports() {
               </tr>
             </thead>
             <tbody>
-              {mockReports.map((report) => (
+              {reportEntries.map((report) => (
                 <tr key={report.id}>
                   <td><strong>{report.date}</strong></td>
                   <td>{report.usage}</td>

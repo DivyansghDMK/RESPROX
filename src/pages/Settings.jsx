@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import GlassCard from '../components/GlassCard';
 import { UserIcon, GearIcon, BellIcon, LockIcon, InfoIcon } from '../components/Icons';
+import { useTherapy } from '../context/TherapyContext';
 
 export default function Settings() {
+  const { deviceData } = useTherapy();
   const [activeTab, setActiveTab] = useState('general'); // 'general' | 'notifications' | 'account' | 'appearance'
   const [isDangerExpanded, setIsDangerExpanded] = useState(false);
 
@@ -14,8 +16,14 @@ export default function Settings() {
   const [reminderTherapy, setReminderTherapy] = useState(true);
   const [reminderMaint, setReminderMaint] = useState(true);
 
-  const [username, setUsername] = useState('Divyansh');
+  const defaultUsername = deviceData ? deviceData.patient.name : 'Divyansh';
+  const [username, setUsername] = useState(defaultUsername);
   const [email, setEmail] = useState('support@resprox.com');
+
+  // Sync profile name state when scoped patient name loads/updates
+  useEffect(() => {
+    setUsername(defaultUsername);
+  }, [defaultUsername]);
 
   const [themeMode, setThemeMode] = useState('system'); // 'light' | 'dark' | 'system'
 

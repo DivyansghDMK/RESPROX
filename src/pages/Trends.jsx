@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import GlassCard from '../components/GlassCard';
 import TrendChart from '../components/TrendChart';
 import { DownloadIcon } from '../components/Icons';
+import { useTherapy } from '../context/TherapyContext';
 
-// Mock Data Sets
-const usage7d = [
+// Default static fallback sets
+const defaultUsage7d = [
   { day: 'Mon', usage: 88 },
   { day: 'Tue', usage: 94 },
   { day: 'Wed', usage: 91 },
@@ -12,6 +13,36 @@ const usage7d = [
   { day: 'Fri', usage: 92 },
   { day: 'Sat', usage: 95 },
   { day: 'Sun', usage: 98 }
+];
+
+const defaultAhiData = [
+  { day: 'Mon', ahi: 2.1 },
+  { day: 'Tue', ahi: 1.8 },
+  { day: 'Wed', ahi: 2.5 },
+  { day: 'Thu', ahi: 1.2 },
+  { day: 'Fri', ahi: 1.9 },
+  { day: 'Sat', ahi: 1.5 },
+  { day: 'Sun', ahi: 0.9 }
+];
+
+const defaultLeakData = [
+  { day: 'Mon', leak: 24 },
+  { day: 'Tue', leak: 21 },
+  { day: 'Wed', leak: 26 },
+  { day: 'Thu', leak: 19 },
+  { day: 'Fri', leak: 22 },
+  { day: 'Sat', leak: 20 },
+  { day: 'Sun', leak: 17 }
+];
+
+const defaultPressureData = [
+  { day: 'Mon', pressure: 11.8 },
+  { day: 'Tue', pressure: 12.0 },
+  { day: 'Wed', pressure: 11.5 },
+  { day: 'Thu', pressure: 12.2 },
+  { day: 'Fri', pressure: 11.9 },
+  { day: 'Sat', pressure: 12.4 },
+  { day: 'Sun', pressure: 11.8 }
 ];
 
 const usage30d = Array.from({ length: 30 }, (_, i) => ({
@@ -24,39 +55,87 @@ const usage90d = Array.from({ length: 12 }, (_, i) => ({
   usage: Math.floor(Math.random() * 15) + 85
 }));
 
-const ahiData = [
-  { day: 'Mon', ahi: 2.1 },
-  { day: 'Tue', ahi: 1.8 },
-  { day: 'Wed', ahi: 2.5 },
-  { day: 'Thu', ahi: 1.2 },
-  { day: 'Fri', ahi: 1.9 },
-  { day: 'Sat', ahi: 1.5 },
-  { day: 'Sun', ahi: 0.9 }
-];
-
-const leakData = [
-  { day: 'Mon', leak: 24 },
-  { day: 'Tue', leak: 21 },
-  { day: 'Wed', leak: 26 },
-  { day: 'Thu', leak: 19 },
-  { day: 'Fri', leak: 22 },
-  { day: 'Sat', leak: 20 },
-  { day: 'Sun', leak: 17 }
-];
-
-const pressureData = [
-  { day: 'Mon', pressure: 11.8 },
-  { day: 'Tue', pressure: 12.0 },
-  { day: 'Wed', pressure: 11.5 },
-  { day: 'Thu', pressure: 12.2 },
-  { day: 'Fri', pressure: 11.9 },
-  { day: 'Sat', pressure: 12.4 },
-  { day: 'Sun', pressure: 11.8 }
-];
-
 export default function Trends() {
+  const { deviceData } = useTherapy();
   const [timeFilter, setTimeFilter] = useState('week'); // 'week' | 'month' | 'custom'
   const [usageRange, setUsageRange] = useState('7d'); // '7d' | '30d' | '90d'
+
+  const sessions = useMemo(() => {
+    return deviceData ? deviceData.sessions : [];
+  }, [deviceData]);
+
+  const usage7d = useMemo(() => {
+    if (sessions.length) {
+      return sessions.map(s => ({
+        day: s.date.split(' ')[0],
+        usage: Math.round((s.usage_hours / 8) * 100)
+      }));
+    }
+    return defaultUsage7d;
+  }, [sessions]);
+
+  const ahiData = useMemo(() => {
+    if (sessions.length) {
+      return sessions.map(s => ({
+        day: s.date.split(' ')[0],
+        ahi: s.ahi
+      }));
+    }
+    return defaultAhiData;
+  }, [sessions]);
+
+  const leakData = useMemo(() => {
+    if (sessions.length) {
+      return sessions.map(s => ({
+        day: s.date.split(' ')[0],
+        leak: s.mask_leak
+      }));
+    }
+    return defaultLeakData;
+  }, [sessions]);
+
+  const pressureData = useMemo(() => {
+    if (sessions.length) {
+      return sessions.map(s => ({
+        day: s.date.split(' ')[0],
+        pressure: s.pressure_95
+      }));
+    }
+    return defaultPressureData;
+  }, [sessions]);
+
+  // Compute metrics stats dynamically
+  const stats = useMemo(() => {
+    if (sessions.length) {
+      const avgUsage = sessions.reduce((acc, s) => acc + s.usage_hours, 0) / sessions.length;
+      const complianceCount = sessions.filter(s => s.usage_hours >= 4.0).length;
+      const avgAhi = sessions.reduce((acc, s) => acc + s.ahi, 0) / sessions.length;
+      const avgLeak = sessions.reduce((acc, s) => acc + s.mask_leak, 0) / sessions.length;
+      const avgPressure = sessions.reduce((acc, s) => acc + s.pressure_95, 0) / sessions.length;
+      const maxPressure = Math.max(...sessions.map(s => s.pressure_95));
+
+      return {
+        avgUsage: `${avgUsage.toFixed(1)} hrs`,
+        compliance: `${Math.round((complianceCount / sessions.length) * 100)}% Compliance`,
+        avgAhi: `${avgAhi.toFixed(1)} / hr`,
+        ahiStatus: avgAhi <= 5.0 ? 'Optimal' : 'Elevated',
+        avgLeak: `${avgLeak.toFixed(1)} L/m`,
+        leakStatus: avgLeak <= 24 ? 'Excellent Seal' : 'High Leak',
+        pressure95: `${avgPressure.toFixed(1)} cm H2O`,
+        maxPressure: maxPressure.toFixed(1)
+      };
+    }
+    return {
+      avgUsage: '7.2 hrs',
+      compliance: '92% Compliance',
+      avgAhi: '1.6 / hr',
+      ahiStatus: 'Optimal',
+      avgLeak: '21.2 L/m',
+      leakStatus: 'Excellent Seal',
+      pressure95: '12.1 cm H2O',
+      maxPressure: '12.4'
+    };
+  }, [sessions]);
 
   const getUsageData = () => {
     if (usageRange === '30d') return usage30d;
@@ -65,7 +144,6 @@ export default function Trends() {
   };
 
   const handleExportCSV = () => {
-    // Mock export download trigger
     alert('Exporting CPAP compliance and metrics trends as CSV file...');
   };
 
@@ -119,23 +197,25 @@ export default function Trends() {
       <section className="kpi-grid">
         <article className="kpi-card">
           <span>Average Usage</span>
-          <strong>7.2 hrs</strong>
-          <small className="green-text">92% Compliance</small>
+          <strong>{stats.avgUsage}</strong>
+          <small className="green-text">{stats.compliance}</small>
         </article>
         <article className="kpi-card">
           <span>Average AHI</span>
-          <strong>1.6 / hr</strong>
-          <small className="green-text">Optimal</small>
+          <strong>{stats.avgAhi}</strong>
+          <small className={`compliance-tag ${stats.ahiStatus === 'Optimal' ? 'pass' : 'fail'}`} style={{ border: 'none', background: 'none', padding: 0 }}>
+            {stats.ahiStatus}
+          </small>
         </article>
         <article className="kpi-card">
           <span>Average Leak</span>
-          <strong>21.2 L/m</strong>
-          <small className="green-text">Excellent Seal</small>
+          <strong>{stats.avgLeak}</strong>
+          <small className="green-text">{stats.leakStatus}</small>
         </article>
         <article className="kpi-card">
           <span>95th Percentile Pressure</span>
-          <strong>12.1 cm H2O</strong>
-          <small style={{ color: 'var(--muted)' }}>Max: 12.4</small>
+          <strong>{stats.pressure95}</strong>
+          <small style={{ color: 'var(--muted)' }}>Max: {stats.maxPressure}</small>
         </article>
       </section>
 

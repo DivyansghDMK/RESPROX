@@ -111,3 +111,41 @@ export function UserIcon() {
 export function LockIcon() {
   return <SvgBox><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></SvgBox>;
 }
+
+export function BreezeIcon() {
+  return <SvgBox><path d="M2 8h14M2 12h20M2 16h17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></SvgBox>;
+}
+
+export function GrowthIcon() {
+  return <SvgBox><path d="M3 3v18h18M7 15l4-4 4 4 5-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></SvgBox>;
+}
+
+export function ClockIcon() {
+  return <SvgBox><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M12 7v5l3 2" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></SvgBox>;
+}
+
+export function GaugeIcon() {
+  return <SvgBox><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M12 12m-2 0a2 2 0 1 0 4 0 2 2 0 1 0-4 0" fill="currentColor" /><path d="m13.4 10.6 4.1-4.1" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><path d="M6 15h1M17 15h1" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></SvgBox>;
+}
+
+export function ChevronRightIcon() {
+  return <SvgBox><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></SvgBox>;
+}
+
+export function ClipboardIcon() {
+  return <SvgBox><path d="M19 5h-2a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M12 11h4M12 15h4M8 11h.01M8 15h.01" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></SvgBox>;
+}
+
+export function PhoneIcon() {
+  return <SvgBox><rect x="6" y="3" width="12" height="18" rx="3" fill="none" stroke="currentColor" strokeWidth="2" /><circle cx="12" cy="18" r="1" fill="currentColor" /></SvgBox>;
+}
+
+export function ShieldIcon() {
+  return (
+    <SvgBox>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </SvgBox>
+  );
+}
+
+

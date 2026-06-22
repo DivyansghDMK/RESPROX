@@ -11,22 +11,25 @@ import {
   GearIcon,
   HelpIcon,
   CloseIcon,
-  MoonIcon
+  MoonIcon,
+  ShieldIcon
 } from './Icons';
 
-const sidebarItems = [
-  { label: 'Dashboard', path: '/dashboard', icon: HomeIcon },
-  { label: 'Therapy', path: '/therapy', icon: PulseIcon },
-  { label: 'Trends', path: '/trends', icon: ChartIcon },
-  { label: 'Reports', path: '/reports', icon: FileIcon },
-  { label: 'Devices', path: '/devices', icon: DeviceIcon },
-  { label: 'Mask Fit', path: '/mask-fit', icon: MaskIcon },
-  { label: 'Settings', path: '/settings', icon: GearIcon },
-  { label: 'Help & Support', path: '/help', icon: HelpIcon },
-];
-
 export default function Sidebar() {
-  const { sidebarOpen, setSidebarOpen } = useTherapy();
+  const { sidebarOpen, setSidebarOpen, adminActiveSerial } = useTherapy();
+  const activeSerial = adminActiveSerial || localStorage.getItem('adminActiveSerial') || 'CVT30-C-9281';
+
+  const sidebarItems = [
+    { label: 'Dashboard', path: `/device/${activeSerial}`, icon: HomeIcon },
+    { label: 'Therapy', path: '/therapy', icon: PulseIcon },
+    { label: 'Trends', path: '/trends', icon: ChartIcon },
+    { label: 'Reports', path: '/reports', icon: FileIcon },
+    { label: 'Devices', path: '/devices', icon: DeviceIcon },
+    { label: 'Mask Fit', path: '/mask-fit', icon: MaskIcon },
+    { label: 'Settings', path: '/settings', icon: GearIcon },
+    { label: 'Help & Support', path: '/help', icon: HelpIcon },
+  ];
+
 
   return (
     <>

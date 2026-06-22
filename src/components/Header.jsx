@@ -1,38 +1,94 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTherapy } from '../context/TherapyContext';
-import { MenuIcon, BluetoothIcon, BellIcon } from './Icons';
+import { useAuth } from '../context/AuthContext';
+import { MenuIcon, BluetoothIcon, BellIcon, UserIcon } from './Icons';
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good Morning';
+  if (hour < 17) return 'Good Afternoon';
+  return 'Good Evening';
+}
+
+function formatLastPulled(date) {
+  if (!date) return 'Never synced';
+  const now = new Date();
+  const diff = Math.floor((now - date) / 1000); // seconds
+  if (diff < 10) return 'Just now';
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
 
 export default function Header() {
-  const { setSidebarOpen } = useTherapy();
+  const { setSidebarOpen, lastServerPull } = useTherapy();
+  const { username } = useAuth();
+  const [displayTime, setDisplayTime] = useState(() => formatLastPulled(lastServerPull));
+
+  // Refresh displayed time every 10 seconds so "Xs ago" stays accurate
+  useEffect(() => {
+    setDisplayTime(formatLastPulled(lastServerPull));
+    const timer = setInterval(() => setDisplayTime(formatLastPulled(lastServerPull)), 10000);
+    return () => clearInterval(timer);
+  }, [lastServerPull]);
+
+  const adminLabel = username
+    ? username.charAt(0).toUpperCase() + username.slice(1)
+    : 'Admin';
 
   return (
-    <header className="topbar">
-      <div className="topbar-left">
-        <button
-          className="hamburger-btn"
-          onClick={() => setSidebarOpen(true)}
-          aria-label="Open navigation menu"
-        >
-          <MenuIcon />
-        </button>
-        <div>
-          <p className="eyebrow">Good Morning,</p>
-          <h1>Divyansh</h1>
-          <p className="last-synced">Last Synced 2 minutes ago</p>
+    <header className="topbar-wrapper">
+      {/* Desktop Header */}
+      <div className="topbar desktop-only-header">
+        <div className="topbar-left">
+          <button
+            className="hamburger-btn"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open navigation menu"
+          >
+            <MenuIcon />
+          </button>
+          <div>
+            <p className="eyebrow">{getGreeting()},</p>
+            <h1>Hello, {adminLabel} 👋</h1>
+            <p className="last-synced">
+              Last pulled from server: <strong>{displayTime}</strong>
+            </p>
+          </div>
+        </div>
+
+        <div className="topbar-actions">
+          <div className="status-pill">
+            <BluetoothIcon />
+            <div>
+              <strong>Connected</strong>
+              <span>CVT30 C-Series</span>
+            </div>
+          </div>
+          <button className="icon-button" aria-label="Notifications">
+            <BellIcon />
+          </button>
         </div>
       </div>
 
-      <div className="topbar-actions">
-        <div className="status-pill">
-          <BluetoothIcon />
-          <div>
-            <strong>Connected</strong>
-            <span>Dream Station Auto</span>
+      {/* Mobile Header */}
+      <div className="mobile-only-header">
+        <div className="mobile-header-left">
+          <div className="mobile-avatar-circle">
+            <div className="avatar-inner">
+              <UserIcon />
+            </div>
           </div>
         </div>
-        <button className="icon-button" aria-label="Notifications">
-          <BellIcon />
-        </button>
+        <div className="mobile-header-center">
+          <span className="logo-respro">respro</span>
+          <span className="logo-x">X</span>
+        </div>
+        <div className="mobile-header-right">
+          <button className="mobile-bell-btn" aria-label="Notifications">
+            <BellIcon />
+          </button>
+        </div>
       </div>
     </header>
   );

@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import GlassCard from '../components/GlassCard';
 import TrendChart from '../components/TrendChart';
 import { MaskIcon, InfoIcon } from '../components/Icons';
+import { useTherapy } from '../context/TherapyContext';
 
-const leakTrendData = [
+const defaultLeakTrendData = [
   { day: 'Mon', leak: 24 },
   { day: 'Tue', leak: 19 },
   { day: 'Wed', leak: 28 },
@@ -14,11 +15,49 @@ const leakTrendData = [
 ];
 
 export default function MaskFit() {
-  const recommendations = [
-    { text: 'Adjust upper strap to prevent nasal bridge leaks.', type: 'warning' },
-    { text: 'Replace cushion if seal degradations continue.', type: 'info' },
-    { text: 'Mask seal excellent during deep sleep intervals.', type: 'success' }
-  ];
+  const { deviceData } = useTherapy();
+
+  const sessions = useMemo(() => {
+    return deviceData ? deviceData.sessions : [];
+  }, [deviceData]);
+
+  const score = useMemo(() => {
+    if (sessions.length) {
+      const avgLeak = sessions.reduce((acc, s) => acc + s.mask_leak, 0) / sessions.length;
+      return Math.max(50, Math.min(100, Math.round(100 - (avgLeak * 1.5))));
+    }
+    return 94;
+  }, [sessions]);
+
+  const leakTrend = useMemo(() => {
+    if (sessions.length) {
+      return sessions.map(s => ({
+        day: s.date.split(' ')[0],
+        leak: s.mask_leak
+      }));
+    }
+    return defaultLeakTrendData;
+  }, [sessions]);
+
+  const recommendations = useMemo(() => {
+    const defaultRecs = [
+      { text: 'Adjust upper strap to prevent nasal bridge leaks.', type: 'warning' },
+      { text: 'Replace cushion if seal degradations continue.', type: 'info' },
+      { text: 'Mask seal excellent during deep sleep intervals.', type: 'success' }
+    ];
+
+    if (deviceData && deviceData.live_data) {
+      const leak = deviceData.live_data.mask_leak;
+      if (leak > 24.0) {
+        return [
+          { text: '⚠️ High mask leak detected! Adjust headgear and reposition mask cushion.', type: 'warning' },
+          { text: 'Check for leaks around the corners of the mouth or eyes.', type: 'info' },
+          ...defaultRecs.slice(1)
+        ];
+      }
+    }
+    return defaultRecs;
+  }, [deviceData]);
 
   return (
     <div className="maskfit-page">
@@ -31,8 +70,10 @@ export default function MaskFit() {
           <div className="score-widget-container">
             <div className="score-ring-large">
               <div className="score-ring-inner">
-                <span className="score-number">94</span>
-                <span className="score-label">Excellent Fit</span>
+                <span className="score-number">{score}</span>
+                <span className="score-label">
+                  {score >= 90 ? 'Excellent Fit' : score >= 80 ? 'Good Fit' : 'Needs Adjustment'}
+                </span>
               </div>
             </div>
           </div>
@@ -66,7 +107,7 @@ export default function MaskFit() {
             <h2>Leak Trend</h2>
           </div>
           <TrendChart
-            data={leakTrendData}
+            data={leakTrend}
             yKey="leak"
             yUnit=" L/min"
             type="line"
