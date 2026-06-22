@@ -25,13 +25,14 @@ export default function Login() {
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   
-  const { setShowToast, setSaveState } = useTherapy();
+  const { setShowToast, setSaveState, setToastMessage } = useTherapy();
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     if (!email || !password) {
+      setToastMessage('Please enter both username and password.');
       setSaveState('error');
       setShowToast(true);
       setTimeout(() => setShowToast(false), 3000);
@@ -43,11 +44,13 @@ export default function Login() {
       const success = await login(email, password);
       setLoading(false);
       if (success) {
+        setToastMessage('Authorization successful! Redirecting...');
         setSaveState('success');
         setShowToast(true);
         setTimeout(() => {
           setShowToast(false);
           setSaveState('idle');
+          setToastMessage('');
           navigate('/devices');
         }, 1500);
       } else {
@@ -55,11 +58,13 @@ export default function Login() {
       }
     } catch (err) {
       setLoading(false);
+      setToastMessage('Invalid username or password. Please try again.');
       setSaveState('error');
       setShowToast(true);
       setTimeout(() => {
         setShowToast(false);
         setSaveState('idle');
+        setToastMessage('');
       }, 3000);
     }
   };

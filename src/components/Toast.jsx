@@ -2,7 +2,7 @@ import React from 'react';
 import { useTherapy } from '../context/TherapyContext';
 
 export default function Toast() {
-  const { showToast, saveState } = useTherapy();
+  const { showToast, saveState, toastMessage } = useTherapy();
 
   if (!showToast) return null;
 
@@ -13,7 +13,7 @@ export default function Toast() {
           {saveState === 'success' ? '✓' : '✗'}
         </span>
         <span>
-          {saveState === 'success' ? 'Settings saved successfully' : 'Error saving settings'}
+          {toastMessage || (saveState === 'success' ? 'Settings saved successfully' : 'Error saving settings')}
         </span>
       </div>
     </div>

@@ -13,6 +13,7 @@ export function TherapyProvider({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [saveState, setSaveState] = useState('idle'); // 'idle' | 'saving' | 'success' | 'error'
   const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
 
   // Admin selected device states
   const [adminActiveSerial, setAdminActiveSerial] = useState(localStorage.getItem('adminActiveSerial') || null);
@@ -178,6 +179,8 @@ export function TherapyProvider({ children }) {
     setSaveState,
     showToast,
     setShowToast,
+    toastMessage,
+    setToastMessage,
     hasUnsavedChanges,
     handleSave,
     adminActiveSerial,
