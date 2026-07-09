@@ -24,6 +24,7 @@ import DeviceList from './pages/DeviceList';
 import DeviceDashboard from './pages/DeviceDashboard';
 import { useDeviceSettings } from './hooks/useDeviceSettings';
 import { AuthProvider } from './context/AuthContext';
+import HCPPortal from './pages/hcp/HCPPortal';
 
 function AppContent() {
   useDeviceSettings();
@@ -57,7 +58,7 @@ function AppContent() {
           <Route path="/trends" element={<Trends />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/devices" element={<DeviceList />} /> {/* Admin devices page */}
-          <Route path="/device/:serial" element={<DeviceDashboard />} /> {/* Admin device dashboard */}
+          <Route path="/device/:serial" element={<DeviceDashboard />} />
           <Route path="/device-info" element={<Devices />} /> {/* Patient device page */}
           <Route path="/mask-fit" element={<MaskFit />} />
           <Route path="/settings" element={<Settings />} />
@@ -79,7 +80,12 @@ export default function App() {
     <AuthProvider>
       <TherapyProvider>
         <Router>
-          <AppContent />
+          <Routes>
+            {/* HCP Clinician Portal — fully self-contained, bypasses main app shell */}
+            <Route path="/hcp/*" element={<HCPPortal />} />
+            {/* Patient / Admin portal — main app shell */}
+            <Route path="/*" element={<AppContent />} />
+          </Routes>
         </Router>
       </TherapyProvider>
     </AuthProvider>

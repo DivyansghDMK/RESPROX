@@ -57,7 +57,7 @@ export default function HelpSupport() {
           <div className="support-contacts-wrapper">
             <div className="support-info-block">
               <h3>Support Helpdesk</h3>
-              <p>Email: <a href="mailto:support@resprox.com">support@resprox.com</a></p>
+              <p>Email: <a href="mailto:support@decklink.com">support@decklink.com</a></p>
               <p>Phone: +91 XXXXX XXXXX</p>
               <p>Hours: Mon - Fri (09:00 AM - 06:00 PM IST)</p>
             </div>
@@ -66,7 +66,7 @@ export default function HelpSupport() {
               <button className="icon-text-button outline" onClick={handleSupportTicket}>
                 Raise Support Ticket
               </button>
-              <a href="mailto:support@resprox.com" className="icon-text-button" style={{ display: 'inline-flex', textDecoration: 'none', justifyContent: 'center', alignItems: 'center' }}>
+              <a href="mailto:support@decklink.com" className="icon-text-button" style={{ display: 'inline-flex', textDecoration: 'none', justifyContent: 'center', alignItems: 'center' }}>
                 Email Helpdesk
               </a>
             </div>
@@ -85,11 +85,11 @@ export default function HelpSupport() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <FileIcon />
                 <div>
-                  <strong>resproX User Manual v1.2</strong>
+                  <strong>DeckLink User Manual v1.2</strong>
                   <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--muted)' }}>PDF • 4.2 MB</span>
                 </div>
               </div>
-              <button className="icon-button" aria-label="Download resproX User Manual v1.2">
+              <button className="icon-button" aria-label="Download DeckLink User Manual v1.2">
                 <DownloadIcon />
               </button>
             </div>

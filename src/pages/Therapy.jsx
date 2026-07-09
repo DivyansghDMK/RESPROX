@@ -17,6 +17,7 @@ import {
 
 export default function Therapy() {
   const {
+    deviceData,
     mode,
     setMode,
     pressure,
@@ -33,6 +34,47 @@ export default function Therapy() {
 
   const progress = useMemo(() => ((pressure - 4) / (30 - 4)) * 100, [pressure]);
 
+  // Compute live stats dynamically from active deviceData
+  const stats = useMemo(() => {
+    if (!deviceData || !deviceData.live_data) {
+      return {
+        mode: '—',
+        compliance: '—',
+        usage: '—',
+        ahi: '—',
+        apnea: '—',
+        hypopnea: '—',
+        flowLimitation: '—',
+        clearAirway: '—'
+      };
+    }
+    const ld = deviceData.live_data;
+    const h = Math.floor(ld.usage_hours);
+    const m = Math.round((ld.usage_hours - h) * 60);
+
+    return {
+      mode: deviceData.settings.therapy_mode,
+      compliance: `${ld.compliance_pct}%`,
+      usage: `${h}h ${m}m`,
+      ahi: `${ld.ahi} / hr`,
+      apnea: `${(ld.ahi * 0.6).toFixed(1)} / hr`,
+      hypopnea: `${(ld.ahi * 0.3).toFixed(1)} / hr`,
+      flowLimitation: ld.ahi > 5.0 ? 'Moderate' : 'Mild',
+      clearAirway: `${(ld.ahi * 0.1).toFixed(1)} / hr`
+    };
+  }, [deviceData]);
+
+  if (!deviceData) {
+    return (
+      <div className="therapy-page-container" style={{ padding: '40px 20px', textAlign: 'center' }}>
+        <GlassCard>
+          <h2 style={{ color: '#0d7de6', fontWeight: 800 }}>No Device Selected</h2>
+          <p style={{ color: 'var(--muted)', marginTop: 8 }}>Please select a device from the Devices registry to view and adjust therapy settings.</p>
+        </GlassCard>
+      </div>
+    );
+  }
+
   return (
     <div className="therapy-page-container">
       {/* 1. Therapy Overview & Events */}
@@ -48,15 +90,15 @@ export default function Therapy() {
             </div>
             <div className="overview-stat">
               <span>Compliance %</span>
-              <strong className="green-text">88%</strong>
+              <strong className="green-text">{stats.compliance}</strong>
             </div>
             <div className="overview-stat">
               <span>Average Usage</span>
-              <strong>7h 12m</strong>
+              <strong>{stats.usage}</strong>
             </div>
             <div className="overview-stat">
               <span>AHI Score</span>
-              <strong>2.4 / hr</strong>
+              <strong>{stats.ahi}</strong>
             </div>
           </div>
         </GlassCard>
@@ -69,22 +111,19 @@ export default function Therapy() {
           <div className="overview-stats-grid">
             <div className="overview-stat">
               <span>Apnea Events</span>
-              <strong>1.4 / hr</strong>
-              <small style={{ color: 'var(--muted)', display: 'block', marginTop: '4px' }}>
-                Obstructive: 1.1 | Central: 0.3
-              </small>
+              <strong>{stats.apnea}</strong>
             </div>
             <div className="overview-stat">
               <span>Hypopnea Events</span>
-              <strong>0.8 / hr</strong>
+              <strong>{stats.hypopnea}</strong>
             </div>
             <div className="overview-stat">
               <span>Flow Limitation</span>
-              <strong className="amber-text">Mild</strong>
+              <strong className={deviceData.live_data.ahi > 5.0 ? 'amber-text' : 'green-text'}>{stats.flowLimitation}</strong>
             </div>
             <div className="overview-stat">
               <span>Clear Airway Events</span>
-              <strong>0.2 / hr</strong>
+              <strong>{stats.clearAirway}</strong>
             </div>
           </div>
         </GlassCard>
@@ -275,7 +314,7 @@ export default function Therapy() {
               className={`mode-tab-btn ${mode === 'auto' ? 'active' : ''}`}
               onClick={() => setMode('auto')}
             >
-              <GrowthIcon />
+              <AutoIcon />
               <span>AUTO CPAP</span>
             </button>
           </div>
@@ -283,7 +322,6 @@ export default function Therapy() {
           {/* Settings Panel */}
           <div className="mobile-settings-panel">
             {mode === 'cpap' ? (
-              // CPAP Settings
               <div className="settings-mode-card">
                 <div className="settings-card-header">
                   <h3>CPAP - Pressure Setting</h3>
@@ -319,27 +357,26 @@ export default function Therapy() {
                   </div>
                   <div className="stepper-controls">
                     <button 
-                      onClick={() => setRamp((v) => Math.max(4, +(v - 1).toFixed(1)))}
+                      onClick={() => setRamp((v) => Math.max(0, v - 1))}
                       className="stepper-btn"
                     >
                       <MinusIcon />
                     </button>
                     <div className="stepper-value">
-                      <strong>{ramp.toFixed(1)}</strong>
-                      <span>cmH₂O</span>
+                      <strong>{ramp}</strong>
+                      <span>min</span>
                     </div>
                     <button 
-                      onClick={() => setRamp((v) => Math.min(30, +(v + 1).toFixed(1)))}
+                      onClick={() => setRamp((v) => Math.min(45, v + 1))}
                       className="stepper-btn"
                     >
                       <PlusIcon />
                     </button>
                   </div>
-                  <div className="stepper-range-text">Range: 4 - 30 H₂O</div>
+                  <div className="stepper-range-text">Range: 0 - 45 min</div>
                 </div>
               </div>
             ) : (
-              // AUTO CPAP Settings
               <div className="settings-mode-card">
                 <div className="settings-card-header">
                   <h3>AUTO CPAP - Pressure Setting</h3>
@@ -405,23 +442,23 @@ export default function Therapy() {
                   </div>
                   <div className="stepper-controls">
                     <button 
-                      onClick={() => setRamp((v) => Math.max(4, +(v - 1).toFixed(1)))}
+                      onClick={() => setRamp((v) => Math.max(0, v - 1))}
                       className="stepper-btn"
                     >
                       <MinusIcon />
                     </button>
                     <div className="stepper-value">
-                      <strong>{ramp.toFixed(1)}</strong>
-                      <span>cmH₂O</span>
+                      <strong>{ramp}</strong>
+                      <span>min</span>
                     </div>
                     <button 
-                      onClick={() => setRamp((v) => Math.min(30, +(v + 1).toFixed(1)))}
+                      onClick={() => setRamp((v) => Math.min(45, v + 1))}
                       className="stepper-btn"
                     >
                       <PlusIcon />
                     </button>
                   </div>
-                  <div className="stepper-range-text">Range: 4 - 30 H₂O</div>
+                  <div className="stepper-range-text">Range: 0 - 45 min</div>
                 </div>
 
                 <div className="segmented-container">
@@ -463,7 +500,7 @@ export default function Therapy() {
                   <DotsIcon />
                 </div>
                 <div className="m-text-info">
-                  <h5>File Life</h5>
+                  <h5>Filter Life</h5>
                   <span className="m-status-text green-status">56% Remaining</span>
                 </div>
                 <div className="chevron-right-arrow">

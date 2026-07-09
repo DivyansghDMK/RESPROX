@@ -16,15 +16,9 @@ export default function Settings() {
   const [reminderTherapy, setReminderTherapy] = useState(true);
   const [reminderMaint, setReminderMaint] = useState(true);
 
-  const defaultUsername = deviceData ? deviceData.patient.name : 'Divyansh';
-  const [username, setUsername] = useState(defaultUsername);
-  const [email, setEmail] = useState('support@resprox.com');
-
-  // Sync profile name state when scoped patient name loads/updates
-  useEffect(() => {
-    setUsername(defaultUsername);
-  }, [defaultUsername]);
-
+  const activeSerial = deviceData ? deviceData.serial : '';
+  const [username, setUsername] = useState('Admin');
+  const [email, setEmail] = useState('admin@decklink.com');
   const [themeMode, setThemeMode] = useState('system'); // 'light' | 'dark' | 'system'
 
   const handleDangerAction = (action) => {
@@ -32,6 +26,17 @@ export default function Settings() {
       alert(`${action} triggered successfully.`);
     }
   };
+
+  if (!deviceData) {
+    return (
+      <div className="settings-page" style={{ padding: '40px 20px', textAlign: 'center' }}>
+        <GlassCard>
+          <h2 style={{ color: '#0d7de6', fontWeight: 800 }}>No Device Selected</h2>
+          <p style={{ color: 'var(--muted)', marginTop: 8 }}>Please select a device from the Devices registry to view settings.</p>
+        </GlassCard>
+      </div>
+    );
+  }
 
   return (
     <div className="settings-page">
@@ -189,9 +194,6 @@ export default function Settings() {
               </button>
               <button className="danger-action-btn" onClick={() => handleDangerAction('Factory Reset')}>
                 Factory Reset Device
-              </button>
-              <button className="danger-action-btn delete" onClick={() => handleDangerAction('Delete Account')}>
-                Delete Account
               </button>
             </div>
           </div>

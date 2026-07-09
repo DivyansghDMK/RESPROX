@@ -28,6 +28,10 @@ async function request(path, options = {}) {
 
     return await res.json();
   } catch (error) {
+    const useMock = import.meta.env.VITE_USE_MOCK_API !== 'false';
+    if (!useMock) {
+      throw error;
+    }
     console.warn(`API request failed for ${path}, trying mock fallback:`, error);
     try {
       return getMockDataForPath(path, options);
@@ -105,8 +109,11 @@ function saveMockDB(db) {
 function getMockDataForPath(path, options) {
   if (path === '/auth/login') {
     const body = JSON.parse(options.body || '{}');
-    if (body.username === 'admin' && body.password === 'admin123') {
-      return { token: "admin-secret-token-change-me", username: "admin", success: true };
+    const mockUsername = import.meta.env.VITE_MOCK_USERNAME || 'admin';
+    const mockPassword = import.meta.env.VITE_MOCK_PASSWORD || 'admin123';
+    const mockToken = import.meta.env.VITE_MOCK_TOKEN || 'admin-secret-token-change-me';
+    if (body.username === mockUsername && body.password === mockPassword) {
+      return { token: mockToken, username: mockUsername, success: true };
     }
     throw new Error("Invalid credentials");
   }

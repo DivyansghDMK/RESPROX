@@ -5,6 +5,14 @@ import { devicesAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useTherapy } from '../context/TherapyContext';
 
+// Material UI Icons
+import DevicesIcon from '@mui/icons-material/Devices';
+import BoltIcon from '@mui/icons-material/Bolt';
+import WarningIcon from '@mui/icons-material/Warning';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import SearchIcon from '@mui/icons-material/Search';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+
 const STATUS_COLOR = {
   online:  { bg: '#e6f9f0', text: '#0f6e56', dot: '#1d9e75' },
   offline: { bg: '#f1efe8', text: '#5f5e5a', dot: '#888780' }
@@ -71,6 +79,8 @@ export default function DeviceList() {
   const complianceAvg = totalCount ? Math.round(devices.reduce((acc, d) => acc + d.compliance_pct, 0) / totalCount) : 0;
 
   const filteredDevices = devices.filter(d => {
+    const matchesSearch = d.serial.toLowerCase().includes(search.toLowerCase().trim());
+    if (!matchesSearch) return false;
     if (statusFilter === 'online') return d.status === 'online';
     if (statusFilter === 'offline') return d.status === 'offline';
     return true;
@@ -110,9 +120,9 @@ export default function DeviceList() {
         boxShadow: '0 2px 12px rgba(13,125,230,0.06)'
       }}>
         <div>
-          <div style={{ fontSize: 13, color: '#6366f1', fontWeight: 700, letterSpacing: '0.5px', marginBottom: 4 }}>ADMIN PORTAL · resproX</div>
+          <div style={{ fontSize: 13, color: '#6366f1', fontWeight: 700, letterSpacing: '0.5px', marginBottom: 4 }}>ADMIN PORTAL · DeckLink</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: '#163257', lineHeight: 1.2 }}>
-            Hello, {adminLabel} 👋
+            Hello, {adminLabel}
           </div>
           <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>
             Manage and monitor all registered CVT30 CPAP C-Series devices below
@@ -134,13 +144,13 @@ export default function DeviceList() {
       {/* ── Stats Bar ── */}
       <div className="admin-stats-bar">
         {[
-          { label: 'Total Devices', value: totalCount, icon: '📟' },
-          { label: 'Devices Online', value: onlineCount, icon: '⚡' },
-          { label: 'Elevated AHI (>5.0)', value: criticalCount, icon: '🚨', danger: criticalCount > 0 },
-          { label: 'Avg Compliance', value: `${complianceAvg}%`, icon: '✅' }
+          { label: 'Total Devices', value: totalCount, icon: <DevicesIcon style={{ color: '#0d7de6', width: 28, height: 28 }} /> },
+          { label: 'Devices Online', value: onlineCount, icon: <BoltIcon style={{ color: '#10b981', width: 28, height: 28 }} /> },
+          { label: 'Elevated AHI (>5.0)', value: criticalCount, icon: <WarningIcon style={{ color: '#e24b4a', width: 28, height: 28 }} />, danger: criticalCount > 0 },
+          { label: 'Avg Compliance', value: `${complianceAvg}%`, icon: <CheckCircleIcon style={{ color: '#1d9e75', width: 28, height: 28 }} /> }
         ].map(s => (
           <div key={s.label} className={`admin-stat-card ${s.danger ? 'danger' : ''}`}>
-            <span className="admin-stat-icon">{s.icon}</span>
+            <span className="admin-stat-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{s.icon}</span>
             <span className="admin-stat-value">{s.value}</span>
             <span className="admin-stat-label">{s.label}</span>
           </div>
@@ -156,8 +166,8 @@ export default function DeviceList() {
           padding: '20px',
           boxShadow: '0 4px 20px rgba(0,0,0,0.02)'
         }}>
-          <h3 style={{ margin: '0 0 10px 0', fontSize: 15, fontWeight: 750, color: '#0d7de6' }}>
-            🔌 Instant Serial Dashboard Lookup
+          <h3 style={{ margin: '0 0 10px 0', fontSize: 15, fontWeight: 750, color: '#0d7de6', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <SearchIcon style={{ color: '#0d7de6' }} /> Instant Serial Dashboard Lookup
           </h3>
           <form onSubmit={handleQuickSubmit} style={{ display: 'flex', gap: 10 }}>
             <input
@@ -203,7 +213,7 @@ export default function DeviceList() {
           </svg>
           <input
             className="admin-search-input"
-            placeholder="Search by serial number or patient name…"
+            placeholder="Search by serial number…"
             value={search}
             onChange={e => setSearch(e.target.value)}
             onKeyDown={handleSearchKeyPress}
@@ -230,90 +240,144 @@ export default function DeviceList() {
         </span>
       </div>
 
-      {/* ── Table Grid ── */}
-      <div className="admin-table-wrap">
-        {loading ? (
-          <div className="admin-loading">
-            <div className="admin-spinner" />
-            <span>Loading devices registry…</span>
-          </div>
-        ) : filteredDevices.length === 0 ? (
-          <div className="admin-empty">
-            <p>No devices found matching current filters.</p>
-          </div>
-        ) : (
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Device Serial</th>
-                <th>Model</th>
-                <th>Patient</th>
-                <th>Compliance</th>
-                <th>AHI</th>
-                <th>Usage</th>
-                <th>Status</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {filteredDevices.map(d => {
-                const sc = STATUS_COLOR[d.status] || STATUS_COLOR.offline;
-                return (
-                  <tr
-                    key={d.serial}
-                    className="admin-table-row"
-                    onClick={() => { navigate(`/device/${d.serial}`); }}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <td>
-                      <strong style={{ color: '#0d7de6', fontFamily: 'monospace', fontSize: 15 }}>{d.serial}</strong>
-                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>FW: {d.firmware}</div>
-                    </td>
-                    <td className="admin-td-secondary">{d.model}</td>
-                    <td>
-                      <div className="admin-patient-name">{d.patient_name}</div>
-                    </td>
-                    <td>
-                      <div className="admin-compliance-wrap">
-                        <div className="admin-compliance-bar">
-                          <div className="admin-compliance-fill" style={{
-                            width: `${d.compliance_pct}%`,
-                            background: d.compliance_pct >= 70 ? '#1d9e75' : d.compliance_pct >= 50 ? '#ef9f27' : '#e24b4a'
-                          }} />
+      {/* ── Grid/Table Content ── */}
+      {loading ? (
+        <div className="admin-loading" style={{ background: 'var(--panel-strong)', borderRadius: 16, padding: 32, border: '1px solid var(--line)', textAlign: 'center' }}>
+          <div className="admin-spinner" style={{ margin: '0 auto 12px' }} />
+          <span style={{ color: 'var(--muted)', fontWeight: 600 }}>Loading devices registry…</span>
+        </div>
+      ) : filteredDevices.length === 0 ? (
+        <div className="admin-empty" style={{ background: 'var(--panel-strong)', borderRadius: 16, padding: 32, border: '1px solid var(--line)', textAlign: 'center' }}>
+          <p style={{ margin: 0, color: 'var(--muted)', fontWeight: 600 }}>No devices found matching current filters.</p>
+        </div>
+      ) : (
+        <>
+          {/* Desktop Table View */}
+          <div className="desktop-table-view admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Device Serial</th>
+                  <th>Model</th>
+                  <th>Compliance</th>
+                  <th>AHI</th>
+                  <th>Usage</th>
+                  <th>Status</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {filteredDevices.map(d => {
+                  const sc = STATUS_COLOR[d.status] || STATUS_COLOR.offline;
+                  return (
+                    <tr
+                      key={d.serial}
+                      className="admin-table-row"
+                      onClick={() => { navigate(`/device/${d.serial}`); }}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <td>
+                        <strong style={{ color: '#0d7de6', fontFamily: 'monospace', fontSize: 15 }}>{d.serial}</strong>
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>FW: {d.firmware}</div>
+                      </td>
+                      <td className="admin-td-secondary">{d.model}</td>
+                      <td>
+                        <div className="admin-compliance-wrap">
+                          <div className="admin-compliance-bar">
+                            <div className="admin-compliance-fill" style={{
+                              width: `${d.compliance_pct}%`,
+                              background: d.compliance_pct >= 70 ? '#1d9e75' : d.compliance_pct >= 50 ? '#ef9f27' : '#e24b4a'
+                            }} />
+                          </div>
+                          <span className="admin-compliance-num">{d.compliance_pct}%</span>
                         </div>
-                        <span className="admin-compliance-num">{d.compliance_pct}%</span>
-                      </div>
-                    </td>
-                    <td>
-                      <span className="admin-badge" style={{
-                        background: d.ahi <= 5.0 ? '#e6f9f0' : '#faece7',
-                        color: d.ahi <= 5.0 ? '#0f6e56' : '#993c1d'
-                      }}>
+                      </td>
+                      <td>
+                        <span className="admin-badge" style={{
+                          background: d.ahi <= 5.0 ? '#e6f9f0' : '#faece7',
+                          color: d.ahi <= 5.0 ? '#0f6e56' : '#993c1d'
+                        }}>
+                          {d.ahi}
+                        </span>
+                      </td>
+                      <td className="admin-td-secondary">{d.usage_hours}h</td>
+                      <td>
+                        <span className="admin-status-pill" style={{ background: sc.bg, color: sc.text }}>
+                          <span className="admin-status-dot" style={{ background: sc.dot }} />
+                          {d.status}
+                        </span>
+                      </td>
+                      <td>
+                        <button
+                          className="admin-view-btn"
+                          onClick={e => { e.stopPropagation(); navigate(`/device/${d.serial}`); }}
+                        >
+                          View Metrics
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile Card List View */}
+          <div className="mobile-cards-view mobile-device-cards-grid">
+            {filteredDevices.map(d => {
+              const sc = STATUS_COLOR[d.status] || STATUS_COLOR.offline;
+              return (
+                <div
+                  key={d.serial}
+                  className="mobile-device-card"
+                  onClick={() => navigate(`/device/${d.serial}`)}
+                >
+                  <div className="mobile-device-card-header">
+                    <span className="mobile-device-card-serial">{d.serial}</span>
+                    <span className="admin-status-pill" style={{ background: sc.bg, color: sc.text, margin: 0 }}>
+                      <span className="admin-status-dot" style={{ background: sc.dot }} />
+                      {d.status}
+                    </span>
+                  </div>
+                  <div className="mobile-device-card-info">
+                    {d.model} · FW: {d.firmware}
+                  </div>
+
+                  {/* Compliance bar */}
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
+                      <span>Compliance</span>
+                      <span>{d.compliance_pct}%</span>
+                    </div>
+                    <div className="admin-compliance-bar" style={{ height: 6, margin: 0 }}>
+                      <div className="admin-compliance-fill" style={{
+                        width: `${d.compliance_pct}%`,
+                        background: d.compliance_pct >= 70 ? '#1d9e75' : d.compliance_pct >= 50 ? '#ef9f27' : '#e24b4a'
+                      }} />
+                    </div>
+                  </div>
+
+                  {/* Stat pills */}
+                  <div className="mobile-device-card-metrics">
+                    <div className="mobile-device-metric-pill">
+                      <div className="mobile-device-metric-label">AHI</div>
+                      <div className="mobile-device-metric-value" style={{ color: d.ahi <= 5.0 ? '#1d9e75' : '#e24b4a' }}>
                         {d.ahi}
-                      </span>
-                    </td>
-                    <td className="admin-td-secondary">{d.usage_hours}h</td>
-                    <td>
-                      <span className="admin-status-pill" style={{ background: sc.bg, color: sc.text }}>
-                        <span className="admin-status-dot" style={{ background: sc.dot }} />
-                        {d.status}
-                      </span>
-                    </td>
-                    <td>
-                      <button
-                        className="admin-view-btn"
-                        onClick={e => { e.stopPropagation(); navigate(`/device/${d.serial}`); }}
-                      >
-                        View Metrics
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+                      </div>
+                    </div>
+                    <div className="mobile-device-metric-pill">
+                      <div className="mobile-device-metric-label">Usage</div>
+                      <div className="mobile-device-metric-value">
+                        {d.usage_hours}h
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -1,11 +1,18 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { HomeIcon, PhoneIcon, PulseIcon, ClipboardIcon } from './Icons';
 
 export default function BottomNavbar() {
+  const { isAuthenticated } = useAuth();
+
   const items = [
     { label: 'Dashboard', path: '/dashboard', icon: HomeIcon },
-    { label: 'Device', path: '/device-info', icon: PhoneIcon },
+    {
+      label: isAuthenticated ? 'Devices' : 'Device',
+      path: isAuthenticated ? '/devices' : '/device-info',
+      icon: PhoneIcon
+    },
     { label: 'Therapy', path: '/therapy', icon: PulseIcon },
     { label: 'Reports', path: '/reports', icon: ClipboardIcon },
   ];

@@ -16,6 +16,25 @@
   box-sizing: border-box;
 }
 
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(22, 163, 74, 0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 html,
 body,
 #root {
@@ -2128,11 +2147,11 @@ textarea:focus-visible,
     align-items: center;
   }
 
-  .logo-respro {
+  .logo-deck {
     color: #0f172a;
   }
 
-  .logo-x {
+  .logo-link {
     color: #27c6c7;
   }
 
@@ -2849,11 +2868,11 @@ textarea:focus-visible,
   justify-content: center;
 }
 
-.logo-brand .logo-respro {
+.logo-brand .logo-deck {
   color: #ffffff;
 }
 
-.logo-brand .logo-x {
+.logo-brand .logo-link {
   color: #00c6c7;
 }
 
@@ -4475,11 +4494,11 @@ textarea:focus-visible,
   letter-spacing: -0.5px;
 }
 
-.logo-text-respro {
+.logo-text-deck {
   color: #16233f;
 }
 
-.logo-text-x {
+.logo-text-link {
   color: #28d5c9;
 }
 
@@ -5108,6 +5127,573 @@ textarea:focus-visible,
   color: #94a3b8;
   display: flex;
   align-items: center;
+}
+
+/* Master-Detail Split Layout for admin devices dashboard */
+.dashboard-split-layout {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.dashboard-master-sidebar {
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dashboard-sidebar-header {
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dashboard-sidebar-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  font-weight: 750;
+  margin-bottom: 2px;
+}
+
+.dashboard-sidebar-subtitle {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.dashboard-sidebar-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-sidebar-item {
+  width: 100%;
+  text-align: left;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+  transition: all 0.2s ease;
+  display: block;
+}
+
+.dashboard-sidebar-item:last-child {
+  border-bottom: none;
+}
+
+.dashboard-sidebar-item:hover {
+  background: rgba(28, 50, 87, 0.03);
+}
+
+.dashboard-sidebar-item.active {
+  background: rgba(13, 125, 230, 0.06);
+  border-left: 4px solid var(--accent);
+  padding-left: 16px;
+}
+
+.dashboard-sidebar-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.dashboard-sidebar-item-serial {
+  font-family: monospace;
+  font-weight: 750;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.dashboard-sidebar-item-type {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.dashboard-sidebar-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dashboard-sidebar-dot.online {
+  background: var(--green, #10b981);
+  box-shadow: 0 0 8px var(--green, #10b981);
+}
+
+.dashboard-sidebar-dot.offline {
+  background: #cbd5e1;
+}
+
+.dashboard-detail-content {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Responsive adjustments for Dashboard Master-Detail Split Layout */
+@media (max-width: 1024px) {
+  .dashboard-split-layout {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-master-sidebar {
+    display: none; /* Hide device sidebar on tablet/mobile inside detail page */
+  }
+}
+
+/* Responsive Grid Helper Classes */
+.dashboard-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .dashboard-header-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+.dashboard-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 992px) {
+  .dashboard-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .dashboard-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dashboard-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .dashboard-two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dashboard-three-col {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+@media (max-width: 992px) {
+  .dashboard-three-col {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+/* Registry Page (DeviceList.jsx) Responsive Overrides */
+@media (max-width: 992px) {
+  .admin-stats-bar {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 576px) {
+  .admin-stats-bar {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .admin-quick-lookup-card form {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .admin-toolbar {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 12px;
+  }
+  
+  .admin-filter-pills {
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-bottom: 4px;
+    display: flex;
+    gap: 8px;
+    scrollbar-width: none; /* Hide scrollbar for clean look */
+  }
+  
+  .admin-filter-pills::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Patient Connected Device & History View (Devices.jsx) */
+.devices-page {
+  padding: 16px 0;
+}
+
+.device-info-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 16px 0;
+}
+
+@media (max-width: 600px) {
+  .device-info-wrapper {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 20px;
+  }
+}
+
+.device-icon-large {
+  width: 96px;
+  height: 96px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+  display: grid;
+  place-items: center;
+  color: white;
+  box-shadow: 0 10px 25px rgba(23, 116, 230, 0.15);
+  flex-shrink: 0;
+}
+
+.device-icon-large svg {
+  width: 44px;
+  height: 44px;
+}
+
+.device-details-list {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.device-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.device-detail-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.device-detail-row span {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.device-detail-row strong {
+  color: var(--text);
+  font-weight: 750;
+  text-align: right;
+}
+
+.device-detail-row strong.green-text {
+  color: var(--green);
+}
+
+.device-actions-bar {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 576px) {
+  .device-actions-bar {
+    flex-direction: column;
+  }
+  .device-actions-bar .icon-text-button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Timeline Styles */
+.device-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  position: relative;
+  padding-left: 20px;
+  margin-top: 16px;
+}
+
+.device-timeline::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: var(--line);
+}
+
+.timeline-item {
+  display: flex;
+  gap: 16px;
+  position: relative;
+}
+
+.timeline-badge {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 3px solid var(--accent);
+  position: absolute;
+  left: -20px;
+  top: 4px;
+  z-index: 1;
+}
+
+.timeline-badge svg {
+  display: none; /* Hide default icon inside the badge since it's now a professional dot */
+}
+
+.timeline-content {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 16px;
+}
+
+.timeline-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.timeline-type {
+  font-size: 12px;
+  font-weight: 750;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.timeline-date {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.timeline-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+/* Responsive Admin Device Dashboard split-layout classes */
+.dashboard-layout-container {
+  display: flex;
+  min-height: 100%;
+  background: var(--bg);
+  animation: fadeIn 0.3s ease;
+  width: 100%;
+}
+
+.dashboard-master-sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  background: var(--panel-strong);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.dashboard-main-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 22px;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .dashboard-master-sidebar {
+    display: none !important;
+  }
+  .dashboard-layout-container {
+    flex-direction: column;
+  }
+  .dashboard-main-content {
+    padding: 16px 12px;
+  }
+}
+
+/* Responsive Table & Card helpers */
+.desktop-table-view {
+  display: block;
+}
+.mobile-cards-view {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .desktop-table-view {
+    display: none !important;
+  }
+  .mobile-cards-view {
+    display: block !important;
+  }
+}
+
+/* Premium Mobile Card Layout */
+.mobile-device-cards-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.mobile-device-card {
+  background: var(--panel-strong, #fff);
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.02);
+  transition: all 0.2s ease;
+}
+
+.mobile-device-card:active {
+  transform: scale(0.985);
+  background: #f8fafc;
+}
+
+.mobile-device-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.mobile-device-card-serial {
+  font-size: 16px;
+  font-weight: 800;
+  font-family: monospace;
+  color: #0d7de6;
+}
+
+.mobile-device-card-info {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.mobile-device-card-metrics {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.mobile-device-metric-pill {
+  flex: 1;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  text-align: center;
+}
+
+.mobile-device-metric-label {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.mobile-device-metric-value {
+  font-size: 15px;
+  font-weight: 800;
+  color: #163257;
+}
+
+/* ── HCP Clinician Portal Integration Styles ──────────────────────────── */
+
+/* Sidebar button that opens the HCP portal */
+.hcp-portal-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 24px);
+  margin: 8px 12px 4px;
+  padding: 11px 16px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(46, 125, 184, 0.18), rgba(62, 151, 214, 0.12));
+  border: 1px solid rgba(62, 151, 214, 0.3);
+  color: #3E97D6;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, transform 0.15s;
+  letter-spacing: 0.2px;
+}
+
+.hcp-portal-btn:hover {
+  background: linear-gradient(135deg, rgba(46, 125, 184, 0.32), rgba(62, 151, 214, 0.24));
+  border-color: rgba(62, 151, 214, 0.6);
+  transform: translateX(2px);
+}
+
+.hcp-portal-btn svg {
+  opacity: 0.9;
+  flex-shrink: 0;
+}
+
+/* Login page clinician portal link */
+.hcp-login-link {
+  display: block;
+  margin-top: 10px;
+  color: #3E97D6;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  opacity: 0.85;
+  transition: opacity 0.2s;
+  letter-spacing: 0.2px;
+}
+
+.hcp-login-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+/* HCP portal root isolation — ensures portal fills viewport cleanly */
+.hcp-portal-root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  width: 100%;
 }
 
 

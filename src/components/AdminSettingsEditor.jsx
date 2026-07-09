@@ -3,17 +3,19 @@
 // Usage: <AdminSettingsEditor patientId={patient.id} initial={patient} />
 
 import { useState, useEffect, useRef } from 'react';
+import SendIcon from '@mui/icons-material/Send';
+import SaveIcon from '@mui/icons-material/Save';
 
 const API = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
-const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN || 'admin-secret-token-change-me';
 
 const AFLEX_LABELS = ['Off', '1', '2', '3'];
 const MODES = ['CPAP', 'AUTO CPAP'];
 
 function headers() {
+  const token = localStorage.getItem('adminToken');
   return {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${ADMIN_TOKEN}`,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
 
@@ -230,9 +232,11 @@ export default function AdminSettingsEditor({ patientId, initial }) {
         >
           {saving
             ? <><span className="ase-btn-spinner" /> Pushing…</>
-            : deviceOnline
-              ? '⚡ Push to Device'
-              : '📥 Save & Queue'
+            : deviceOnline ? (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><SendIcon fontSize="small" /> Push to Device</span>
+            ) : (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><SaveIcon fontSize="small" /> Save & Queue</span>
+            )
           }
         </button>
       </div>

@@ -4,16 +4,6 @@ import TrendChart from '../components/TrendChart';
 import { MaskIcon, InfoIcon } from '../components/Icons';
 import { useTherapy } from '../context/TherapyContext';
 
-const defaultLeakTrendData = [
-  { day: 'Mon', leak: 24 },
-  { day: 'Tue', leak: 19 },
-  { day: 'Wed', leak: 28 },
-  { day: 'Thu', leak: 15 },
-  { day: 'Fri', leak: 22 },
-  { day: 'Sat', leak: 18 },
-  { day: 'Sun', leak: 12 }
-];
-
 export default function MaskFit() {
   const { deviceData } = useTherapy();
 
@@ -26,17 +16,14 @@ export default function MaskFit() {
       const avgLeak = sessions.reduce((acc, s) => acc + s.mask_leak, 0) / sessions.length;
       return Math.max(50, Math.min(100, Math.round(100 - (avgLeak * 1.5))));
     }
-    return 94;
+    return null;
   }, [sessions]);
 
   const leakTrend = useMemo(() => {
-    if (sessions.length) {
-      return sessions.map(s => ({
-        day: s.date.split(' ')[0],
-        leak: s.mask_leak
-      }));
-    }
-    return defaultLeakTrendData;
+    return sessions.map(s => ({
+      day: s.date.split(' ')[0],
+      leak: s.mask_leak
+    }));
   }, [sessions]);
 
   const recommendations = useMemo(() => {
@@ -50,7 +37,7 @@ export default function MaskFit() {
       const leak = deviceData.live_data.mask_leak;
       if (leak > 24.0) {
         return [
-          { text: '⚠️ High mask leak detected! Adjust headgear and reposition mask cushion.', type: 'warning' },
+          { text: 'High mask leak detected! Adjust headgear and reposition mask cushion.', type: 'warning' },
           { text: 'Check for leaks around the corners of the mouth or eyes.', type: 'info' },
           ...defaultRecs.slice(1)
         ];
@@ -58,6 +45,17 @@ export default function MaskFit() {
     }
     return defaultRecs;
   }, [deviceData]);
+
+  if (!deviceData) {
+    return (
+      <div className="maskfit-page" style={{ padding: '40px 20px', textAlign: 'center' }}>
+        <GlassCard>
+          <h2 style={{ color: '#0d7de6', fontWeight: 800 }}>No Device Selected</h2>
+          <p style={{ color: 'var(--muted)', marginTop: 8 }}>Please select a device from the Devices registry to view mask fit telemetry.</p>
+        </GlassCard>
+      </div>
+    );
+  }
 
   return (
     <div className="maskfit-page">
@@ -67,16 +65,20 @@ export default function MaskFit() {
           <div className="section-title">
             <h2>Mask Fit Score</h2>
           </div>
-          <div className="score-widget-container">
-            <div className="score-ring-large">
-              <div className="score-ring-inner">
-                <span className="score-number">{score}</span>
-                <span className="score-label">
-                  {score >= 90 ? 'Excellent Fit' : score >= 80 ? 'Good Fit' : 'Needs Adjustment'}
-                </span>
+          {score !== null ? (
+            <div className="score-widget-container">
+              <div className="score-ring-large">
+                <div className="score-ring-inner">
+                  <span className="score-number">{score}</span>
+                  <span className="score-label">
+                    {score >= 90 ? 'Excellent Fit' : score >= 80 ? 'Good Fit' : 'Needs Adjustment'}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)' }}>No score available</div>
+          )}
           <p className="score-footnote">
             High fit scores indicate that your mask seal had minimal leaks during therapy.
           </p>
@@ -106,14 +108,18 @@ export default function MaskFit() {
           <div className="section-title">
             <h2>Leak Trend</h2>
           </div>
-          <TrendChart
-            data={leakTrend}
-            yKey="leak"
-            yUnit=" L/min"
-            type="line"
-            colorStart="#28d5c9"
-            domain={[0, 40]}
-          />
+          {leakTrend.length ? (
+            <TrendChart
+              data={leakTrend}
+              yKey="leak"
+              yUnit=" L/min"
+              type="line"
+              colorStart="#28d5c9"
+              domain={[0, 40]}
+            />
+          ) : (
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)' }}>No trend data available</div>
+          )}
         </GlassCard>
 
         {/* Leak Events */}

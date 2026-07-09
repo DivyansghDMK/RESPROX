@@ -51,10 +51,26 @@ export default function Sidebar() {
 
         <div className="brand">
           <div className="brand-mark">
-            <span className="brand-r">R</span>
+            <svg viewBox="0 0 64 64" style={{ width: '76px', height: '76px' }} fill="none">
+              <defs>
+                <linearGradient id="sidebarBlueG" x1="16" y1="18" x2="42" y2="42" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stop-color="#ffffff"/>
+                  <stop offset="100%" stop-color="#d0e3ff"/>
+                </linearGradient>
+                <linearGradient id="sidebarTealG" x1="22" y1="22" x2="48" y2="46" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stop-color="#ffffff"/>
+                  <stop offset="100%" stop-color="#a7f3d0"/>
+                </linearGradient>
+              </defs>
+              <path d="M24 19H32C37.5 19 42 23.5 42 29C42 34.5 37.5 39 32 39H24C21.2 39 19 36.8 19 34V24C19 21.2 21.2 19 24 19Z" 
+                    stroke="url(#sidebarBlueG)" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M40 45H32C26.5 45 22 40.5 22 35C22 29.5 26.5 25 32 25H40C42.8 25 45 27.2 45 30V40C45 42.8 42.8 45 40 45Z" 
+                    stroke="url(#sidebarTealG)" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="32" cy="32" r="3.5" fill="#ffffff" />
+            </svg>
           </div>
           <div>
-            <div className="brand-name">resproX</div>
+            <div className="brand-name">DeckLink</div>
             <div className="brand-tag">Breathe better. Live better.</div>
           </div>
         </div>
@@ -85,6 +101,16 @@ export default function Sidebar() {
             <span className="dot" />
           </div>
         </div>
+
+        {/* HCP Clinician Portal Entry */}
+        <a
+          href="/hcp"
+          className="hcp-portal-btn"
+          title="Open DeckLink Clinician Portal"
+        >
+          <ShieldIcon />
+          <span>Clinician Portal</span>
+        </a>
 
         <div className="version">v 1.0.0</div>
       </aside>

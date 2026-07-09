@@ -1,24 +1,96 @@
 # server/main.py
 # FastAPI server — Devices-centric CPAP Settings Push & Telemetry
-# pip install fastapi uvicorn websockets
+# pip install fastapi uvicorn websockets boto3 httpx
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, status
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Set, List
-import asyncio, json, logging, time
+import asyncio, json, logging, time, os
 
-ADMIN_TOKEN = "admin-secret-token-change-me"
+# AWS / HTTP clients (install: pip install boto3 httpx)
+try:
+    import boto3
+    from botocore.exceptions import ClientError, NoCredentialsError
+    BOTO3_AVAILABLE = True
+except ImportError:
+    BOTO3_AVAILABLE = False
+    logging.warning("boto3 not installed — S3 presigned URL features disabled. Run: pip install boto3")
+
+try:
+    import httpx
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
+    logging.warning("httpx not installed — reports proxy disabled. Run: pip install httpx")
+
+def load_dotenv():
+    # Look for .env in the parent directory of this file
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    env_path = os.path.join(base_dir, ".env")
+    if not os.path.exists(env_path):
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+        
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    key, val = line.split("=", 1)
+                    key = key.strip()
+                    val = val.strip()
+                    if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                        val = val[1:-1]
+                    os.environ.setdefault(key, val)
+
+load_dotenv()
+
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "admin-secret-token-change-me")
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+
+# ── AWS Configuration ────────────────────────────────────────────
+AWS_ACCESS_KEY_ID     = os.getenv("AWS_ACCESS_KEY_ID", "")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+AWS_S3_BUCKET         = os.getenv("AWS_S3_BUCKET", "deck-backend-demo")
+AWS_S3_REGION         = os.getenv("AWS_S3_REGION", "us-east-1")
+
+REVIEWED_REPORTS_API_URL = os.getenv(
+    "REVIEWED_REPORTS_API_URL",
+    "https://6jhix49qt6.execute-api.us-east-1.amazonaws.com/api/public/reviewed-reports"
+)
+REVIEWED_REPORTS_API_KEY = os.getenv("REVIEWED_REPORTS_API_KEY", "9q7RZrcSkc7UMYwXLAJXo33N4AvulrfF5r23KrIL")
+DOCTOR_REVIEW_API_URL    = os.getenv("DOCTOR_REVIEW_API_URL", "")
+DOCTOR_REVIEW_API_KEY    = os.getenv("DOCTOR_REVIEW_API_KEY", "")
+
+def get_s3_client():
+    """Return a boto3 S3 client using credentials from .env"""
+    if not BOTO3_AVAILABLE:
+        return None
+    if not AWS_ACCESS_KEY_ID or not AWS_SECRET_ACCESS_KEY:
+        return None
+    return boto3.client(
+        "s3",
+        region_name=AWS_S3_REGION,
+        aws_access_key_id=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    )
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cpap-server")
 
-app = FastAPI(title="resproX CPAP Server (Devices-Centric)", version="2.0.0")
+app = FastAPI(title="DeckLink CPAP Server (Devices-Centric)", version="2.0.0")
+
+cors_origins_str = os.getenv("CORS_ALLOWED_ORIGINS", "*")
+allow_origins = [origin.strip() for origin in cors_origins_str.split(",")] if cors_origins_str else ["*"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -201,10 +273,10 @@ class SettingsAck(BaseModel):
 
 @app.post("/api/auth/login")
 def login(body: LoginRequest):
-    if body.username == "admin" and body.password == "admin123":
+    if body.username == ADMIN_USERNAME and body.password == ADMIN_PASSWORD:
         return {
             "token": ADMIN_TOKEN,
-            "username": "admin",
+            "username": ADMIN_USERNAME,
             "success": True
         }
     raise HTTPException(status_code=400, detail="Invalid credentials")
@@ -319,6 +391,240 @@ async def device_fetch_settings(serial: str):
     return {"settings": DEVICES_DB[serial]["settings"]}
 
 
+# ── AWS S3 Presigned URL ─────────────────────────────────────────
+
+@app.get("/api/s3/presign")
+def get_presigned_url(
+    key: str = Query(..., description="S3 object key, e.g. reports/A010/2026-07-01.pdf"),
+    expires: int = Query(900, ge=60, le=3600, description="URL expiry in seconds"),
+    _: str = Depends(require_admin)
+):
+    """Generate a short-lived presigned GET URL for any S3 object in the configured bucket."""
+    s3 = get_s3_client()
+    if not s3:
+        raise HTTPException(503, "S3 client not configured — check AWS credentials in .env")
+    try:
+        url = s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": AWS_S3_BUCKET, "Key": key},
+            ExpiresIn=expires,
+        )
+        return {"url": url, "expires_in": expires, "bucket": AWS_S3_BUCKET, "key": key}
+    except (ClientError, NoCredentialsError) as e:
+        raise HTTPException(500, f"S3 presign failed: {str(e)}")
+
+
+@app.get("/api/s3/list")
+def list_s3_objects(
+    prefix: str = Query("", description="S3 key prefix to list"),
+    _: str = Depends(require_admin)
+):
+    """List objects in the S3 bucket under a given prefix."""
+    s3 = get_s3_client()
+    if not s3:
+        raise HTTPException(503, "S3 client not configured — check AWS credentials in .env")
+    try:
+        resp = s3.list_objects_v2(Bucket=AWS_S3_BUCKET, Prefix=prefix, MaxKeys=100)
+        items = []
+        for obj in resp.get("Contents", []):
+            items.append({
+                "key": obj["Key"],
+                "size": obj["Size"],
+                "last_modified": obj["LastModified"].isoformat(),
+            })
+        return {"bucket": AWS_S3_BUCKET, "prefix": prefix, "count": len(items), "objects": items}
+    except (ClientError, NoCredentialsError) as e:
+        raise HTTPException(500, f"S3 list failed: {str(e)}")
+
+
+# ── Reports API Proxy (keeps API key server-side) ─────────────────
+
+@app.get("/api/reports/reviewed")
+async def proxy_reviewed_reports(
+    serial: Optional[str] = Query(None, description="Filter by device serial"),
+    _: str = Depends(require_admin)
+):
+    """Proxy to the live reviewed reports API — keeps the API key server-side."""
+    if not HTTPX_AVAILABLE:
+        raise HTTPException(503, "httpx not installed. Run: pip install httpx")
+    url = REVIEWED_REPORTS_API_URL
+    if serial:
+        url += f"?RhythmUltra_serial={serial}"
+    headers = {"Content-Type": "application/json", "x-api-key": REVIEWED_REPORTS_API_KEY}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(e.response.status_code, f"Upstream reports API error: {e.response.text[:200]}")
+    except Exception as e:
+        raise HTTPException(502, f"Could not reach reports API: {str(e)}")
+
+
+# ── S3 ECG Reports Scanner ────────────────────────────────────────
+# S3 path: reports/{YYYY}/{MM}/{DD}/{serial}/ECG_Report_*.pdf|json
+# Used by the HCP portal to show org reports by registered device serials
+
+import re
+from datetime import datetime, timedelta, timezone
+
+def _parse_report_meta(key: str) -> dict:
+    """
+    Parse S3 key like:
+      reports/2026/07/06/A076/ECG_Report_12_1_DM ECG V1.0 A076_20260706_181928.pdf
+      reports/2026/06/24/0010/Hyperkalemia_Report_DM ECG V1.0 0010_20260624_161810.pdf
+      reports/2026/07/06/A010/ecg_data_20260610_144913.json
+    Returns structured metadata dict.
+    """
+    parts = key.split("/")
+    # parts: ['reports', '2026', '07', '06', 'A076', 'filename.ext']
+    serial = parts[4] if len(parts) >= 5 else "unknown"
+    filename = parts[-1] if parts else key
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+    # Try to parse datetime from filename — two patterns:
+    #   _20260706_181928   (most reports)
+    #   ecg_data_20260610_144913  (raw data files)
+    dt_match = re.search(r"_(\d{8})_(\d{6})", filename)
+    report_dt = None
+    if dt_match:
+        try:
+            report_dt = datetime.strptime(
+                dt_match.group(1) + dt_match.group(2), "%Y%m%d%H%M%S"
+            ).replace(tzinfo=timezone.utc).isoformat()
+        except Exception:
+            pass
+
+    # Detect report type from filename prefix
+    fname_upper = filename.upper()
+    if "HYPERKALEMIA" in fname_upper:
+        rtype = "hyperkalemia"
+    elif "HRV" in fname_upper:
+        rtype = "hrv"
+    elif "12_1" in fname_upper or "12LEAD" in fname_upper:
+        rtype = "12_lead"
+    elif "4_3" in fname_upper or "4LEAD" in fname_upper or "HOLTER" in fname_upper:
+        rtype = "holter"
+    elif "ECG_DATA" in fname_upper:
+        rtype = "raw_ecg"
+    else:
+        rtype = "ecg"
+
+    return {
+        "serial": serial,
+        "filename": filename,
+        "ext": ext,
+        "report_type": rtype,
+        "created_at": report_dt,
+        "s3_key": key,
+    }
+
+
+@app.get("/api/reports/s3")
+def list_s3_ecg_reports(
+    serials: str = Query(..., description="Comma-separated device serials, e.g. A076,0010"),
+    days: int = Query(30, ge=1, le=365, description="How many days back to scan"),
+    presign_expiry: int = Query(900, ge=60, le=3600),
+):
+    """
+    Scan S3 for ECG reports (PDF + JSON) for the given device serials over the last N days.
+    Returns presigned URLs for each file — no auth token required (uses server-side AWS creds).
+    Called by the HCP portal ECG Reports section.
+
+    S3 path pattern: reports/{YYYY}/{MM}/{DD}/{serial}/
+    """
+    s3 = get_s3_client()
+    if not s3:
+        raise HTTPException(503, "S3 not configured — add AWS credentials to server .env")
+
+    serial_list = [s.strip() for s in serials.split(",") if s.strip()]
+    if not serial_list:
+        raise HTTPException(400, "No serials provided")
+
+    today = datetime.now(tz=timezone.utc)
+    date_range = [(today - timedelta(days=d)) for d in range(days)]
+
+    # Group by base key (strip extension) so PDF+JSON become one report entry
+    report_map: dict = {}  # base_key → report dict
+
+    for day_dt in date_range:
+        for serial in serial_list:
+            prefix = f"reports/{day_dt.strftime('%Y/%m/%d')}/{serial}/"
+            try:
+                resp = s3.list_objects_v2(Bucket=AWS_S3_BUCKET, Prefix=prefix, MaxKeys=50)
+            except Exception:
+                continue
+
+            for obj in resp.get("Contents", []):
+                key = obj["Key"]
+                if key.endswith("/"):
+                    continue  # skip folder markers
+
+                meta = _parse_report_meta(key)
+                # Base key = strip extension for grouping PDF+JSON together
+                base = re.sub(r"\.(pdf|json)$", "", key, flags=re.IGNORECASE)
+
+                if base not in report_map:
+                    report_map[base] = {
+                        "report_id": base.replace("/", "_").replace(" ", "_"),
+                        "serial": meta["serial"],
+                        "report_type": meta["report_type"],
+                        "created_at": meta["created_at"],
+                        "date_label": day_dt.strftime("%d %b %Y"),
+                        "pdf_url": None,
+                        "json_url": None,
+                        "pdf_key": None,
+                        "json_key": None,
+                        "size_bytes": 0,
+                        "status": "Available",
+                    }
+
+                entry = report_map[base]
+                try:
+                    if meta["ext"] == "pdf":
+                        # Force browser to DISPLAY pdf inline (not download)
+                        signed = s3.generate_presigned_url(
+                            "get_object",
+                            Params={
+                                "Bucket": AWS_S3_BUCKET,
+                                "Key": key,
+                                "ResponseContentDisposition": "inline",
+                                "ResponseContentType": "application/pdf",
+                            },
+                            ExpiresIn=presign_expiry,
+                        )
+                    else:
+                        signed = s3.generate_presigned_url(
+                            "get_object",
+                            Params={"Bucket": AWS_S3_BUCKET, "Key": key},
+                            ExpiresIn=presign_expiry,
+                        )
+                except Exception:
+                    signed = None
+
+                if meta["ext"] == "pdf":
+                    entry["pdf_url"] = signed
+                    entry["pdf_key"] = key
+                    entry["size_bytes"] = max(entry["size_bytes"], obj["Size"])
+                elif meta["ext"] == "json":
+                    entry["json_url"] = signed
+                    entry["json_key"] = key
+
+    reports = sorted(
+        report_map.values(),
+        key=lambda r: r["created_at"] or "",
+        reverse=True,
+    )
+
+    return {
+        "serials": serial_list,
+        "days_scanned": days,
+        "total": len(reports),
+        "reports": reports,
+    }
+
+
 # ── WebSocket Route ──────────────────────────────────────────────
 @app.websocket("/ws/device/{serial}")
 async def device_websocket(ws: WebSocket, serial: str):
@@ -339,7 +645,6 @@ async def device_websocket(ws: WebSocket, serial: str):
 
                 if data.get("type") == "ack":
                     ack_data = data.get("data", {})
-                    # Map patient_id back to serial if needed
                     await ack_settings(SettingsAck(
                         serial=serial,
                         timestamp=ack_data.get("timestamp", 0),
@@ -358,4 +663,5 @@ async def device_websocket(ws: WebSocket, serial: str):
     finally:
         manager.disconnect(serial, ws)
 
-# Run: /Users/deckmount/Library/Python/3.9/bin/uvicorn server.main:app --reload --port 8000
+# Run: uvicorn server.main:app --reload --port 8000
+# Install deps: pip install fastapi uvicorn websockets boto3 httpx

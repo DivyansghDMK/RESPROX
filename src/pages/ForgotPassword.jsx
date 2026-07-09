@@ -39,8 +39,8 @@ export default function ForgotPassword() {
       <div className="auth-glass-panel">
         <div className="auth-header">
           <div className="logo-brand">
-            <span className="logo-respro">respro</span>
-            <span className="logo-x">X</span>
+            <span className="logo-deck">Deck</span>
+            <span className="logo-link">Link</span>
           </div>
           <h2 className="auth-title">Reset Password</h2>
           <p className="auth-subtitle">We will email you instructions to restore your settings dashboard login</p>
@@ -67,7 +67,7 @@ export default function ForgotPassword() {
                 <input
                   type="email"
                   id="email"
-                  placeholder="admin@resprox.com"
+                  placeholder="admin@decklink.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required

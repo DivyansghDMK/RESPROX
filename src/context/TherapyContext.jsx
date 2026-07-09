@@ -186,6 +186,7 @@ export function TherapyProvider({ children }) {
     adminActiveSerial,
     setAdminActiveSerial,
     deviceData,
+    setDeviceData,
     fetchDeviceData,
     lastServerPull,
     setLastServerPull

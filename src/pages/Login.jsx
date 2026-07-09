@@ -80,8 +80,8 @@ export default function Login() {
       <div className="auth-glass-panel">
         <div className="auth-header">
           <div className="logo-brand">
-            <span className="logo-respro">respro</span>
-            <span className="logo-x">X</span>
+            <span className="logo-deck">Deck</span>
+            <span className="logo-link">Link</span>
           </div>
           <h2 className="auth-title">Admin Access</h2>
           <p className="auth-subtitle">Sign in to configure settings & check compliance metrics</p>
@@ -161,7 +161,10 @@ export default function Login() {
         </form>
 
         <div className="auth-footer">
-          <p>Demo Credentials: <strong>admin</strong> / <strong>admin123</strong></p>
+          <p>Demo Credentials: <strong>{import.meta.env.VITE_MOCK_USERNAME || 'admin'}</strong> / <strong>{import.meta.env.VITE_MOCK_PASSWORD || 'admin123'}</strong></p>
+          <a href="/hcp" className="hcp-login-link">
+            Clinician Portal (DeckLink) →
+          </a>
         </div>
       </div>
     </div>

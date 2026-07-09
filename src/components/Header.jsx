@@ -50,7 +50,7 @@ export default function Header() {
           </button>
           <div>
             <p className="eyebrow">{getGreeting()},</p>
-            <h1>Hello, {adminLabel} 👋</h1>
+            <h1>Hello, {adminLabel}</h1>
             <p className="last-synced">
               Last pulled from server: <strong>{displayTime}</strong>
             </p>
@@ -81,8 +81,8 @@ export default function Header() {
           </div>
         </div>
         <div className="mobile-header-center">
-          <span className="logo-respro">respro</span>
-          <span className="logo-x">X</span>
+          <span className="logo-deck">Deck</span>
+          <span className="logo-link">Link</span>
         </div>
         <div className="mobile-header-right">
           <button className="mobile-bell-btn" aria-label="Notifications">

@@ -1,5 +1,5 @@
 // src/hooks/useDeviceSettings.js
-// Drop-in hook for resproX device app.
+// Drop-in hook for DeckLink device app.
 // Connects to server WS, receives pushed settings, updates TherapyContext.
 // Usage: call inside your root component (e.g. App.jsx or Dashboard.jsx)
 
