@@ -95,8 +95,24 @@ export default function ReportsSection({ session, orgData, orgId }) {
   const allSerials = devices.map((d) => d.serial).filter(Boolean);
 
   const perms = rolePermissions(session?.role);
+  const org = orgData?.orgs?.find((o) => o.id === orgId);
+  const isDoctorOrg = org?.type === "Doctor Head" || session?.role === "Doctor Head";
 
   const [reports, setReports] = useState([]);
+  const [approvedIds, setApprovedIds] = useState(() => {
+    try {
+      const saved = localStorage.getItem("decklink_approved_reports");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const handleApprove = (reportId) => {
+    const next = [...approvedIds, reportId];
+    setApprovedIds(next);
+    localStorage.setItem("decklink_approved_reports", JSON.stringify(next));
+  };
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isLive, setIsLive] = useState(false);
@@ -345,7 +361,7 @@ export default function ReportsSection({ session, orgData, orgId }) {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5, minWidth: 700 }}>
                 <thead>
                   <tr>
-                    {["Device", "Type", "Date", "Size", "Actions"].map((col) => (
+                    {["Device", "Type", "Date", "Size", "Status", "Actions"].map((col) => (
                       <th key={col} style={{
                         textAlign: "left", color: C.sub, fontWeight: 600,
                         padding: "12px 16px", fontSize: 11.5, letterSpacing: 0.4,
@@ -387,9 +403,35 @@ export default function ReportsSection({ session, orgData, orgId }) {
                           ? `${(r.size_bytes / 1024).toFixed(1)} KB`
                           : "—"}
                       </td>
+                      {/* Status */}
+                      <td style={{ padding: "13px 16px" }}>
+                        {approvedIds.includes(r.report_id) ? (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: C.ok, fontWeight: 700, fontSize: 12.5 }}>
+                            <CheckCircle size={13} /> Approved
+                          </span>
+                        ) : (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: C.warn, fontWeight: 700, fontSize: 12.5 }}>
+                            <Clock size={13} /> Pending
+                          </span>
+                        )}
+                      </td>
                       {/* Actions */}
                       <td style={{ padding: "13px 16px" }}>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {/* Approve Action — Doctor Org users only */}
+                          {isDoctorOrg && !approvedIds.includes(r.report_id) && (
+                            <button
+                              onClick={() => handleApprove(r.report_id)}
+                              style={{
+                                display: "inline-flex", alignItems: "center", gap: 4,
+                                padding: "5px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600,
+                                background: C.ok + "22", color: C.ok,
+                                border: `1px solid ${C.ok}44`, cursor: "pointer",
+                              }}
+                            >
+                              <CheckCircle size={12} /> Approve
+                            </button>
+                          )}
                           {/* PDF */}
                           {perms.canViewPDF && r.pdf_url ? (
                             <>

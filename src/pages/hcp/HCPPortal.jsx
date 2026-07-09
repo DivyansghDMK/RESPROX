@@ -791,10 +791,23 @@ function MobileNavGroup({ label, icon, items, onPick }) {
 
 /* ---------------- Patients section ---------------- */
 
-function PatientsSection({ tab, orgData, orgId }) {
+function PatientsSection({ tab, orgData, orgId, session }) {
   const [q, setQ] = useState("");
   const patients = orgData.patients[orgId] || [];
   const referrals = orgData.referrals[orgId] || [];
+  const locs = orgData.locations[orgId] || [];
+
+  const isAdmin = session?.role === "HCP Head" || session?.role === "Doctor Head";
+  
+  // Default selected location is "All" for admins.
+  // For clinical/junior users, it is locked to the first location name (or "Main Clinic")
+  const defaultLoc = isAdmin ? "All" : (locs.length > 0 ? locs[0].name : "Main Clinic");
+  const [selectedLocation, setSelectedLocation] = useState(defaultLoc);
+
+  // Sync selected location if role changes (e.g. in development/testing)
+  useEffect(() => {
+    setSelectedLocation(isAdmin ? "All" : (locs.length > 0 ? locs[0].name : "Main Clinic"));
+  }, [isAdmin, locs.length]);
 
   if (tab === "referrals") {
     return (
@@ -808,12 +821,21 @@ function PatientsSection({ tab, orgData, orgId }) {
     );
   }
 
+  // Filter patients by name and location assignment
   let filtered = patients;
   if (tab === "wireless") filtered = patients.filter((p) => p.connectivity === "Wireless");
   if (tab === "ventilation") filtered = patients.filter((p) => p.therapy.includes("Ventilation") || p.therapy === "BiPAP");
   if (tab === "action") filtered = patients.filter((p) => p.status !== "Compliant");
 
+  // Filter by search query
   filtered = filtered.filter((p) => p.name.toLowerCase().includes(q.toLowerCase()));
+
+  // Filter by location
+  filtered = filtered.filter((p) => {
+    const pLoc = locs.length > 0 ? locs[p.age % locs.length].name : "Main Clinic";
+    if (selectedLocation !== "All" && pLoc !== selectedLocation) return false;
+    return true;
+  });
 
   const titleMap = {
     all: "All therapy",
@@ -825,24 +847,68 @@ function PatientsSection({ tab, orgData, orgId }) {
   return (
     <Panel title={titleMap[tab] || "Patients"} icon={<Users size={18} />}
       right={
-        <div style={{ display: "flex", alignItems: "center", gap: 8, background: COLORS.panel2, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px" }}>
-          <Search size={14} color={COLORS.sub} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search patients"
-            style={{ background: "none", border: "none", outline: "none", color: COLORS.text, fontSize: 13 }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Location Scope Selector */}
+          {isAdmin ? (
+            <select
+              value={selectedLocation}
+              onChange={(e) => setSelectedLocation(e.target.value)}
+              style={{
+                background: COLORS.panel2,
+                border: `1px solid ${COLORS.border}`,
+                borderRadius: 8,
+                color: COLORS.text,
+                padding: "6px 10px",
+                fontSize: 13,
+                outline: "none"
+              }}
+            >
+              <option value="All">All Locations</option>
+              {locs.map((l) => (
+                <option key={l.id} value={l.name}>{l.name}</option>
+              ))}
+            </select>
+          ) : (
+            <span style={{
+              fontSize: 12.5,
+              color: COLORS.sub,
+              background: COLORS.panel2,
+              border: `1px solid ${COLORS.border}`,
+              borderRadius: 8,
+              padding: "6px 12px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4
+            }}>
+              📍 Scoped: {locs.length > 0 ? locs[0].name : "Main Clinic"}
+            </span>
+          )}
+
+          {/* Search bar */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: COLORS.panel2, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px" }}>
+            <Search size={14} color={COLORS.sub} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search patients"
+              style={{ background: "none", border: "none", outline: "none", color: COLORS.text, fontSize: 13 }} />
+          </div>
         </div>
       }
     >
       <Table
-        cols={["Patient", "Age", "Therapy", "Connectivity", "AHI", "Usage (hrs/night)", "Status", "Alert"]}
-        rows={filtered.map((p) => [
-          p.name, p.age, p.therapy,
-          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            {p.connectivity === "Wireless" ? <Wifi size={13} color={COLORS.ok} /> : <WifiOff size={13} color={COLORS.sub} />}
-            {p.connectivity}
-          </span>,
-          p.ahi, p.usageHrs, <StatusPill status={p.status} />,
-          p.alert ? <span style={{ color: COLORS.warn, fontSize: 12.5, display: "flex", alignItems: "center", gap: 4 }}><AlertTriangle size={12} />{p.alert}</span> : <span style={{ color: COLORS.sub }}>—</span>,
-        ])}
+        cols={["Patient", "Age", "Assigned Location", "Therapy", "Connectivity", "AHI", "Usage (hrs/night)", "Status", "Alert"]}
+        rows={filtered.map((p) => {
+          const pLoc = locs.length > 0 ? locs[p.age % locs.length].name : "Main Clinic";
+          return [
+            p.name, p.age,
+            <span style={{ color: COLORS.orange2, fontWeight: 600 }}>{pLoc}</span>,
+            p.therapy,
+            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {p.connectivity === "Wireless" ? <Wifi size={13} color={COLORS.ok} /> : <WifiOff size={13} color={COLORS.sub} />}
+              {p.connectivity}
+            </span>,
+            p.ahi, p.usageHrs, <StatusPill status={p.status} />,
+            p.alert ? <span style={{ color: COLORS.warn, fontSize: 12.5, display: "flex", alignItems: "center", gap: 4 }}><AlertTriangle size={12} />{p.alert}</span> : <span style={{ color: COLORS.sub }}>—</span>,
+          ];
+        })}
         empty="No patients match this view."
       />
     </Panel>
@@ -1351,7 +1417,7 @@ export default function HCPPortal() {
       <TopBar session={session} view={view} setView={setView} onLogout={() => {
         clearSession(); setSession(null); setScreen("landing");
       }} />
-      {view.section === "patients" && <PatientsSection tab={view.tab} orgData={data} orgId={orgId} />}
+      {view.section === "patients" && <PatientsSection tab={view.tab} orgData={data} orgId={orgId} session={session} />}
       {view.section === "business" && <BusinessSection tab={view.tab} />}
       {view.section === "admin" && <AdminSection tab={view.tab} orgData={data} orgId={orgId} setOrgData={setData} isRestricted={isRestricted} onRestrictedClick={onRestrictedClick} />}
       {view.section === "ecgReports" && <ReportsSection session={session} orgData={data} orgId={orgId} />}
