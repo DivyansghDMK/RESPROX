@@ -142,21 +142,88 @@ export async function getReports(serial = "") {
 
 /**
  * Role-based access rules for the HCP portal.
- * Returns { canViewList, canViewPDF, canViewJSON, isAdmin }
+ *
+ * Access Matrix:
+ * ┌──────────────┬─────────────┬──────────┬──────────┬───────────┬─────────────┬────────────┐
+ * │ Role         │ Org Type    │ ViewList │ ViewPDF  │ ViewJSON  │ CanApprove  │ IsAdmin    │
+ * ├──────────────┼─────────────┼──────────┼──────────┼───────────┼─────────────┼────────────┤
+ * │ HCP Head     │ HCP         │ ✅       │ ✅       │ ✅        │ ❌          │ ✅         │
+ * │ Sub dealer   │ HCP         │ ✅       │ ✅       │ ✅        │ ❌          │ ✅         │
+ * │ Employee     │ HCP         │ ✅       │ ✅       │ ❌        │ ❌          │ ❌         │
+ * │ Jr Doc       │ HCP         │ ✅       │ ✅       │ ❌        │ ❌          │ ❌         │
+ * │ Receptionist │ HCP         │ ✅       │ ❌       │ ❌        │ ❌          │ ❌         │
+ * │ Head doctor  │ Doctors     │ ✅       │ ✅       │ ✅        │ ✅          │ ✅         │
+ * │ Jr Doc       │ Doctors     │ ✅       │ ✅       │ ❌        │ ✅          │ ❌         │
+ * │ Employee     │ Doctors     │ ✅       │ ✅       │ ❌        │ ❌          │ ❌         │
+ * └──────────────┴─────────────┴──────────┴──────────┴───────────┴─────────────┴────────────┘
+ *
+ * Note: canApprove is enforced by isDoctorOrg check in ReportsSection — this
+ * function provides per-role flags, but isDoctorOrg controls the approve button context.
+ *
+ * Returns { canViewList, canViewPDF, canViewJSON, canApprove, isAdmin, isHead, isDoctorRole }
  */
 export function rolePermissions(role) {
   switch (role) {
+    // ── HCP Org: Full Admin Heads ──────────────────────────────────────────────
     case "HCP Head":
-    case "Doctor Head":
-      return { canViewList: true, canViewPDF: true, canViewJSON: true, isAdmin: false, isHead: true };
+      return {
+        canViewList: true, canViewPDF: true, canViewJSON: true,
+        canApprove: false, isAdmin: true, isHead: true, isDoctorRole: false
+      };
+
+    case "Sub dealer":
+      return {
+        canViewList: true, canViewPDF: true, canViewJSON: true,
+        canApprove: false, isAdmin: true, isHead: false, isDoctorRole: false
+      };
+
+    // ── HCP Org: Clinical Staff (can view list + PDF, no JSON, no approve) ────
+    case "Employee":
+      return {
+        canViewList: true, canViewPDF: true, canViewJSON: false,
+        canApprove: false, isAdmin: false, isHead: false, isDoctorRole: false
+      };
+
+    case "Jr Doc":
+      return {
+        canViewList: true, canViewPDF: true, canViewJSON: false,
+        canApprove: false, isAdmin: false, isHead: false, isDoctorRole: false
+      };
+
+    // ── HCP Org: Receptionist (view only, no PDF download, no JSON) ───────────
+    case "Receptionist":
+      return {
+        canViewList: true, canViewPDF: false, canViewJSON: false,
+        canApprove: false, isAdmin: false, isHead: false, isDoctorRole: false
+      };
+
+    // ── Doctor Org: Head Doctor (full access + can approve) ───────────────────
+    case "Head doctor":
+      return {
+        canViewList: true, canViewPDF: true, canViewJSON: true,
+        canApprove: true, isAdmin: true, isHead: true, isDoctorRole: true
+      };
+
+    // ── Legacy role aliases ────────────────────────────────────────────────────
     case "Sr. Clinical Doctor":
     case "Jr. Clinical Doctor":
-      return { canViewList: true, canViewPDF: true, canViewJSON: false, isAdmin: false, isHead: false };
+      return {
+        canViewList: true, canViewPDF: true, canViewJSON: false,
+        canApprove: false, isAdmin: false, isHead: false, isDoctorRole: false
+      };
     case "Sr. Admin":
     case "Jr. Admin":
-      return { canViewList: true, canViewPDF: false, canViewJSON: false, isAdmin: true, isHead: false };
+      return {
+        canViewList: true, canViewPDF: true, canViewJSON: true,
+        canApprove: false, isAdmin: true, isHead: false, isDoctorRole: false
+      };
+
+    // ── No access by default ──────────────────────────────────────────────────
     default:
-      return { canViewList: false, canViewPDF: false, canViewJSON: false, isAdmin: false, isHead: false };
+      return {
+        canViewList: false, canViewPDF: false, canViewJSON: false,
+        canApprove: false, isAdmin: false, isHead: false, isDoctorRole: false
+      };
   }
 }
 

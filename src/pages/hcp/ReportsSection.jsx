@@ -90,9 +90,45 @@ function SerialBadge({ serial }) {
 }
 
 /* ── Main ReportsSection ─────────────────────────────────────── */
-export default function ReportsSection({ session, orgData, orgId }) {
-  const devices = orgData?.devices?.[orgId] || [];
-  const allSerials = devices.map((d) => d.serial).filter(Boolean);
+export default function ReportsSection({ session, orgData, orgId, setOrgData }) {
+  const currentOrg = orgData?.orgs?.find((o) => o.id === orgId);
+  const isDoctorOrg = currentOrg?.type === "Doctors";
+
+  // Build a set of serials that are registered to THIS org's device list
+  // This is the source-of-truth for ownership enforcement
+  const orgRegisteredSerials = new Set(
+    (orgData?.devices?.[orgId] || []).map((d) => d.serial).filter(Boolean)
+  );
+
+  let allSerials = [];
+  if (isDoctorOrg) {
+    // Doctors: collect serials of patients associated with this specific doctor user,
+    // but only if those patient serials are registered to an HCP org device list
+    // (cross-verify: the device must be owned by some HCP org)
+    const allHcpSerials = new Set();
+    Object.keys(orgData?.devices || {}).forEach((oId) => {
+      const org = orgData.orgs?.find((o) => o.id === oId);
+      if (org && org.type !== "Doctors") {
+        (orgData.devices[oId] || []).forEach((d) => {
+          if (d.serial) allHcpSerials.add(d.serial);
+        });
+      }
+    });
+
+    const seen = new Set();
+    for (const hcpOrgId in orgData.patients || {}) {
+      const pats = orgData.patients[hcpOrgId] || [];
+      pats.forEach((p) => {
+        if (p.doctorId === session.id && p.serial && allHcpSerials.has(p.serial) && !seen.has(p.serial)) {
+          seen.add(p.serial);
+          allSerials.push(p.serial);
+        }
+      });
+    }
+  } else {
+    // HCP org: ONLY show reports for devices registered to this org
+    allSerials = Array.from(orgRegisteredSerials);
+  }
 
   const perms = rolePermissions(session?.role);
 
@@ -123,6 +159,75 @@ export default function ReportsSection({ session, orgData, orgId }) {
 
   useEffect(() => { if (perms.canViewList) load(); }, [load, perms.canViewList]);
 
+  const handleApprove = (reportId) => {
+    const next = { ...orgData };
+    if (!next.approvedReports) next.approvedReports = {};
+    next.approvedReports[reportId] = {
+      approvedBy: session.userName,
+      approvedAt: new Date().toISOString(),
+    };
+    setOrgData(next);
+
+    const reportObj = reports.find((x) => x.report_id === reportId);
+    if (reportObj && reportObj.serial) {
+      let patient = null;
+      let hcpOrgId = null;
+      for (const orgKey in orgData.patients || {}) {
+        const p = orgData.patients[orgKey].find((x) => x.serial === reportObj.serial);
+        if (p) {
+          patient = p;
+          hcpOrgId = orgKey;
+          break;
+        }
+      }
+
+      if (patient && hcpOrgId) {
+        const hcpUsers = orgData.users[hcpOrgId] || [];
+        const hcpHead = hcpUsers.find((u) => u.role === "HCP Head") || hcpUsers[0];
+        if (hcpHead && hcpHead.email) {
+          const emailSubject = `ECG Report Approved for Patient: ${patient.name}`;
+          const emailBody = `
+            <div style="font-family: sans-serif; max-width: 600px; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
+              <h2 style="color: #3FA772; margin-top: 0;">ECG Report Approved</h2>
+              <p>Dear ${hcpHead.name},</p>
+              <p>An ECG report for your patient has been reviewed and approved by the medical specialist:</p>
+              <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+                <tr style="background: #f9f9f9;">
+                  <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #ddd;">Patient Name</td>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd;">${patient.name}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #ddd;">Device Serial</td>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd;">${reportObj.serial}</td>
+                </tr>
+                <tr style="background: #f9f9f9;">
+                  <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #ddd;">Report Type</td>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd;">${reportObj.report_type}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #ddd;">Approved By</td>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd;">${session.userName} (${session.role})</td>
+                </tr>
+              </table>
+              <p>You can download the approved PDF report directly from your CardioX clinician portal.</p>
+              <p>Link: <a href="http://localhost:5175/hcp" style="color: #3E97D6; font-weight: bold; text-decoration: none;">http://localhost:5175/hcp</a></p>
+              <p style="color: #777; font-size: 12px; margin-top: 24px; border-top: 1px solid #eee; padding-top: 12px;">This is an automated clinical notification from the CardioX dashboard.</p>
+            </div>
+          `;
+          fetch("http://localhost:8000/api/email/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to_email: hcpHead.email,
+              subject: emailSubject,
+              html_body: emailBody
+            })
+          }).catch((err) => console.error("Error triggering SES email:", err));
+        }
+      }
+    }
+  };
+
   /* ── No access ── */
   if (!perms.canViewList) {
     return (
@@ -131,6 +236,20 @@ export default function ReportsSection({ session, orgData, orgId }) {
         <p style={{ color: C.text, fontSize: 16, fontWeight: 700 }}>Access Restricted</p>
         <p style={{ color: C.sub, fontSize: 13.5, marginTop: 6 }}>
           ECG report access is not available for your role ({session?.role}).
+        </p>
+      </div>
+    );
+  }
+
+  /* ── No doctor patients associated ── */
+  if (isDoctorOrg && !allSerials.length) {
+    return (
+      <div style={{ padding: "52px 32px", textAlign: "center" }}>
+        <Clock size={40} color={C.sub} style={{ marginBottom: 16, opacity: 0.4 }} />
+        <p style={{ color: C.text, fontSize: 16, fontWeight: 700 }}>No Associated Patients</p>
+        <p style={{ color: C.sub, fontSize: 13.5, marginTop: 6, maxWidth: 450, margin: "8px auto 0" }}>
+          You have not been associated with any patient accounts yet. 
+          Ask the Healthcare Professional (Clinic Account) administrator to select you as the associated doctor for their patients.
         </p>
       </div>
     );
@@ -151,7 +270,14 @@ export default function ReportsSection({ session, orgData, orgId }) {
   }
 
   /* ── Filter reports ── */
+  // authorizedSerialSet: strict ownership check — only show reports for serials
+  // this org/user is explicitly authorized to see (defense-in-depth)
+  const authorizedSerialSet = new Set(allSerials);
+
   const visible = reports.filter((r) => {
+    // Hard ownership gate — drop report if serial not in authorized set
+    if (!authorizedSerialSet.has(r.serial)) return false;
+
     const q = search.toLowerCase();
     const matchQ = !q ||
       r.serial?.toLowerCase().includes(q) ||
@@ -345,7 +471,7 @@ export default function ReportsSection({ session, orgData, orgId }) {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5, minWidth: 700 }}>
                 <thead>
                   <tr>
-                    {["Device", "Type", "Date", "Size", "Actions"].map((col) => (
+                    {["Device", "Type", "Date", "Size", "Status", "Actions"].map((col) => (
                       <th key={col} style={{
                         textAlign: "left", color: C.sub, fontWeight: 600,
                         padding: "12px 16px", fontSize: 11.5, letterSpacing: 0.4,
@@ -357,95 +483,158 @@ export default function ReportsSection({ session, orgData, orgId }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {visible.map((r, i) => (
-                    <tr
-                      key={r.report_id || i}
-                      style={{ borderTop: i > 0 ? `1px solid ${C.borderGlass}` : "none" }}
-                    >
-                      {/* Device serial */}
-                      <td style={{ padding: "13px 16px" }}>
-                        <SerialBadge serial={r.serial} />
-                      </td>
-                      {/* Report type */}
-                      <td style={{ padding: "13px 16px" }}>
-                        <TypeBadge type={r.report_type} />
-                      </td>
-                      {/* Date */}
-                      <td style={{ padding: "13px 16px", color: C.text, fontSize: 13 }}>
-                        {r.date_label || (r.created_at
-                          ? new Date(r.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
-                          : "—")}
-                        {r.created_at && (
-                          <div style={{ color: C.sub, fontSize: 11, marginTop: 2 }}>
-                            {new Date(r.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
-                          </div>
-                        )}
-                      </td>
-                      {/* Size */}
-                      <td style={{ padding: "13px 16px", color: C.sub, fontSize: 12.5 }}>
-                        {r.size_bytes > 0
-                          ? `${(r.size_bytes / 1024).toFixed(1)} KB`
-                          : "—"}
-                      </td>
-                      {/* Actions */}
-                      <td style={{ padding: "13px 16px" }}>
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          {/* PDF */}
-                          {perms.canViewPDF && r.pdf_url ? (
-                            <>
+                  {visible.map((r, i) => {
+                    const isApproved = orgData?.approvedReports?.[r.report_id];
+                    return (
+                      <tr
+                        key={r.report_id || i}
+                        style={{ borderTop: i > 0 ? `1px solid ${C.borderGlass}` : "none" }}
+                      >
+                        {/* Device serial */}
+                        <td style={{ padding: "13px 16px" }}>
+                          <SerialBadge serial={r.serial} />
+                        </td>
+                        {/* Report type */}
+                        <td style={{ padding: "13px 16px" }}>
+                          <TypeBadge type={r.report_type} />
+                        </td>
+                        {/* Date */}
+                        <td style={{ padding: "13px 16px", color: C.text, fontSize: 13 }}>
+                          {r.date_label || (r.created_at
+                            ? new Date(r.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+                            : "—")}
+                          {r.created_at && (
+                            <div style={{ color: C.sub, fontSize: 11, marginTop: 2 }}>
+                              {new Date(r.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                            </div>
+                          )}
+                        </td>
+                        {/* Size */}
+                        <td style={{ padding: "13px 16px", color: C.sub, fontSize: 12.5 }}>
+                          {r.size_bytes > 0
+                            ? `${(r.size_bytes / 1024).toFixed(1)} KB`
+                            : "—"}
+                        </td>
+                        {/* Status */}
+                        <td style={{ padding: "13px 16px" }}>
+                          {isApproved ? (
+                            <span style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              background: C.ok + "18",
+                              color: C.ok,
+                              fontSize: 12,
+                              fontWeight: 700,
+                              padding: "4px 10px",
+                              borderRadius: 20,
+                            }} title={`Approved at ${new Date(isApproved.approvedAt).toLocaleString()}`}>
+                              <CheckCircle size={12} /> Approved ({isApproved.approvedBy})
+                            </span>
+                          ) : (
+                            <span style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              background: C.warn + "18",
+                              color: C.warn,
+                              fontSize: 12,
+                              fontWeight: 700,
+                              padding: "4px 10px",
+                              borderRadius: 20,
+                            }}>
+                              <Clock size={12} /> Pending Review
+                            </span>
+                          )}
+                        </td>
+                        {/* Actions */}
+                        <td style={{ padding: "13px 16px" }}>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                            {/* Approve button — only for Doctor org roles with canApprove permission */}
+                            {isDoctorOrg && perms.canApprove && !isApproved && (
+                              <button
+                                onClick={() => handleApprove(r.report_id)}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  padding: "5px 12px",
+                                  borderRadius: 6,
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  background: C.ok,
+                                  color: "white",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  boxShadow: "0 2px 4px rgba(63,167,114,0.3)"
+                                }}
+                              >
+                                Approve
+                              </button>
+                            )}
+                            {/* Already approved badge for doctor view */}
+                            {isDoctorOrg && isApproved && (
+                              <span style={{ fontSize: 11, color: C.ok, fontStyle: "italic" }}>
+                                ✓ You approved this
+                              </span>
+                            )}
+                            {/* PDF — visible to all except Receptionist */}
+                            {perms.canViewPDF && r.pdf_url ? (
+                              <>
+                                <a
+                                  href={r.pdf_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{
+                                    display: "inline-flex", alignItems: "center", gap: 4,
+                                    padding: "5px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600,
+                                    background: C.blue1 + "22", color: C.blue2,
+                                    border: `1px solid ${C.blue1}44`, textDecoration: "none",
+                                  }}
+                                >
+                                  <Eye size={12} /> PDF
+                                </a>
+                                <a
+                                  href={r.pdf_url}
+                                  download
+                                  style={{
+                                    display: "inline-flex", alignItems: "center", gap: 4,
+                                    padding: "5px 9px", borderRadius: 6, fontSize: 12,
+                                    background: "transparent", color: C.sub,
+                                    border: `1px solid ${C.border}`, textDecoration: "none",
+                                  }}
+                                  title="Download PDF"
+                                >
+                                  <Download size={12} />
+                                </a>
+                              </>
+                            ) : r.pdf_url ? (
+                              <span style={{ color: C.sub, fontSize: 12, opacity: 0.5 }}>PDF — no access</span>
+                            ) : (
+                              <span style={{ color: C.sub, fontSize: 12, opacity: 0.4 }}>No PDF</span>
+                            )}
+                            {/* JSON — heads only */}
+                            {perms.canViewJSON && r.json_url && (
                               <a
-                                href={r.pdf_url}
+                                href={r.json_url}
                                 target="_blank"
                                 rel="noreferrer"
                                 style={{
                                   display: "inline-flex", alignItems: "center", gap: 4,
-                                  padding: "5px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600,
-                                  background: C.blue1 + "22", color: C.blue2,
-                                  border: `1px solid ${C.blue1}44`, textDecoration: "none",
+                                  padding: "5px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600,
+                                  background: C.ok + "18", color: C.ok,
+                                  border: `1px solid ${C.ok}44`, textDecoration: "none",
                                 }}
+                                title="View raw JSON data"
                               >
-                                <Eye size={12} /> PDF
+                                <Database size={11} /> JSON
                               </a>
-                              <a
-                                href={r.pdf_url}
-                                download
-                                style={{
-                                  display: "inline-flex", alignItems: "center", gap: 4,
-                                  padding: "5px 9px", borderRadius: 6, fontSize: 12,
-                                  background: "transparent", color: C.sub,
-                                  border: `1px solid ${C.border}`, textDecoration: "none",
-                                }}
-                                title="Download PDF"
-                              >
-                                <Download size={12} />
-                              </a>
-                            </>
-                          ) : r.pdf_url ? (
-                            <span style={{ color: C.sub, fontSize: 12, opacity: 0.5 }}>PDF — no access</span>
-                          ) : (
-                            <span style={{ color: C.sub, fontSize: 12, opacity: 0.4 }}>No PDF</span>
-                          )}
-                          {/* JSON — heads only */}
-                          {perms.canViewJSON && r.json_url && (
-                            <a
-                              href={r.json_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{
-                                display: "inline-flex", alignItems: "center", gap: 4,
-                                padding: "5px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600,
-                                background: C.ok + "18", color: C.ok,
-                                border: `1px solid ${C.ok}44`, textDecoration: "none",
-                              }}
-                              title="View raw JSON data"
-                            >
-                              <Database size={11} /> JSON
-                            </a>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

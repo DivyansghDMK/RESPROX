@@ -625,6 +625,48 @@ def list_s3_ecg_reports(
     }
 
 
+# ── Email Route using AWS SES ────────────────────────────────────
+class EmailRequest(BaseModel):
+    to_email: str
+    subject: str
+    html_body: str
+
+@app.post("/api/email/send")
+def send_email(body: EmailRequest):
+    if not BOTO3_AVAILABLE:
+        raise HTTPException(503, "boto3 not installed — email features disabled.")
+    try:
+        ses_client = boto3.client(
+            "ses",
+            region_name=AWS_S3_REGION or "us-east-1",
+            aws_access_key_id=AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+        )
+        sender_email = "noreply@deckmount.in"
+        response = ses_client.send_email(
+            Source=sender_email,
+            Destination={
+                "ToAddresses": [body.to_email]
+            },
+            Message={
+                "Subject": {
+                    "Data": body.subject,
+                    "Charset": "UTF-8"
+                },
+                "Body": {
+                    "Html": {
+                        "Data": body.html_body,
+                        "Charset": "UTF-8"
+                    }
+                }
+            }
+        )
+        return {"success": True, "message_id": response.get("MessageId")}
+    except Exception as e:
+        logger.error(f"AWS SES Send Email Failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Email delivery failed: {str(e)}")
+
+
 # ── WebSocket Route ──────────────────────────────────────────────
 @app.websocket("/ws/device/{serial}")
 async def device_websocket(ws: WebSocket, serial: str):

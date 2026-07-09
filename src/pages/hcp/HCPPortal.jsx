@@ -32,58 +32,74 @@ const COLORS = {
 };
 
 const uid = () => Math.random().toString(36).slice(2, 10);
-const LS_KEY = "decklink_data_v1";
-const SS_KEY = "decklink_session_v1";
 
-const ROLES = [
-  "Sr. Clinical Doctor",
-  "Jr. Clinical Doctor",
-  "Sr. Admin",
-  "Jr. Admin",
+const HCP_ROLES = [
+  "HCP Head",
+  "Sub dealer",
   "Employee",
+  "Jr Doc",
   "Receptionist",
 ];
 
+const DOCTOR_ROLES = [
+  "Head doctor",
+  "Jr Doc",
+  "Employee",
+];
+
+const LS_KEY = "decklink_data_v3";
+const SS_KEY = "decklink_session_v1";
+
 const seedData = () => ({
   orgs: [
-    { id: "org1", name: "Faridabad Sleep & Respiratory Clinic", type: "HCP Head" },
+    { id: "org1", name: "Faridabad Sleep & Respiratory Clinic", type: "Healthcare Professional" },
+    { id: "org2", name: "Metro Cardiology Group", type: "Doctors" },
   ],
   users: {
     org1: [
-      { id: uid(), name: "Dr. Aditi Sharma", role: "Sr. Clinical Doctor", email: "aditi.sharma@fsrc.in", phone: "9810000001", providerId: "PRV-1001", password: "123" },
-      { id: uid(), name: "Rahul Mehta", role: "HCP Head", email: "rahul.mehta@fsrc.in", phone: "9810000002", providerId: "", password: "123" },
-      { id: uid(), name: "Priya Nair", role: "Receptionist", email: "priya.nair@fsrc.in", phone: "9810000003", providerId: "", password: "123" },
+      { id: "u_rahul", name: "Rahul Mehta", role: "HCP Head", email: "kanishka.sharma@deckmount.in", phone: "9810000002", providerId: "", password: "123" },
+      { id: "u_aditi", name: "Dr. Aditi Sharma", role: "Jr Doc", email: "aditi.sharma@fsrc.in", phone: "9810000001", providerId: "PRV-1001", password: "123" },
+      { id: "u_priya", name: "Priya Nair", role: "Receptionist", email: "priya.nair@fsrc.in", phone: "9810000003", providerId: "", password: "123" },
+    ],
+    org2: [
+      { id: "u_karan", name: "Dr. Karan Bose", role: "Head doctor", email: "karan.bose@metrocardio.in", phone: "9911112222", providerId: "PRV-2001", password: "123" },
+      { id: "u_sunita", name: "Dr. Sunita Rao", role: "Jr Doc", email: "sunita.rao@metrocardio.in", phone: "9911113333", providerId: "PRV-2002", password: "123" },
     ],
   },
   physicians: {
     org1: [
-      { id: uid(), name: "Dr. Karan Bose", speciality: "Pulmonology", hospital: "Apollo Gurgaon", phone: "9911112222", access: "Read-only" },
-      { id: uid(), name: "Dr. Sunita Rao", speciality: "Sleep Medicine", hospital: "Fortis Faridabad", phone: "9911113333", access: "Read-only" },
+      { id: "u_karan", name: "Dr. Karan Bose", speciality: "Pulmonology", hospital: "Apollo Gurgaon", phone: "9911112222", access: "Read-only" },
+      { id: "u_sunita", name: "Dr. Sunita Rao", speciality: "Sleep Medicine", hospital: "Fortis Faridabad", phone: "9911113333", access: "Read-only" },
     ],
+    org2: [],
   },
   insurers: {
     org1: [
-      { id: uid(), name: "Star Health", policyPortal: "portal.starhealth.in", contact: "billing@starhealth.in" },
+      { id: "ins1", name: "Star Health", policyPortal: "portal.starhealth.in", contact: "billing@starhealth.in" },
     ],
+    org2: [],
   },
   locations: {
     org1: [
-      { id: uid(), name: "Main Clinic", address: "Sector 15, Faridabad, HR" },
+      { id: "loc1", name: "Main Clinic", address: "Sector 15, Faridabad, HR" },
     ],
+    org2: [],
   },
   patients: {
     org1: [
-      { id: uid(), name: "Vikram Chauhan", age: 54, therapy: "CPAP", connectivity: "Wireless", ahi: 3.2, usageHrs: 6.5, status: "Compliant", alert: null },
-      { id: uid(), name: "Meena Kulkarni", age: 61, therapy: "BiPAP", connectivity: "Wireless", ahi: 8.9, usageHrs: 3.1, status: "Attention", alert: "Low usage 3 nights" },
-      { id: uid(), name: "Ashok Verma", age: 47, therapy: "CPAP", connectivity: "SD Card", ahi: 1.8, usageHrs: 7.2, status: "Compliant", alert: null },
-      { id: uid(), name: "Ritu Malhotra", age: 39, therapy: "BiPAP-Ventilation", connectivity: "Wireless", ahi: 12.4, usageHrs: 2.0, status: "Critical", alert: "High residual AHI + low adherence" },
-      { id: uid(), name: "Suresh Iyer", age: 66, therapy: "CPAP", connectivity: "Wireless", ahi: 2.1, usageHrs: 6.9, status: "Compliant", alert: null },
+      { id: "pat1", name: "Vikram Chauhan", age: 54, therapy: "CPAP", connectivity: "Wireless", ahi: 3.2, usageHrs: 6.5, status: "Compliant", alert: null, doctorId: "u_karan", serial: "0010" },
+      { id: "pat2", name: "Meena Kulkarni", age: 61, therapy: "BiPAP", connectivity: "Wireless", ahi: 8.9, usageHrs: 3.1, status: "Attention", alert: "Low usage 3 nights", doctorId: "u_sunita", serial: "0000" },
+      { id: "pat3", name: "Ashok Verma", age: 47, therapy: "CPAP", connectivity: "SD Card", ahi: 1.8, usageHrs: 7.2, status: "Compliant", alert: null, doctorId: null, serial: "A010" },
+      { id: "pat4", name: "Ritu Malhotra", age: 39, therapy: "BiPAP-Ventilation", connectivity: "Wireless", ahi: 12.4, usageHrs: 2.0, status: "Critical", alert: "High residual AHI + low adherence", doctorId: "u_karan", serial: "A057" },
+      { id: "pat5", name: "Suresh Iyer", age: 66, therapy: "CPAP", connectivity: "Wireless", ahi: 2.1, usageHrs: 6.9, status: "Compliant", alert: null, doctorId: null, serial: "" },
     ],
+    org2: [],
   },
   referrals: {
     org1: [
-      { id: uid(), patient: "Neha Kapoor", referredBy: "Dr. Karan Bose", reason: "Suspected OSA", date: "2026-06-28", status: "Pending" },
+      { id: "ref1", patient: "Neha Kapoor", referredBy: "Dr. Karan Bose", reason: "Suspected OSA", date: "2026-06-28", status: "Pending" },
     ],
+    org2: [],
   },
   devices: {
     org1: [
@@ -92,7 +108,9 @@ const seedData = () => ({
       { id: "dev3", serial: "A010", model: "RhythmUltra V1" },
       { id: "dev4", serial: "A057", model: "RhythmUltra V1" },
     ],
+    org2: [],
   },
+  approvedReports: {},
 });
 
 function loadData() {
@@ -106,6 +124,26 @@ function loadData() {
 }
 function saveData(d) {
   localStorage.setItem(LS_KEY, JSON.stringify(d));
+}
+
+async function triggerEmailNotification(toEmail, subject, htmlBody) {
+  if (!toEmail) return;
+  try {
+    const res = await fetch("http://localhost:8000/api/email/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to_email: toEmail,
+        subject: subject,
+        html_body: htmlBody
+      })
+    });
+    if (!res.ok) {
+      console.warn("Failed to send notification email via FastAPI endpoint.");
+    }
+  } catch (err) {
+    console.error("Error triggering email notification:", err);
+  }
 }
 function loadSession() {
   try {
@@ -367,10 +405,10 @@ function RoleSelect({ onPick, onBack }) {
     <Centered>
       <div style={cardStyle}>
         <Logo />
-        <h3 style={{ color: COLORS.text, fontSize: 16, margin: "20px 0 16px" }}>Continue as</h3>
+        <h3 style={{ color: COLORS.text, fontSize: 16, margin: "20px 0 16px" }}>Register New Organisation</h3>
         <div style={{ display: "flex", gap: 14, flexDirection: "column", width: "100%", marginBottom: 20 }}>
-          <RoleCard label="Doctor Head" desc="Clinical lead — full patient & clinical data access" onClick={() => onPick("Doctor Head")} />
-          <RoleCard label="HCP Head" desc="Admin lead — organisation, staff & compliance management" onClick={() => onPick("HCP Head")} />
+          <RoleCard label="Clinic Account (Healthcare Professional)" desc="Used for ECG testing and patient CPAP/BiPAP compliance tracking." onClick={() => onPick("HCP Head", "Healthcare Professional")} />
+          <RoleCard label="Doctor Account (Doctors)" desc="Used by doctors to view and approve ECG test reports." onClick={() => onPick("Head doctor", "Doctors")} />
         </div>
         <Btn variant="ghost" onClick={onBack} style={{ width: "100%" }}>
           <ArrowLeft size={14} style={{ marginRight: 6, verticalAlign: -2 }} />Back
@@ -470,7 +508,7 @@ function AuthForm({ mode, role, onSubmit, onSwitchMode, onBack, pendingRole }) {
                 <Field label="Phone Number">
                   <input style={inputStyle} value={form.phone} onChange={set("phone")} placeholder="10-digit mobile" />
                 </Field>
-                {role === "Doctor Head" && (
+                {(role === "Doctor Head" || role === "Head doctor") && (
                   <Field label="Provider ID">
                     <input style={inputStyle} value={form.providerId} onChange={set("providerId")} placeholder="Clinical provider identifier" />
                   </Field>
@@ -620,7 +658,7 @@ function useIsMobile() {
   return isMobile;
 }
 
-function TopBar({ session, view, setView, onLogout }) {
+function TopBar({ session, isDoctorOrg, view, setView, onLogout }) {
   const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -648,11 +686,15 @@ function TopBar({ session, view, setView, onLogout }) {
         </div>
         {menuOpen && (
           <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 4 }}>
-            <MobileNavGroup label="Patients" icon={<Users size={15} />} items={NAV.patients}
-              onPick={(k) => { setView({ section: "patients", tab: k }); setMenuOpen(false); }} />
-            <MobileNavGroup label="Business" icon={<Building2 size={15} />} items={NAV.business}
-              onPick={(k) => { setView({ section: "business", tab: k }); setMenuOpen(false); }} />
-            <MobileNavGroup label="Administration" icon={<Shield size={15} />} items={NAV.admin}
+            {!isDoctorOrg && (
+              <>
+                <MobileNavGroup label="Patients" icon={<Users size={15} />} items={NAV.patients}
+                  onPick={(k) => { setView({ section: "patients", tab: k }); setMenuOpen(false); }} />
+                <MobileNavGroup label="Business" icon={<Building2 size={15} />} items={NAV.business}
+                  onPick={(k) => { setView({ section: "business", tab: k }); setMenuOpen(false); }} />
+              </>
+            )}
+            <MobileNavGroup label="Administration" icon={<Shield size={15} />} items={isDoctorOrg ? NAV.admin.filter(x => x.key === "users" || x.key === "org") : NAV.admin}
               onPick={(k) => { setView({ section: "admin", tab: k }); setMenuOpen(false); }} />
             <button
               onClick={() => { setView({ section: "ecgReports", tab: "all" }); setMenuOpen(false); }}
@@ -673,7 +715,7 @@ function TopBar({ session, view, setView, onLogout }) {
             </button>
             <div style={{ fontSize: 12.5, color: COLORS.sub, padding: "6px 4px", display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
               {session.userName} · <span style={{ color: COLORS.orange2 }}>{session.role}</span>
-              {session.role !== "Doctor Head" && session.role !== "HCP Head" && (
+              {session.role !== "HCP Head" && session.role !== "Sub dealer" && session.role !== "Head doctor" && (
                 <span style={{
                   fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
                   textTransform: "uppercase", background: COLORS.danger + "22",
@@ -704,19 +746,23 @@ function TopBar({ session, view, setView, onLogout }) {
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 36 }}>
         <Logo small />
-        <NavDropdown
-          label="Patients" icon={<Users size={15} style={{ marginRight: 2 }} />}
-          items={NAV.patients} active={view.section === "patients"}
-          onPick={(k) => setView({ section: "patients", tab: k })}
-        />
-        <NavDropdown
-          label="Business" icon={<Building2 size={15} style={{ marginRight: 2 }} />}
-          items={NAV.business} active={view.section === "business"}
-          onPick={(k) => setView({ section: "business", tab: k })}
-        />
+        {!isDoctorOrg && (
+          <>
+            <NavDropdown
+              label="Patients" icon={<Users size={15} style={{ marginRight: 2 }} />}
+              items={NAV.patients} active={view.section === "patients"}
+              onPick={(k) => setView({ section: "patients", tab: k })}
+            />
+            <NavDropdown
+              label="Business" icon={<Building2 size={15} style={{ marginRight: 2 }} />}
+              items={NAV.business} active={view.section === "business"}
+              onPick={(k) => setView({ section: "business", tab: k })}
+            />
+          </>
+        )}
         <NavDropdown
           label="Administration" icon={<Shield size={15} style={{ marginRight: 2 }} />}
-          items={NAV.admin} active={view.section === "admin"}
+          items={isDoctorOrg ? NAV.admin.filter(x => x.key === "users" || x.key === "org") : NAV.admin} active={view.section === "admin"}
           onPick={(k) => setView({ section: "admin", tab: k })}
         />
         <div
@@ -739,7 +785,7 @@ function TopBar({ session, view, setView, onLogout }) {
         </div>
         <div style={{ fontSize: 12.5, color: COLORS.sub, display: "flex", alignItems: "center", gap: 6 }}>
           {session.userName} · <span style={{ color: COLORS.orange2 }}>{session.role}</span>
-          {session.role !== "Doctor Head" && session.role !== "HCP Head" && (
+          {session.role !== "HCP Head" && session.role !== "Sub dealer" && session.role !== "Head doctor" && (
             <span style={{
               fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
               textTransform: "uppercase", background: COLORS.danger + "22",
@@ -791,10 +837,138 @@ function MobileNavGroup({ label, icon, items, onPick }) {
 
 /* ---------------- Patients section ---------------- */
 
-function PatientsSection({ tab, orgData, orgId }) {
+function findDoctor(orgData, doctorId) {
+  if (!doctorId) return null;
+  for (const orgId in orgData.users) {
+    const org = orgData.orgs.find((o) => o.id === orgId);
+    if (org?.type === "Doctors") {
+      const doc = orgData.users[orgId].find((u) => u.id === doctorId);
+      if (doc) return doc;
+    }
+  }
+  return null;
+}
+
+function getAllDoctors(orgData) {
+  const list = [];
+  orgData.orgs.forEach((org) => {
+    if (org.type === "Doctors") {
+      const users = orgData.users[org.id] || [];
+      users.forEach((u) => {
+        if (u.role === "Head doctor" || u.role === "Jr Doc") {
+          list.push({ id: u.id, name: u.name, orgName: org.name });
+        }
+      });
+    }
+  });
+  return list;
+}
+
+function triggerDoctorAssociationEmail(orgData, vals) {
+  const doc = findDoctor(orgData, vals.doctorId);
+  if (!doc) return;
+  
+  const emailSubject = "New Patient Assignment - CardioX";
+  const emailBody = `
+    <div style="font-family: sans-serif; max-width: 600px; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
+      <h2 style="color: #2E7DB8; margin-top: 0;">CardioX Patient Assignment</h2>
+      <p>Dear Dr. ${doc.name},</p>
+      <p>You have been associated as the primary reviewer for a new patient monitor record:</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+        <tr style="background: #f9f9f9;">
+          <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #ddd;">Patient Name</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${vals.name}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #ddd;">Age</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${vals.age}</td>
+        </tr>
+        <tr style="background: #f9f9f9;">
+          <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #ddd;">Therapy Mode</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${vals.therapy}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #ddd;">Device Serial</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${vals.serial || "—"}</td>
+        </tr>
+      </table>
+      <p>Please log in to your CardioX Doctor account to monitor their reports and compliance data.</p>
+      <p>Link: <a href="http://localhost:5175/hcp" style="color: #3E97D6; font-weight: bold; text-decoration: none;">http://localhost:5175/hcp</a></p>
+      <p style="color: #777; font-size: 12px; margin-top: 24px; border-top: 1px solid #eee; padding-top: 12px;">This is an automated clinical notification from the CardioX dashboard.</p>
+    </div>
+  `;
+  triggerEmailNotification(doc.email, emailSubject, emailBody);
+}
+
+function PatientModal({ title, initial, doctors, onClose, onSave }) {
+  const [form, setForm] = useState({
+    name: initial?.name || "",
+    age: initial?.age || 40,
+    therapy: initial?.therapy || "CPAP",
+    connectivity: initial?.connectivity || "Wireless",
+    serial: initial?.serial || "",
+    ahi: initial?.ahi || 2.0,
+    usageHrs: initial?.usageHrs || 7.0,
+    status: initial?.status || "Compliant",
+    alert: initial?.alert || "",
+    doctorId: initial?.doctorId || "",
+  });
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  return (
+    <Modal title={title} onClose={onClose}>
+      <Field label="Patient Name"><input style={inputStyle} value={form.name} onChange={set("name")} /></Field>
+      <Field label="Age"><input type="number" style={inputStyle} value={form.age} onChange={set("age")} /></Field>
+      <Field label="Therapy">
+        <select style={inputStyle} value={form.therapy} onChange={set("therapy")}>
+          <option value="CPAP">CPAP</option>
+          <option value="BiPAP">BiPAP</option>
+          <option value="BiPAP-Ventilation">BiPAP-Ventilation</option>
+        </select>
+      </Field>
+      <Field label="Connectivity">
+        <select style={inputStyle} value={form.connectivity} onChange={set("connectivity")}>
+          <option value="Wireless">Wireless</option>
+          <option value="SD Card">SD Card</option>
+        </select>
+      </Field>
+      <Field label="Device Serial Number (for linking S3 ECG reports)"><input style={inputStyle} value={form.serial} onChange={set("serial")} placeholder="e.g. 0010, A010" /></Field>
+      <Field label="AHI (events/hr)"><input type="number" step="0.1" style={inputStyle} value={form.ahi} onChange={set("ahi")} /></Field>
+      <Field label="Usage Hours/Night"><input type="number" step="0.1" style={inputStyle} value={form.usageHrs} onChange={set("usageHrs")} /></Field>
+      <Field label="Status">
+        <select style={inputStyle} value={form.status} onChange={set("status")}>
+          <option value="Compliant">Compliant</option>
+          <option value="Attention">Attention</option>
+          <option value="Critical">Critical</option>
+        </select>
+      </Field>
+      <Field label="Alert Message (optional)"><input style={inputStyle} value={form.alert} onChange={set("alert")} /></Field>
+      <Field label="Associate Doctor">
+        <select style={inputStyle} value={form.doctorId} onChange={set("doctorId")}>
+          <option value="">-- No doctor associated --</option>
+          {doctors.map((d) => (
+            <option key={d.id} value={d.id}>{d.name} ({d.orgName})</option>
+          ))}
+        </select>
+      </Field>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 12 }}>
+        <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+        <Btn onClick={() => onSave(form)} disabled={!form.name}>Save</Btn>
+      </div>
+    </Modal>
+  );
+}
+
+function PatientsSection({ tab, orgData, orgId, setOrgData }) {
   const [q, setQ] = useState("");
+  const [modal, setModal] = useState(null);
   const patients = orgData.patients[orgId] || [];
   const referrals = orgData.referrals[orgId] || [];
+  const doctorsList = getAllDoctors(orgData);
+
+  const commit = (next) => {
+    setOrgData(next);
+    saveData(next);
+  };
 
   if (tab === "referrals") {
     return (
@@ -825,26 +999,65 @@ function PatientsSection({ tab, orgData, orgId }) {
   return (
     <Panel title={titleMap[tab] || "Patients"} icon={<Users size={18} />}
       right={
-        <div style={{ display: "flex", alignItems: "center", gap: 8, background: COLORS.panel2, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px" }}>
-          <Search size={14} color={COLORS.sub} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search patients"
-            style={{ background: "none", border: "none", outline: "none", color: COLORS.text, fontSize: 13 }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: COLORS.panel2, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px" }}>
+            <Search size={14} color={COLORS.sub} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search patients"
+              style={{ background: "none", border: "none", outline: "none", color: COLORS.text, fontSize: 13 }} />
+          </div>
+          <Btn onClick={() => setModal({ type: "create" })}><Plus size={14} style={{ marginRight: 6, verticalAlign: -2 }} />Add Patient</Btn>
         </div>
       }
     >
       <Table
-        cols={["Patient", "Age", "Therapy", "Connectivity", "AHI", "Usage (hrs/night)", "Status", "Alert"]}
-        rows={filtered.map((p) => [
-          p.name, p.age, p.therapy,
-          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            {p.connectivity === "Wireless" ? <Wifi size={13} color={COLORS.ok} /> : <WifiOff size={13} color={COLORS.sub} />}
-            {p.connectivity}
-          </span>,
-          p.ahi, p.usageHrs, <StatusPill status={p.status} />,
-          p.alert ? <span style={{ color: COLORS.warn, fontSize: 12.5, display: "flex", alignItems: "center", gap: 4 }}><AlertTriangle size={12} />{p.alert}</span> : <span style={{ color: COLORS.sub }}>—</span>,
-        ])}
+        cols={["Patient", "Age", "Therapy", "Connectivity", "Device Serial", "AHI", "Usage (hrs/night)", "Status", "Alert", "Doctor", "Actions"]}
+        rows={filtered.map((p) => {
+          const doc = findDoctor(orgData, p.doctorId);
+          return [
+            p.name, p.age, p.therapy,
+            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {p.connectivity === "Wireless" ? <Wifi size={13} color={COLORS.ok} /> : <WifiOff size={13} color={COLORS.sub} />}
+              {p.connectivity}
+            </span>,
+            p.serial || <span style={{ color: COLORS.sub }}>—</span>,
+            p.ahi, p.usageHrs, <StatusPill status={p.status} />,
+            p.alert ? <span style={{ color: COLORS.warn, fontSize: 12.5, display: "flex", alignItems: "center", gap: 4 }}><AlertTriangle size={12} />{p.alert}</span> : <span style={{ color: COLORS.sub }}>—</span>,
+            doc ? <span style={{ color: COLORS.orange2, fontWeight: 600 }}>{doc.name}</span> : <span style={{ color: COLORS.sub }}>Unassigned</span>,
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setModal({ type: "edit", item: p })} style={{ background: "none", border: "none", color: COLORS.sub, cursor: "pointer" }}><Edit2 size={14} /></button>
+              <button onClick={() => {
+                const next = { ...orgData };
+                next.patients[orgId] = patients.filter((x) => x.id !== p.id);
+                commit(next);
+              }} style={{ background: "none", border: "none", color: COLORS.danger, cursor: "pointer" }}><Trash2 size={14} /></button>
+            </div>
+          ];
+        })}
         empty="No patients match this view."
       />
+
+      {modal?.type === "create" && (
+        <PatientModal title="Add Patient" doctors={doctorsList} onClose={() => setModal(null)}
+          onSave={(vals) => {
+            const next = { ...orgData };
+            next.patients[orgId] = [...patients, { id: uid(), ...vals }];
+            commit(next); setModal(null);
+            triggerDoctorAssociationEmail(next, vals);
+          }}
+        />
+      )}
+      {modal?.type === "edit" && (
+        <PatientModal title="Edit Patient" initial={modal.item} doctors={doctorsList} onClose={() => setModal(null)}
+          onSave={(vals) => {
+            const next = { ...orgData };
+            next.patients[orgId] = patients.map((x) => x.id === modal.item.id ? { ...x, ...vals } : x);
+            commit(next); setModal(null);
+            if (vals.doctorId && vals.doctorId !== modal.item.doctorId) {
+              triggerDoctorAssociationEmail(next, vals);
+            }
+          }}
+        />
+      )}
     </Panel>
   );
 }
@@ -1027,6 +1240,8 @@ function AdminSection({ tab, orgData, orgId, setOrgData, isRestricted, onRestric
 
   // Users CRUD
   const users = orgData.users[orgId] || [];
+  const org = orgData.orgs.find((o) => o.id === orgId);
+  const rolesList = org?.type === "Doctors" ? DOCTOR_ROLES : HCP_ROLES;
   return (
     <Panel title="Users" icon={<Users size={18} />}
       right={<Btn onClick={isRestricted ? onRestrictedClick : () => setModal({ type: "userCreate" })} style={isRestricted ? { background: "#cccccc", color: "#666666" } : undefined}><UserPlus size={14} style={{ marginRight: 6, verticalAlign: -2 }} />Add user</Btn>}
@@ -1049,16 +1264,43 @@ function AdminSection({ tab, orgData, orgId, setOrgData, isRestricted, onRestric
       />
 
       {modal?.type === "userCreate" && (
-        <UserModal title="Add user" onClose={() => setModal(null)}
+        <UserModal title="Add user" roles={rolesList} onClose={() => setModal(null)}
           onSave={(vals) => {
             const next = { ...orgData };
             next.users[orgId] = [...users, { id: uid(), providerId: "", ...vals }];
             commit(next); setModal(null);
+            
+            const emailSubject = "Welcome to CardioX - Account Credentials";
+            const emailBody = `
+              <div style="font-family: sans-serif; max-width: 600px; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
+                <h2 style="color: #2E7DB8; margin-top: 0;">Welcome to CardioX</h2>
+                <p>Dear ${vals.name},</p>
+                <p>An account has been created for you under the organisation <strong>${org?.name || "CardioX Organisation"}</strong>.</p>
+                <p>Here are your account credentials to log in to the portal:</p>
+                <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+                  <tr style="background: #f9f9f9;">
+                    <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #ddd;">Role</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #ddd;">${vals.role}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #ddd;">Login Username</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #ddd;">${vals.name}</td>
+                  </tr>
+                  <tr style="background: #f9f9f9;">
+                    <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #ddd;">Password</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #ddd;">${vals.password || "123"}</td>
+                  </tr>
+                </table>
+                <p>You can access the clinician portal at: <a href="http://localhost:5175/hcp" style="color: #3E97D6; font-weight: bold; text-decoration: none;">http://localhost:5175/hcp</a></p>
+                <p style="color: #777; font-size: 12px; margin-top: 24px; border-top: 1px solid #eee; padding-top: 12px;">This is an automated message. Please contact your administrator if you did not request this account.</p>
+              </div>
+            `;
+            triggerEmailNotification(vals.email, emailSubject, emailBody);
           }}
         />
       )}
       {modal?.type === "userEdit" && (
-        <UserModal title="Edit user" initial={modal.item} onClose={() => setModal(null)}
+        <UserModal title="Edit user" initial={modal.item} roles={rolesList} onClose={() => setModal(null)}
           onSave={(vals) => {
             const next = { ...orgData };
             next.users[orgId] = users.map((x) => x.id === modal.item.id ? { ...x, ...vals } : x);
@@ -1080,9 +1322,9 @@ function AdminSection({ tab, orgData, orgId, setOrgData, isRestricted, onRestric
   );
 }
 
-function UserModal({ title, initial, onClose, onSave }) {
+function UserModal({ title, initial, roles, onClose, onSave }) {
   const [form, setForm] = useState({
-    name: initial?.name || "", role: initial?.role || ROLES[0],
+    name: initial?.name || "", role: initial?.role || roles?.[0] || "",
     email: initial?.email || "", phone: initial?.phone || "", providerId: initial?.providerId || "",
     password: initial?.password || "123",
   });
@@ -1092,7 +1334,7 @@ function UserModal({ title, initial, onClose, onSave }) {
       <Field label="Full name"><input style={inputStyle} value={form.name} onChange={set("name")} /></Field>
       <Field label="Role">
         <select style={inputStyle} value={form.role} onChange={set("role")}>
-          {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+          {roles?.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
       </Field>
       <Field label="Email"><input style={inputStyle} value={form.email} onChange={set("email")} /></Field>
@@ -1231,6 +1473,15 @@ export default function HCPPortal() {
 
   useEffect(() => { saveData(data); }, [data]);
 
+  useEffect(() => {
+    if (session) {
+      const currentOrg = data.orgs.find((o) => o.id === session.orgId);
+      if (currentOrg?.type === "Doctors" && view.section === "patients") {
+        setView({ section: "ecgReports", tab: "all" });
+      }
+    }
+  }, [session, data.orgs, view.section]);
+
   const goDashboard = (sess) => {
     saveSession(sess);
     setSession(sess);
@@ -1260,14 +1511,14 @@ export default function HCPPortal() {
   if (screen === "orgFlowNew") {
     return <RoleSelect
       onBack={() => setScreen("landing")}
-      onPick={(role) => { setPendingRole({ role, isNew: true }); setAuthMode("signup"); setScreen("auth"); }}
+      onPick={(role, orgType) => { setPendingRole({ role, orgType, isNew: true }); setAuthMode("signup"); setScreen("auth"); }}
     />;
   }
 
   if (screen === "roleSelect") {
     return <RoleSelect
       onBack={() => setScreen("orgSelect")}
-      onPick={(role) => { setPendingRole({ ...pendingRole, role }); setScreen("auth"); }}
+      onPick={(role, orgType) => { setPendingRole({ ...pendingRole, role, orgType }); setScreen("auth"); }}
     />;
   }
 
@@ -1281,6 +1532,7 @@ export default function HCPPortal() {
       onSubmit={(form) => {
         if (authMode === "signup") {
           const orgId = "org" + uid();
+          const orgType = pendingRole.orgType || (pendingRole.role === "HCP Head" ? "Healthcare Professional" : "Doctors");
           const headUser = {
             id: uid(),
             name: form.name || "Head Owner",
@@ -1292,7 +1544,7 @@ export default function HCPPortal() {
           };
           const next = {
             ...data,
-            orgs: [...data.orgs, { id: orgId, name: form.orgName || "New Organisation", type: pendingRole.role }],
+            orgs: [...data.orgs, { id: orgId, name: form.orgName || "New Organisation", type: orgType }],
             users: { ...data.users, [orgId]: [headUser] },
             physicians: { ...data.physicians, [orgId]: [] },
             insurers: { ...data.insurers, [orgId]: [] },
@@ -1303,6 +1555,37 @@ export default function HCPPortal() {
           };
           setData(next); saveData(next);
           goDashboard({ orgId, ...headUser, userName: headUser.name });
+          
+          const emailSubject = "CardioX Registration Successful";
+          const emailBody = `
+            <div style="font-family: sans-serif; max-width: 600px; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
+              <h2 style="color: #2E7DB8; margin-top: 0;">CardioX Registration Successful</h2>
+              <p>Dear ${form.name || "Head Owner"},</p>
+              <p>Your organisation <strong>${form.orgName || "New Organisation"}</strong> has been successfully registered with CardioX.</p>
+              <p>Here are your account credentials and role details:</p>
+              <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+                <tr style="background: #f9f9f9;">
+                  <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #ddd;">Organisation Type</td>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd;">${orgType}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #ddd;">Your Role</td>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd;">${pendingRole.role}</td>
+                </tr>
+                <tr style="background: #f9f9f9;">
+                  <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #ddd;">Username</td>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd;">${form.name || "Head Owner"}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #ddd;">Password</td>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd;">${form.password || "123"}</td>
+                </tr>
+              </table>
+              <p>You can access the portal and manage your team at: <a href="http://localhost:5175/hcp" style="color: #3E97D6; font-weight: bold; text-decoration: none;">http://localhost:5175/hcp</a></p>
+              <p style="color: #777; font-size: 12px; margin-top: 24px; border-top: 1px solid #eee; padding-top: 12px;">This is an automated notification from the CardioX platform.</p>
+            </div>
+          `;
+          triggerEmailNotification(form.email, emailSubject, emailBody);
         } else {
           const orgId = pendingRole.org.id;
           if (form.isOtpVerified) {
@@ -1334,7 +1617,9 @@ export default function HCPPortal() {
 
   // dashboard
   const orgId = session.orgId;
-  const isRestricted = session.role !== "Doctor Head" && session.role !== "HCP Head";
+  const currentOrg = data.orgs.find((o) => o.id === orgId);
+  const isDoctorOrg = currentOrg?.type === "Doctors";
+  const isRestricted = session.role !== "HCP Head" && session.role !== "Sub dealer" && session.role !== "Head doctor";
   const onRestrictedClick = () => setRestrictedAlert(true);
 
   return (
@@ -1348,13 +1633,13 @@ export default function HCPPortal() {
       fontFamily: "'Outfit', system-ui, sans-serif",
     }}>
       <GlobalStyles />
-      <TopBar session={session} view={view} setView={setView} onLogout={() => {
+      <TopBar session={session} isDoctorOrg={isDoctorOrg} view={view} setView={setView} onLogout={() => {
         clearSession(); setSession(null); setScreen("landing");
       }} />
-      {view.section === "patients" && <PatientsSection tab={view.tab} orgData={data} orgId={orgId} />}
+      {view.section === "patients" && <PatientsSection tab={view.tab} orgData={data} orgId={orgId} setOrgData={setData} />}
       {view.section === "business" && <BusinessSection tab={view.tab} />}
       {view.section === "admin" && <AdminSection tab={view.tab} orgData={data} orgId={orgId} setOrgData={setData} isRestricted={isRestricted} onRestrictedClick={onRestrictedClick} />}
-      {view.section === "ecgReports" && <ReportsSection session={session} orgData={data} orgId={orgId} />}
+      {view.section === "ecgReports" && <ReportsSection session={session} orgData={data} orgId={orgId} setOrgData={setData} />}
       {view.section === "profile" && <ProfileSection session={session} isRestricted={isRestricted} onRestrictedClick={onRestrictedClick} />}
 
       {restrictedAlert && (
