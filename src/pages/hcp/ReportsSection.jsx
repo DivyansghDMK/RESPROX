@@ -5,6 +5,7 @@ import {
   ChevronDown, HeartPulse, Activity, Zap
 } from "lucide-react";
 import { fetchOrgReports, rolePermissions } from "../../services/hcpApi.js";
+import WaveformAnalysis from "../WaveformAnalysis.jsx";
 
 /* ── palette ─────────────────────────────────────────────────── */
 const C = {
@@ -141,6 +142,8 @@ export default function ReportsSection({ session, orgData, orgId, setOrgData }) 
   const [serialFilter, setSerialFilter] = useState("All");
   const [days, setDays] = useState(30);
   const [showFilters, setShowFilters] = useState(false);
+  const [activeWaveformUrl, setActiveWaveformUrl] = useState(null);
+  const [activePdfUrl, setActivePdfUrl] = useState(null);
 
   const load = useCallback(async () => {
     if (!allSerials.length) { setReports([]); setLoading(false); return; }
@@ -581,19 +584,18 @@ export default function ReportsSection({ session, orgData, orgId, setOrgData }) 
                             {/* PDF — visible to all except Receptionist */}
                             {perms.canViewPDF && r.pdf_url ? (
                               <>
-                                <a
-                                  href={r.pdf_url}
-                                  target="_blank"
-                                  rel="noreferrer"
+                                <button
+                                  onClick={() => setActivePdfUrl(r.pdf_url)}
                                   style={{
                                     display: "inline-flex", alignItems: "center", gap: 4,
                                     padding: "5px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600,
                                     background: C.blue1 + "22", color: C.blue2,
                                     border: `1px solid ${C.blue1}44`, textDecoration: "none",
+                                    cursor: "pointer"
                                   }}
                                 >
                                   <Eye size={12} /> PDF
-                                </a>
+                                </button>
                                 <a
                                   href={r.pdf_url}
                                   download
@@ -613,8 +615,8 @@ export default function ReportsSection({ session, orgData, orgId, setOrgData }) 
                             ) : (
                               <span style={{ color: C.sub, fontSize: 12, opacity: 0.4 }}>No PDF</span>
                             )}
-                            {/* JSON — heads only */}
-                            {perms.canViewJSON && r.json_url && (
+                            {/* JSON — heads only (Disabled) */}
+                            {/* {perms.canViewJSON && r.json_url && (
                               <a
                                 href={r.json_url}
                                 target="_blank"
@@ -629,6 +631,22 @@ export default function ReportsSection({ session, orgData, orgId, setOrgData }) 
                               >
                                 <Database size={11} /> JSON
                               </a>
+                            )} */}
+                            {/* Waveform Analysis */}
+                            {r.json_url && (
+                              <button
+                                onClick={() => setActiveWaveformUrl(r.json_url)}
+                                style={{
+                                  display: "inline-flex", alignItems: "center", gap: 4,
+                                  padding: "5px 10.5px", borderRadius: 6, fontSize: 12, fontWeight: 700,
+                                  background: "rgba(34, 211, 238, 0.12)", color: "#22d3ee",
+                                  border: "1px solid rgba(34, 211, 238, 0.35)",
+                                  cursor: "pointer"
+                                }}
+                                title="Open Interactive Waveform Analysis"
+                              >
+                                <Activity size={11} /> Waveform
+                              </button>
                             )}
                           </div>
                         </td>
@@ -642,6 +660,79 @@ export default function ReportsSection({ session, orgData, orgId, setOrgData }) 
         </div>
       )}
 
+      {/* PDF Preview Modal Overlay */}
+      {activePdfUrl && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 99999,
+          background: "rgba(9, 14, 23, 0.9)",
+          backdropFilter: "blur(10px)",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: "24px",
+          boxSizing: "border-box"
+        }}>
+          <div style={{
+            background: "#0f172a",
+            border: "1px solid rgba(255, 255, 255, 0.12)",
+            borderRadius: "16px",
+            width: "100%",
+            maxWidth: "1000px",
+            height: "90vh",
+            display: "flex",
+            flexDirection: "column",
+            boxShadow: "0 24px 48px rgba(0, 0, 0, 0.6)",
+            overflow: "hidden"
+          }}>
+            {/* Header */}
+            <div style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: "16px 20px",
+              borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+              background: "rgba(30, 41, 59, 0.5)"
+            }}>
+              <span style={{ fontWeight: 600, color: "#f8fafc", fontSize: "14px" }}>
+                Report PDF Preview
+              </span>
+              <button 
+                onClick={() => setActivePdfUrl(null)}
+                style={{
+                  background: "rgba(255, 255, 255, 0.08)",
+                  border: "none",
+                  borderRadius: "6px",
+                  color: "#f8fafc",
+                  cursor: "pointer",
+                  fontSize: "12px",
+                  fontWeight: "600",
+                  padding: "6px 12px",
+                  transition: "background 0.15s"
+                }}
+                onMouseOver={(e) => e.target.style.background = "rgba(255, 255, 255, 0.15)"}
+                onMouseOut={(e) => e.target.style.background = "rgba(255, 255, 255, 0.08)"}
+              >
+                Close (✕)
+              </button>
+            </div>
+            {/* PDF iframe */}
+            <iframe 
+              src={activePdfUrl} 
+              style={{
+                flex: 1,
+                border: "none",
+                width: "100%",
+                height: "100%",
+                background: "#ffffff"
+              }}
+              title="PDF Preview"
+            />
+          </div>
+        </div>
+      )}
+
       {/* ── Footer ── */}
       {!loading && !error && visible.length > 0 && (
         <p style={{ color: C.sub, fontSize: 12, marginTop: 10 }}>
@@ -649,6 +740,28 @@ export default function ReportsSection({ session, orgData, orgId, setOrgData }) 
           {" · "}Presigned URLs valid for 15 minutes
           {" · "}S3 bucket: <code style={{ color: C.blue2 }}>deck-backend-demo</code>
         </p>
+      )}
+
+      {/* Waveform Analysis Modal Overlay */}
+      {activeWaveformUrl && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 99999,
+          background: "rgba(9, 14, 23, 0.96)",
+          display: "flex",
+          flexDirection: "column",
+          padding: "20px",
+          boxSizing: "border-box"
+        }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+            <WaveformAnalysis 
+              preloadedReportUrl={activeWaveformUrl} 
+              onClose={() => setActiveWaveformUrl(null)} 
+              hideSelector={true}
+            />
+          </div>
+        </div>
       )}
 
       {/* spin animation */}

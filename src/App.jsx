@@ -25,6 +25,8 @@ import DeviceDashboard from './pages/DeviceDashboard';
 import { useDeviceSettings } from './hooks/useDeviceSettings';
 import { AuthProvider } from './context/AuthContext';
 import HCPPortal from './pages/hcp/HCPPortal';
+import WaveformAnalysis from './pages/WaveformAnalysis';
+import CreateOrg from './pages/CreateOrg';
 
 function AppContent() {
   useDeviceSettings();
@@ -65,6 +67,7 @@ function AppContent() {
           <Route path="/help" element={<HelpSupport />} />
           <Route path="/admin" element={<AdminPatients />} />
           <Route path="/admin/patient/:id" element={<AdminPatientDetail />} />
+          <Route path="/waveform-analysis" element={<WaveformAnalysis />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </main>
@@ -83,6 +86,8 @@ export default function App() {
           <Routes>
             {/* HCP Clinician Portal — fully self-contained, bypasses main app shell */}
             <Route path="/hcp/*" element={<HCPPortal />} />
+            {/* Standalone Organization Onboarding */}
+            <Route path="/createorg" element={<CreateOrg />} />
             {/* Patient / Admin portal — main app shell */}
             <Route path="/*" element={<AppContent />} />
           </Routes>

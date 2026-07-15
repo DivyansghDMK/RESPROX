@@ -24,6 +24,7 @@ export default function Sidebar() {
     { label: 'Therapy', path: '/therapy', icon: PulseIcon },
     { label: 'Trends', path: '/trends', icon: ChartIcon },
     { label: 'Reports', path: '/reports', icon: FileIcon },
+    { label: 'Waveform Analysis', path: '/waveform-analysis', icon: PulseIcon },
     { label: 'Devices', path: '/devices', icon: DeviceIcon },
     { label: 'Mask Fit', path: '/mask-fit', icon: MaskIcon },
     { label: 'Settings', path: '/settings', icon: GearIcon },

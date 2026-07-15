@@ -343,7 +343,7 @@ function Landing({ onNewOrg, onExisting }) {
   );
 }
 
-function OrgSelect({ data, onSelect, onDelete, onBack, onCreateNew }) {
+function OrgSelect({ data, onSelect }) {
   return (
     <Centered>
       <div style={cardStyle}>
@@ -364,19 +364,9 @@ function OrgSelect({ data, onSelect, onDelete, onBack, onCreateNew }) {
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
                   <Btn onClick={() => onSelect(o)} style={{ padding: "6px 12px", fontSize: 12.5 }}>Continue</Btn>
-                  <button onClick={() => onDelete(o.id)} style={{
-                    background: "none", border: `1px solid ${COLORS.danger}55`,
-                    borderRadius: 8, color: COLORS.danger, cursor: "pointer", padding: "0 8px",
-                  }}>
-                    <Trash2 size={13} />
-                  </button>
                 </div>
               </div>
             ))}
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <Btn variant="ghost" onClick={onBack} style={{ padding: "8px 14px", fontSize: 13 }}><ArrowLeft size={13} style={{ marginRight: 4, verticalAlign: -1 }} />Back</Btn>
-            <Btn variant="ghost" onClick={onCreateNew} style={{ padding: "8px 14px", fontSize: 13 }}>+ New Org</Btn>
           </div>
         </div>
       </div>
@@ -428,6 +418,79 @@ function TabBtn({ active, children, onClick }) {
     }}>
       {children}
     </button>
+  );
+}
+
+function FirstLoginReset({ user, onSubmit, onCancel }) {
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState(null);
+
+  const handleResetSubmit = (e) => {
+    e.preventDefault();
+    if (newPassword.length < 3) {
+      setError("Password must be at least 3 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+    onSubmit(newPassword);
+  };
+
+  return (
+    <Centered>
+      <div style={{ ...cardStyle, maxWidth: "480px" }}>
+        <Logo />
+        <div style={{ width: "100%", marginTop: 18 }}>
+          <h3 style={{ color: COLORS.text, fontSize: 18, marginBottom: 6, textAlign: "center", fontWeight: 700 }}>
+            Reset Password
+          </h3>
+          <p style={{ color: COLORS.sub, fontSize: 13, marginBottom: 20, textAlign: "center", lineHeight: 1.5 }}>
+            Welcome, <strong>{user.name}</strong>! As this is your first sign-in, please configure a new secure password.
+          </p>
+
+          <form onSubmit={handleResetSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {error && (
+              <div style={{ color: COLORS.danger, fontSize: 13, marginBottom: 4, background: "rgba(226,75,74,0.08)", padding: "10px 14px", borderRadius: 8, border: "1px solid rgba(226,75,74,0.2)" }}>
+                {error}
+              </div>
+            )}
+
+            <Field label="New Password">
+              <input 
+                type="password" 
+                style={inputStyle} 
+                value={newPassword} 
+                onChange={(e) => { setNewPassword(e.target.value); setError(null); }} 
+                placeholder="Enter new password"
+                required
+              />
+            </Field>
+
+            <Field label="Confirm New Password">
+              <input 
+                type="password" 
+                style={inputStyle} 
+                value={confirmPassword} 
+                onChange={(e) => { setConfirmPassword(e.target.value); setError(null); }} 
+                placeholder="Re-type new password"
+                required
+              />
+            </Field>
+
+            <Btn type="submit" style={{ width: "100%", marginTop: 12, minHeight: "44px" }}>
+              Update Password &amp; Login
+            </Btn>
+
+            <Btn variant="ghost" onClick={onCancel} style={{ width: "100%" }}>
+              Cancel
+            </Btn>
+          </form>
+        </div>
+      </div>
+    </Centered>
   );
 }
 
@@ -483,7 +546,7 @@ function AuthForm({ mode, role, onSubmit, onSwitchMode, onBack, pendingRole }) {
             {mode === "signup" ? "Create Account" : "Sign In"}
           </h3>
           <p style={{ color: COLORS.sub, fontSize: 13, marginBottom: 18, textAlign: "center" }}>
-            {mode === "signup" ? `${role} — ${form.orgName || "Organisation"}` : `Access ${pendingRole?.org?.name || "Organisation"}`}
+            {mode === "signup" ? `${role} — ${form.orgName || "Organisation"}` : (pendingRole?.org?.name ? `Access ${pendingRole.org.name}` : "Access CPAP & ECG clinical monitoring portal")}
           </p>
 
           {mode === "login" && (
@@ -567,12 +630,11 @@ function AuthForm({ mode, role, onSubmit, onSwitchMode, onBack, pendingRole }) {
             </Btn>
           )}
 
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16, alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-            <Btn variant="ghost" onClick={onBack} style={{ padding: "8px 12px" }}><ArrowLeft size={13} style={{ marginRight: 4, verticalAlign: -1 }} />Back</Btn>
-            <button onClick={onSwitchMode} style={{ background: "none", border: "none", color: COLORS.orange1, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-              {mode === "signup" ? "Sign in instead" : "Create account"}
-            </button>
-          </div>
+          {onBack && pendingRole && (
+            <div style={{ display: "flex", justifyContent: "flex-start", marginTop: 16, alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+              <Btn variant="ghost" onClick={onBack} style={{ padding: "8px 12px" }}><ArrowLeft size={13} style={{ marginRight: 4, verticalAlign: -1 }} />Back</Btn>
+            </div>
+          )}
         </div>
       </div>
     </Centered>
@@ -1377,28 +1439,147 @@ function SimpleAddModal({ title, fields, onClose, onSave }) {
 
 /* ---------------- Profile section ---------------- */
 
-function ProfileSection({ session, isRestricted, onRestrictedClick }) {
+function ProfileSection({ session, isRestricted, onRestrictedClick, orgData, setOrgData }) {
   const [tab, setTab] = useState("basic");
+  
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [pwdMessage, setPwdMessage] = useState(null);
+  const [pwdMessageType, setPwdMessageType] = useState("success");
+
+  const handleUpdatePassword = () => {
+    if (isRestricted) {
+      onRestrictedClick();
+      return;
+    }
+
+    const orgUsers = orgData.users[session.orgId] || [];
+    const userInDb = orgUsers.find(u => u.id === session.id);
+    
+    if (!userInDb) {
+      setPwdMessage("User not found in database.");
+      setPwdMessageType("error");
+      return;
+    }
+
+    if (currentPassword !== userInDb.password) {
+      setPwdMessage("Current password is incorrect.");
+      setPwdMessageType("error");
+      return;
+    }
+
+    if (newPassword.length < 3) {
+      setPwdMessage("New password must be at least 3 characters.");
+      setPwdMessageType("error");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPwdMessage("New passwords do not match.");
+      setPwdMessageType("error");
+      return;
+    }
+
+    userInDb.password = newPassword;
+    const updatedData = { ...orgData };
+    setOrgData(updatedData);
+
+    session.password = newPassword;
+    saveSession(session);
+
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setPwdMessage("Password updated successfully!");
+    setPwdMessageType("success");
+  };
+
   return (
     <Panel title="My profile" icon={<Settings size={18} />}>
-      <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
         <TabBtn active={tab === "basic"} onClick={() => setTab("basic")}>Basic details</TabBtn>
         <TabBtn active={tab === "contact"} onClick={() => setTab("contact")}>Contact details</TabBtn>
+        <TabBtn active={tab === "password"} onClick={() => setTab("password")}>Change Password</TabBtn>
       </div>
-      {tab === "basic" ? (
+
+      {tab === "basic" && (
         <>
           <Field label="Full name"><input style={inputStyle} defaultValue={session.userName} disabled={isRestricted} /></Field>
           <Field label="Role"><input style={inputStyle} defaultValue={session.role} disabled /></Field>
           <Field label="Username"><input style={inputStyle} defaultValue={session.userName?.replace(/\s+/g, "")} disabled /></Field>
           <Field label="Provider ID"><input style={inputStyle} defaultValue={session.providerId || ""} disabled={isRestricted} /></Field>
+          <Btn onClick={isRestricted ? onRestrictedClick : undefined} disabled={isRestricted} style={isRestricted ? { background: "#cccccc", color: "#666666", marginTop: 12 } : { marginTop: 12 }}>Save changes</Btn>
         </>
-      ) : (
+      )}
+
+      {tab === "contact" && (
         <>
           <Field label="Email"><input style={inputStyle} defaultValue={session.email || ""} disabled={isRestricted} /></Field>
           <Field label="Phone"><input style={inputStyle} defaultValue={session.phone || ""} disabled={isRestricted} /></Field>
+          <Btn onClick={isRestricted ? onRestrictedClick : undefined} disabled={isRestricted} style={isRestricted ? { background: "#cccccc", color: "#666666", marginTop: 12 } : { marginTop: 12 }}>Save changes</Btn>
         </>
       )}
-      <Btn onClick={isRestricted ? onRestrictedClick : undefined} disabled={isRestricted} style={isRestricted ? { background: "#cccccc", color: "#666666" } : undefined}>Save changes</Btn>
+
+      {tab === "password" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: "400px" }}>
+          {pwdMessage && (
+            <div style={{ 
+              color: pwdMessageType === "success" ? "#34d399" : "#f87171", 
+              fontSize: "13px", 
+              fontWeight: "600",
+              background: pwdMessageType === "success" ? "rgba(52, 211, 153, 0.08)" : "rgba(248, 113, 113, 0.08)",
+              border: pwdMessageType === "success" ? "1px solid rgba(52, 211, 153, 0.2)" : "1px solid rgba(248, 113, 113, 0.2)",
+              borderRadius: "8px",
+              padding: "10px 14px",
+              marginBottom: "8px"
+            }}>
+              {pwdMessage}
+            </div>
+          )}
+
+          <Field label="Current Password">
+            <input 
+              type="password" 
+              style={inputStyle} 
+              value={currentPassword} 
+              onChange={(e) => { setCurrentPassword(e.target.value); setPwdMessage(null); }} 
+              placeholder="Enter current password" 
+              disabled={isRestricted}
+            />
+          </Field>
+          
+          <Field label="New Password">
+            <input 
+              type="password" 
+              style={inputStyle} 
+              value={newPassword} 
+              onChange={(e) => { setNewPassword(e.target.value); setPwdMessage(null); }} 
+              placeholder="Enter new password" 
+              disabled={isRestricted}
+            />
+          </Field>
+
+          <Field label="Confirm New Password">
+            <input 
+              type="password" 
+              style={inputStyle} 
+              value={confirmPassword} 
+              onChange={(e) => { setConfirmPassword(e.target.value); setPwdMessage(null); }} 
+              placeholder="Re-type new password" 
+              disabled={isRestricted}
+            />
+          </Field>
+
+          <Btn 
+            onClick={handleUpdatePassword} 
+            disabled={isRestricted} 
+            style={isRestricted ? { background: "#cccccc", color: "#666666", marginTop: 12 } : { marginTop: 12 }}
+          >
+            Update Password
+          </Btn>
+        </div>
+      )}
     </Panel>
   );
 }
@@ -1465,11 +1646,12 @@ function Table({ cols, rows, empty }) {
 export default function HCPPortal() {
   const [data, setData] = useState(loadData());
   const [session, setSession] = useState(loadSession());
-  const [screen, setScreen] = useState(session ? "dashboard" : "landing");
+  const [screen, setScreen] = useState(session ? "dashboard" : "auth");
   const [pendingRole, setPendingRole] = useState(null);
-  const [authMode, setAuthMode] = useState("signup");
+  const [authMode, setAuthMode] = useState("login");
   const [view, setView] = useState({ section: "patients", tab: "all" });
   const [restrictedAlert, setRestrictedAlert] = useState(false);
+  const [firstLoginUser, setFirstLoginUser] = useState(null);
 
   useEffect(() => { saveData(data); }, [data]);
 
@@ -1488,23 +1670,10 @@ export default function HCPPortal() {
     setScreen("dashboard");
   };
 
-  if (screen === "landing") {
-    return <Landing
-      onNewOrg={() => { setAuthMode("signup"); setScreen("orgFlowNew"); }}
-      onExisting={() => setScreen("orgSelect")}
-    />;
-  }
-
   if (screen === "orgSelect") {
     return <OrgSelect
       data={data}
-      onBack={() => setScreen("landing")}
-      onCreateNew={() => { setAuthMode("signup"); setScreen("orgFlowNew"); }}
       onSelect={(org) => { setAuthMode("login"); setScreen("auth"); setPendingRole({ org }); }}
-      onDelete={(id) => {
-        const next = { ...data, orgs: data.orgs.filter((o) => o.id !== id) };
-        setData(next); saveData(next);
-      }}
     />;
   }
 
@@ -1587,10 +1756,10 @@ export default function HCPPortal() {
           `;
           triggerEmailNotification(form.email, emailSubject, emailBody);
         } else {
-          const orgId = pendingRole.org.id;
           if (form.isOtpVerified) {
+            const defaultOrgId = Object.keys(data.users)[0] || "org1";
             goDashboard({
-              orgId,
+              orgId: defaultOrgId,
               userName: form.name || "Dr. CardioX Live",
               role: "HCP Head",
               phone: form.phone,
@@ -1598,19 +1767,59 @@ export default function HCPPortal() {
             });
             return;
           }
-          const orgUsers = data.users[orgId] || [];
+
           let user = null;
-          if (form.phone && form.phone.trim() !== "") {
-            user = orgUsers.find((u) => u.phone === form.phone);
-          } else {
-            user = orgUsers.find((u) => u.name && u.name.toLowerCase() === form.name.toLowerCase() && u.password === form.password);
+          let matchedOrgId = null;
+
+          for (const [oId, userList] of Object.entries(data.users)) {
+            let found = null;
+            if (form.phone && form.phone.trim() !== "") {
+              found = userList.find((u) => u.phone === form.phone);
+            } else {
+              found = userList.find((u) => u.name && u.name.toLowerCase() === form.name.toLowerCase() && u.password === form.password);
+            }
+            
+            if (found) {
+              user = found;
+              matchedOrgId = oId;
+              break;
+            }
           }
-          if (user) {
-            goDashboard({ orgId, ...user, userName: user.name });
+
+          if (user && matchedOrgId) {
+            if (user.isFirstLogin) {
+              setFirstLoginUser({ user, orgId: matchedOrgId });
+              setScreen("firstLoginReset");
+            } else {
+              goDashboard({ orgId: matchedOrgId, ...user, userName: user.name });
+            }
           } else {
-            alert("Invalid credentials. Please verify your Name and Password, or Phone Number.");
+            alert("Invalid credentials. Please verify your Name and Password.");
           }
         }
+      }}
+    />;
+  }
+
+  if (screen === "firstLoginReset" && firstLoginUser) {
+    return <FirstLoginReset 
+      user={firstLoginUser.user}
+      onSubmit={(newPassword) => {
+        const db = { ...data };
+        const orgUsers = db.users[firstLoginUser.orgId] || [];
+        const userInDb = orgUsers.find(u => u.id === firstLoginUser.user.id);
+        if (userInDb) {
+          userInDb.password = newPassword;
+          delete userInDb.isFirstLogin;
+          setData(db);
+          saveData(db);
+          goDashboard({ orgId: firstLoginUser.orgId, ...userInDb, userName: userInDb.name });
+        }
+        setFirstLoginUser(null);
+      }}
+      onCancel={() => {
+        setFirstLoginUser(null);
+        setScreen("auth");
       }}
     />;
   }
@@ -1634,13 +1843,13 @@ export default function HCPPortal() {
     }}>
       <GlobalStyles />
       <TopBar session={session} isDoctorOrg={isDoctorOrg} view={view} setView={setView} onLogout={() => {
-        clearSession(); setSession(null); setScreen("landing");
+        clearSession(); setSession(null); setScreen("orgSelect");
       }} />
       {view.section === "patients" && <PatientsSection tab={view.tab} orgData={data} orgId={orgId} setOrgData={setData} />}
       {view.section === "business" && <BusinessSection tab={view.tab} />}
       {view.section === "admin" && <AdminSection tab={view.tab} orgData={data} orgId={orgId} setOrgData={setData} isRestricted={isRestricted} onRestrictedClick={onRestrictedClick} />}
       {view.section === "ecgReports" && <ReportsSection session={session} orgData={data} orgId={orgId} setOrgData={setData} />}
-      {view.section === "profile" && <ProfileSection session={session} isRestricted={isRestricted} onRestrictedClick={onRestrictedClick} />}
+      {view.section === "profile" && <ProfileSection session={session} isRestricted={isRestricted} onRestrictedClick={onRestrictedClick} orgData={data} setOrgData={setData} />}
 
       {restrictedAlert && (
         <Modal title="Access Restricted" onClose={() => setRestrictedAlert(false)}>

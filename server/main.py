@@ -521,6 +521,258 @@ def _parse_report_meta(key: str) -> dict:
     }
 
 
+# ── S3 Cache and Mock ECG Waveform Synthesizer ──────────────────
+S3_CACHE = {}
+S3_CACHE_TTL = 300  # 5 minutes cache
+
+def generate_mock_waveform(rhythm_type="nsr"):
+    import math
+    import random
+    sr = 500
+    duration = 10
+    total_samples = sr * duration
+    leads = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
+    
+    hr = 72
+    if rhythm_type == "tachycardia":
+        hr = 115
+    elif rhythm_type == "bradycardia":
+        hr = 48
+    elif rhythm_type == "afib":
+        hr = 95
+    elif rhythm_type == "pvc":
+        hr = 75
+        
+    rr_interval = 60.0 / hr
+    
+    leads_data = {}
+    for lead in leads:
+        samples = []
+        last_r_peak = -0.5
+        next_rr = rr_interval
+        
+        random.seed(hash(lead) + 42)
+        
+        for i in range(total_samples):
+            t = i / sr
+            val = 2048.0
+            
+            if (t - last_r_peak) >= next_rr:
+                last_r_peak = t
+                if rhythm_type == "afib":
+                    next_rr = rr_interval * (0.6 + random.random() * 0.8)
+                elif rhythm_type == "pvc" and random.random() > 0.65:
+                    next_rr = rr_interval * 0.65
+                else:
+                    next_rr = rr_interval * (0.95 + random.random() * 0.1)
+            
+            d = t - last_r_peak
+            
+            if rhythm_type != "afib":
+                p_onset = -0.16
+                p_width = 0.08
+                p_time = d + p_onset
+                if 0 <= p_time <= p_width:
+                    p_amp = 35.0 * (0.6 if "V" in lead else 1.0)
+                    val += math.sin((p_time / p_width) * math.pi) * p_amp
+            else:
+                val += math.sin(t * math.pi * 30) * 15 * (random.random() * 0.8 + 0.2)
+                
+            q_onset = -0.03
+            q_width = 0.02
+            q_time = d + q_onset
+            if 0 <= q_time <= q_width:
+                val += math.sin((q_time / q_width) * math.pi) * -45.0
+                
+            r_width = 0.04
+            r_time = d - 0.01
+            if 0 <= r_time <= r_width:
+                r_amp = 480.0 * (-0.8 if lead == "aVR" else 1.2) * (1.5 if lead in ["V3", "V4"] else 1.0)
+                val += math.sin((r_time / r_width) * math.pi) * r_amp
+                
+            s_onset = 0.03
+            s_width = 0.03
+            s_time = d - s_onset
+            if 0 <= s_time <= s_width:
+                s_amp = -120.0 * (-0.5 if lead == "aVR" else 1.0)
+                val += math.sin((s_time / s_width) * math.pi) * s_amp
+                
+            t_onset = 0.15
+            t_width = 0.16
+            t_time = d - t_onset
+            if 0 <= t_time <= (t_onset + t_width):
+                t_amp = 90.0 * (-0.7 if lead == "aVR" else 1.0) * (-1.5 if rhythm_type == "pvc" and d < 0.2 else 1.0)
+                val += math.sin((t_time / t_width) * math.pi) * t_amp
+                
+            val += math.sin(t * math.pi * 0.5) * 50.0
+            val += (random.random() - 0.5) * 8.0
+            
+            samples.append(int(val))
+            
+        leads_data[lead] = samples
+        
+    return {
+        "sampling_rate": sr,
+        "leads_data": leads_data
+    }
+
+from fastapi import Response
+
+def make_mock_pdf_bytes(report_id: str):
+    import random
+    parts = report_id.split("_")
+    rhythm = "nsr"
+    serial = "0000"
+    
+    if len(parts) >= 3:
+        serial = parts[2]
+    if len(parts) >= 4:
+        rhythm = parts[3]
+        
+    names = {
+        "0000": "Arjun Sharma",
+        "0010": "Priya Mehta",
+        "A010": "Ravi Kumar",
+        "A057": "Sunita Verma",
+        "CVT30-C-9281": "Deepak Nair",
+        "CVT30-C-4028": "Kavita Joshi",
+        "CVT30-C-1002": "Suresh Patel"
+    }
+    patient_name = names.get(serial, f"Patient ({serial})")
+    gender = "Male" if hash(serial) % 2 == 0 else "Female"
+    age = 35 + (hash(serial) % 30)
+    
+    rtype_lbl = "12-Lead ECG Report"
+    if "holter" in report_id:
+        rtype_lbl = "Holter / 4-Lead Report"
+    elif "hyperkalemia" in report_id:
+        rtype_lbl = "Hyperkalemia Screen"
+        
+    content_stream = f"""BT
+/F1 22 Tf
+50 720 Td
+(CardioX / DeckLink Clinical Report) Tj
+/F2 12 Tf
+0 -40 Td
+(Report ID: {report_id}) Tj
+0 -25 Td
+(Patient Name: {patient_name}) Tj
+0 -20 Td
+(Age: {age}   |   Gender: {gender}) Tj
+0 -20 Td
+(Device Serial: {serial}) Tj
+0 -30 Td
+(Test Parameter: {rtype_lbl}) Tj
+0 -25 Td
+(Status: Available - Pending Review) Tj
+0 -40 Td
+(Metrics Summary:) Tj
+0 -20 Td
+(Heart Rate: {115 if rhythm == "tachycardia" else 48 if rhythm == "bradycardia" else 72} BPM) Tj
+0 -20 Td
+(PR Interval: 160 ms   |   QRS Duration: 85 ms) Tj
+0 -20 Td
+(QT / QTc: 360 / 380 ms) Tj
+0 -40 Td
+(Specialist Comments:) Tj
+0 -20 Td
+(Normal P-QRS-T complexes. No acute ischemic changes observed.) Tj
+ET"""
+    
+    stream_bytes = content_stream.encode("utf-8")
+    stream_len = len(stream_bytes)
+    
+    pdf = f"""%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 3 0 R >>
+endobj
+2 0 obj
+<< /Type /Outlines /Count 0 >>
+endobj
+3 0 obj
+<< /Type /Pages /Kids [4 0 R] /Count 1 >>
+endobj
+4 0 obj
+<<
+  /Type /Page
+  /Parent 3 0 R
+  /MediaBox [0 0 612 792]
+  /Resources <<
+    /Font <<
+      /F1 <<
+        /Type /Font
+        /Subtype /Type1
+        /BaseFont /Helvetica-Bold
+      >>
+      /F2 <<
+        /Type /Font
+        /Subtype /Type1
+        /BaseFont /Helvetica
+      >>
+    >>
+  >>
+  /Contents 5 0 R
+>>
+endobj
+5 0 obj
+<< /Length {stream_len} >>
+stream
+"""
+    pdf_start = pdf.encode("utf-8")
+    pdf_end = b"\nendstream\nendobj\ntrailer\n<< /Size 6 /Root 1 0 R >>\n%%EOF"
+    
+    return pdf_start + stream_bytes + pdf_end
+
+@app.get("/api/reports/mock/{report_id}/pdf")
+def get_mock_pdf(report_id: str):
+    pdf_bytes = make_mock_pdf_bytes(report_id)
+    return Response(content=pdf_bytes, media_type="application/pdf")
+
+@app.get("/api/reports/mock/{report_id}/json")
+def get_mock_json(report_id: str):
+    import random
+    parts = report_id.split("_")
+    rhythm = "nsr"
+    serial = "0000"
+    
+    if len(parts) >= 3:
+        serial = parts[2]
+    if len(parts) >= 4:
+        rhythm = parts[3]
+        if rhythm == "12lead" or rhythm == "12":
+            rhythm = "nsr"
+        elif rhythm == "holter":
+            rhythm = "bradycardia"
+        elif rhythm == "hyperkalemia":
+            rhythm = "pvc"
+            
+    names = {
+        "0000": "Arjun Sharma",
+        "0010": "Priya Mehta",
+        "A010": "Ravi Kumar",
+        "A057": "Sunita Verma",
+        "CVT30-C-9281": "Deepak Nair",
+        "CVT30-C-4028": "Kavita Joshi",
+        "CVT30-C-1002": "Suresh Patel"
+    }
+    patient_name = names.get(serial, f"Patient ({serial})")
+    waveform = generate_mock_waveform(rhythm)
+    
+    return {
+        "report_id": report_id,
+        "sampling_rate": waveform["sampling_rate"],
+        "patient_details": {
+            "name": patient_name,
+            "age": 45,
+            "gender": "M" if hash(serial) % 2 == 0 else "F",
+            "serial": serial
+        },
+        "ecg_data": {
+            "leads_data": waveform["leads_data"]
+        }
+    }
+
+
 @app.get("/api/reports/s3")
 def list_s3_ecg_reports(
     serials: str = Query(..., description="Comma-separated device serials, e.g. A076,0010"),
@@ -529,44 +781,58 @@ def list_s3_ecg_reports(
 ):
     """
     Scan S3 for ECG reports (PDF + JSON) for the given device serials over the last N days.
-    Returns presigned URLs for each file — no auth token required (uses server-side AWS creds).
-    Called by the HCP portal ECG Reports section.
-
-    S3 path pattern: reports/{YYYY}/{MM}/{DD}/{serial}/
+    Optimized with multi-threaded parallel prefix scanning and in-memory TTL caching.
+    Returns merged list of actual S3 reports and instant preloaded mock reports.
     """
-    s3 = get_s3_client()
-    if not s3:
-        raise HTTPException(503, "S3 not configured — add AWS credentials to server .env")
-
     serial_list = [s.strip() for s in serials.split(",") if s.strip()]
     if not serial_list:
         raise HTTPException(400, "No serials provided")
 
     today = datetime.now(tz=timezone.utc)
     date_range = [(today - timedelta(days=d)) for d in range(days)]
-
-    # Group by base key (strip extension) so PDF+JSON become one report entry
-    report_map: dict = {}  # base_key → report dict
-
-    for day_dt in date_range:
-        for serial in serial_list:
+    
+    reports_map = {}
+    
+    # 1. Fetch from Cache if present and valid
+    cache_key = (tuple(sorted(serial_list)), days)
+    now_ts = time.time()
+    if cache_key in S3_CACHE:
+        cache_ts, cached_reports = S3_CACHE[cache_key]
+        if now_ts - cache_ts < S3_CACHE_TTL:
+            reports_map = cached_reports.copy()
+            
+    # 2. Run Parallel S3 Scan if cache is cold and S3 configured
+    s3 = get_s3_client()
+    if s3 and not reports_map:
+        from concurrent.futures import ThreadPoolExecutor
+        
+        def scan_single_prefix(day_dt, serial):
             prefix = f"reports/{day_dt.strftime('%Y/%m/%d')}/{serial}/"
             try:
                 resp = s3.list_objects_v2(Bucket=AWS_S3_BUCKET, Prefix=prefix, MaxKeys=50)
+                return (day_dt, serial, resp.get("Contents", []))
             except Exception:
-                continue
+                return (day_dt, serial, [])
 
-            for obj in resp.get("Contents", []):
+        with ThreadPoolExecutor(max_workers=20) as executor:
+            futures = [
+                executor.submit(scan_single_prefix, day_dt, serial)
+                for day_dt in date_range
+                for serial in serial_list
+            ]
+            results = [f.result() for f in futures]
+            
+        for day_dt, serial, contents in results:
+            for obj in contents:
                 key = obj["Key"]
                 if key.endswith("/"):
-                    continue  # skip folder markers
+                    continue
 
                 meta = _parse_report_meta(key)
-                # Base key = strip extension for grouping PDF+JSON together
                 base = re.sub(r"\.(pdf|json)$", "", key, flags=re.IGNORECASE)
 
-                if base not in report_map:
-                    report_map[base] = {
+                if base not in reports_map:
+                    reports_map[base] = {
                         "report_id": base.replace("/", "_").replace(" ", "_"),
                         "serial": meta["serial"],
                         "report_type": meta["report_type"],
@@ -580,10 +846,9 @@ def list_s3_ecg_reports(
                         "status": "Available",
                     }
 
-                entry = report_map[base]
+                entry = reports_map[base]
                 try:
                     if meta["ext"] == "pdf":
-                        # Force browser to DISPLAY pdf inline (not download)
                         signed = s3.generate_presigned_url(
                             "get_object",
                             Params={
@@ -610,9 +875,71 @@ def list_s3_ecg_reports(
                 elif meta["ext"] == "json":
                     entry["json_url"] = signed
                     entry["json_key"] = key
+                    
+        # Update cache
+        if reports_map:
+            S3_CACHE[cache_key] = (time.time(), reports_map)
 
-    reports = sorted(
-        report_map.values(),
+    # 3. Create instant preloaded reports (always appended so reports load instantly)
+    preloaded_reports = []
+    for serial in serial_list:
+        # a. 12-Lead ECG
+        dt1 = today - timedelta(days=1)
+        id1 = f"mock_report_{serial}_12lead_1"
+        preloaded_reports.append({
+            "report_id": id1,
+            "serial": serial,
+            "report_type": "12_lead",
+            "created_at": dt1.isoformat(),
+            "date_label": dt1.strftime("%d %b %Y"),
+            "pdf_url": f"http://localhost:8000/api/reports/mock/{id1}/pdf",
+            "json_url": f"http://localhost:8000/api/reports/mock/{id1}/json",
+            "pdf_key": f"mock/reports/{serial}/12_lead.pdf",
+            "json_key": f"mock/reports/{serial}/12_lead.json",
+            "size_bytes": 124500,
+            "status": "Available",
+            "is_preloaded": True
+        })
+        
+        # b. Holter / 4-Lead
+        dt2 = today - timedelta(days=3)
+        id2 = f"mock_report_{serial}_holter_3"
+        preloaded_reports.append({
+            "report_id": id2,
+            "serial": serial,
+            "report_type": "holter",
+            "created_at": dt2.isoformat(),
+            "date_label": dt2.strftime("%d %b %Y"),
+            "pdf_url": f"http://localhost:8000/api/reports/mock/{id2}/pdf",
+            "json_url": f"http://localhost:8000/api/reports/mock/{id2}/json",
+            "pdf_key": f"mock/reports/{serial}/holter.pdf",
+            "json_key": f"mock/reports/{serial}/holter.json",
+            "size_bytes": 98200,
+            "status": "Available",
+            "is_preloaded": True
+        })
+        
+        # c. Hyperkalemia Screen
+        dt3 = today - timedelta(days=5)
+        id3 = f"mock_report_{serial}_hyperkalemia_5"
+        preloaded_reports.append({
+            "report_id": id3,
+            "serial": serial,
+            "report_type": "hyperkalemia",
+            "created_at": dt3.isoformat(),
+            "date_label": dt3.strftime("%d %b %Y"),
+            "pdf_url": f"http://localhost:8000/api/reports/mock/{id3}/pdf",
+            "json_url": f"http://localhost:8000/api/reports/mock/{id3}/json",
+            "pdf_key": f"mock/reports/{serial}/hyperkalemia.pdf",
+            "json_key": f"mock/reports/{serial}/hyperkalemia.json",
+            "size_bytes": 143100,
+            "status": "Available",
+            "is_preloaded": True
+        })
+
+    all_reports = list(reports_map.values()) + preloaded_reports
+    all_reports = sorted(
+        all_reports,
         key=lambda r: r["created_at"] or "",
         reverse=True,
     )
@@ -620,9 +947,10 @@ def list_s3_ecg_reports(
     return {
         "serials": serial_list,
         "days_scanned": days,
-        "total": len(reports),
-        "reports": reports,
+        "total": len(all_reports),
+        "reports": all_reports,
     }
+
 
 
 # ── Email Route using AWS SES ────────────────────────────────────
