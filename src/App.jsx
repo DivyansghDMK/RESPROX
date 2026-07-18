@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { TherapyProvider, useTherapy } from './context/TherapyContext';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Toast from './components/Toast';
 import BottomNavbar from './components/BottomNavbar';
+import Lenis from 'lenis';
+import gsap from 'gsap';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -15,8 +17,8 @@ import Devices from './pages/Devices';
 import MaskFit from './pages/MaskFit';
 import Settings from './pages/Settings';
 import HelpSupport from './pages/HelpSupport';
-import Login from './pages/Login';
-import ForgotPassword from './pages/ForgotPassword';
+import Login from './features/auth/LoginPage';
+import ForgotPassword from './features/auth/ForgotPasswordPage';
 
 import AdminPatients from './pages/AdminPatients';
 import AdminPatientDetail from './pages/AdminPatientDetail';
@@ -24,7 +26,7 @@ import DeviceList from './pages/DeviceList';
 import DeviceDashboard from './pages/DeviceDashboard';
 import { useDeviceSettings } from './hooks/useDeviceSettings';
 import { AuthProvider } from './context/AuthContext';
-import HCPPortal from './pages/hcp/HCPPortal';
+import HCPPortal from './features/hcp/HCPPortal';
 import WaveformAnalysis from './pages/WaveformAnalysis';
 import CreateOrg from './pages/CreateOrg';
 
@@ -34,6 +36,35 @@ function AppContent() {
   const { adminActiveSerial } = useTherapy();
   const activeSerial = adminActiveSerial || localStorage.getItem('adminActiveSerial') || 'CVT30-C-9281';
   const isAuthPage = location.pathname === '/login' || location.pathname === '/forgot-password' || location.pathname === '/';
+
+  useEffect(() => {
+    // Initialize Lenis smooth scroll
+    const lenis = new Lenis({
+      duration: 1.2,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      smoothWheel: true,
+    });
+
+    function raf(time) {
+      lenis.raf(time);
+      requestAnimationFrame(raf);
+    }
+    requestAnimationFrame(raf);
+
+    return () => {
+      lenis.destroy();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthPage) {
+      // Clean GSAP transitions on page changes
+      gsap.fromTo('.content',
+        { opacity: 0, y: 15 },
+        { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' }
+      );
+    }
+  }, [location.pathname, isAuthPage]);
 
   if (isAuthPage) {
     return (

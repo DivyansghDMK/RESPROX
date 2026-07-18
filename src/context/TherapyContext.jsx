@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { devicesAPI } from '../services/respireeApi';
 
 const TherapyContext = createContext(null);
 
@@ -32,36 +33,27 @@ export function TherapyProvider({ children }) {
   });
 
   const fetchDeviceData = useCallback(async (serial) => {
-    const token = localStorage.getItem('adminToken');
-    if (!token || !serial) return;
+    if (!serial) return;
     try {
-      const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
-      const res = await fetch(`${API_BASE}/admin/devices/${serial}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setDeviceData(data);
-        setLastServerPull(new Date()); // Record successful server pull time
-        
-        // Sync context settings state with server values
-        setMode(data.settings.therapy_mode === 'AUTO CPAP' ? 'auto' : 'cpap');
-        setPressure(data.settings.pressure);
-        setMinPressure(data.settings.min_pressure);
-        setMaxPressure(data.settings.max_pressure);
-        setAflex(data.settings.aflex);
-        setRamp(data.settings.ramp);
-        
-        initialSettings.current = {
-          pressure: data.settings.pressure,
-          minPressure: data.settings.min_pressure,
-          maxPressure: data.settings.max_pressure,
-          aflex: data.settings.aflex,
-          ramp: data.settings.ramp
-        };
-      }
+      const data = await devicesAPI.getDeviceDetail(serial);
+      setDeviceData(data);
+      setLastServerPull(new Date());
+
+      const settings = data.settings || {};
+      setMode(settings.therapy_mode === 'AUTO CPAP' ? 'auto' : 'cpap');
+      setPressure(settings.pressure ?? 12);
+      setMinPressure(settings.min_pressure ?? 4);
+      setMaxPressure(settings.max_pressure ?? 30);
+      setAflex(settings.aflex ?? 0);
+      setRamp(settings.ramp ?? 0);
+
+      initialSettings.current = {
+        pressure: settings.pressure ?? 12,
+        minPressure: settings.min_pressure ?? 4,
+        maxPressure: settings.max_pressure ?? 30,
+        aflex: settings.aflex ?? 0,
+        ramp: settings.ramp ?? 0
+      };
     } catch (e) {
       console.warn("Failed to fetch device data in TherapyContext:", e);
     }
@@ -103,61 +95,13 @@ export function TherapyProvider({ children }) {
 
   const handleSave = async () => {
     setSaveState('saving');
-    const adminToken = localStorage.getItem('adminToken');
-    const activeSerial = adminActiveSerial || localStorage.getItem('adminActiveSerial');
-
-    try {
-      if (adminToken && activeSerial) {
-        // Save using API
-        const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
-        const body = {
-          therapy_mode: mode === 'auto' ? 'AUTO CPAP' : 'CPAP',
-          pressure,
-          min_pressure: minPressure,
-          max_pressure: maxPressure,
-          aflex,
-          ramp
-        };
-        const res = await fetch(`${API_BASE}/admin/patients/${activeSerial}/settings`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${adminToken}`
-          },
-          body: JSON.stringify(body)
-        });
-        if (!res.ok) throw new Error("Failed to save settings to server");
-        
-        // Refresh device data
-        await fetchDeviceData(activeSerial);
-      } else {
-        // Mock API Save Settings call with 1.5s delay
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-      }
-      
-      // Update original saved reference
-      initialSettings.current = {
-        pressure,
-        minPressure,
-        maxPressure,
-        aflex,
-        ramp
-      };
-      
-      setSaveState('success');
-      setShowToast(true);
-      setTimeout(() => {
-        setShowToast(false);
-        setSaveState('idle');
-      }, 3000);
-    } catch (error) {
-      setSaveState('error');
-      setShowToast(true);
-      setTimeout(() => {
-        setShowToast(false);
-        setSaveState('idle');
-      }, 3000);
-    }
+    setShowToast(true);
+    setToastMessage('Read-only integration: device setting changes are not available from the staging API.');
+    setTimeout(() => {
+      setShowToast(false);
+      setSaveState('idle');
+    }, 3000);
+    return;
   };
 
   const value = {

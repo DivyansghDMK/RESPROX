@@ -1,4 +1,4 @@
-# DeckLink & ResproX - Clinical ECG & CPAP Portal
+# Resprox & DeckLink - Clinical ECG & CPAP Portal
 
 This repository contains the integrated CPAP patient compliance dashboard and the **DeckLink Clinical ECG Waveform Analysis (Clinical Pro)** suite.
 

@@ -11,8 +11,6 @@ import {
   GearIcon,
   HelpIcon,
   CloseIcon,
-  MoonIcon,
-  ShieldIcon
 } from './Icons';
 
 export default function Sidebar() {
@@ -21,11 +19,10 @@ export default function Sidebar() {
 
   const sidebarItems = [
     { label: 'Dashboard', path: `/device/${activeSerial}`, icon: HomeIcon },
-    { label: 'Therapy', path: '/therapy', icon: PulseIcon },
-    { label: 'Trends', path: '/trends', icon: ChartIcon },
-    { label: 'Reports', path: '/reports', icon: FileIcon },
-    { label: 'Waveform Analysis', path: '/waveform-analysis', icon: PulseIcon },
     { label: 'Devices', path: '/devices', icon: DeviceIcon },
+    { label: 'Therapy', path: '/therapy', icon: PulseIcon },
+    { label: 'Reports', path: '/reports', icon: FileIcon },
+    { label: 'Trends', path: '/trends', icon: ChartIcon },
     { label: 'Mask Fit', path: '/mask-fit', icon: MaskIcon },
     { label: 'Settings', path: '/settings', icon: GearIcon },
     { label: 'Help & Support', path: '/help', icon: HelpIcon },
@@ -71,7 +68,7 @@ export default function Sidebar() {
             </svg>
           </div>
           <div>
-            <div className="brand-name">DeckLink</div>
+            <div className="brand-name">Resprox</div>
             <div className="brand-tag">Breathe better. Live better.</div>
           </div>
         </div>
@@ -90,30 +87,6 @@ export default function Sidebar() {
             </NavLink>
           ))}
         </nav>
-
-        <div className="sleep-card">
-          <div className="sleep-icon">
-            <MoonIcon />
-          </div>
-          <h3>Better sleep every night</h3>
-          <p>Consistent use leads to better sleep and better life.</p>
-          <div className="dots">
-            <span className="dot active" />
-            <span className="dot" />
-          </div>
-        </div>
-
-        {/* HCP Clinician Portal Entry */}
-        <a
-          href="/hcp"
-          className="hcp-portal-btn"
-          title="Open DeckLink Clinician Portal"
-        >
-          <ShieldIcon />
-          <span>Clinician Portal</span>
-        </a>
-
-        <div className="version">v 1.0.0</div>
       </aside>
     </>
   );

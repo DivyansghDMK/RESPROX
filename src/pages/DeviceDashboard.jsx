@@ -1,8 +1,9 @@
 // src/pages/DeviceDashboard.jsx — Admin Device Dashboard (no inline tabs)
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { devicesAPI } from '../services/api';
+import { devicesAPI } from '../services/respireeApi';
 import { useTherapy } from '../context/TherapyContext';
+import gsap from 'gsap';
 import SendIcon from '@mui/icons-material/Send';
 import SaveIcon from '@mui/icons-material/Save';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -160,6 +161,20 @@ export default function DeviceDashboard() {
     return () => clearInterval(pollRef.current);
   }, [fetchDevice, fetchDevicesList]);
 
+  useEffect(() => {
+    if (!loading && device) {
+      // Staggered entrance animation for dashboard metric cards and settings/logs sections
+      gsap.fromTo('.dashboard-metrics-grid > div', 
+        { opacity: 0, scale: 0.95, y: 25 },
+        { opacity: 1, scale: 1, y: 0, duration: 0.5, stagger: 0.08, ease: 'back.out(1.2)' }
+      );
+      gsap.fromTo('.dashboard-main-content > div:not(.dashboard-metrics-grid)', 
+        { opacity: 0, y: 30 },
+        { opacity: 1, y: 0, duration: 0.7, stagger: 0.1, ease: 'power2.out', delay: 0.2 }
+      );
+    }
+  }, [loading, device]);
+
   const dirty = useMemo(() => {
     if (!device) return false;
     const s = device.settings;
@@ -170,20 +185,7 @@ export default function DeviceDashboard() {
   const resetDraft = () => { if (device) applyDeviceState(device); };
 
   const saveSettings = async () => {
-    if (!device) return;
-    setSaving(true);
-    try {
-      const res = await devicesAPI.updateSettings(serial, {
-        therapy_mode: mode, pressure, min_pressure: minPressure,
-        max_pressure: maxPressure, aflex, ramp,
-      });
-      setDevice(prev => ({ ...prev, settings: res.settings, device_online: res.device_online }));
-      showToast(
-        device.device_online ? 'Settings pushed to device successfully' : 'Device offline — settings queued',
-        device.device_online ? 'success' : 'warning'
-      );
-    } catch (e) { showToast(e.message || 'Save failed', 'error'); }
-    finally { setSaving(false); }
+    showToast('Read-only integration: device settings cannot be pushed from the staging API.', 'warning');
   };
 
   function showToast(msg, type = 'success') {
@@ -226,6 +228,7 @@ export default function DeviceDashboard() {
   const maxAHI      = Math.max(...device.sessions.map(s => s.ahi), 5);
   const maxUsageHrs = Math.max(...device.sessions.map(s => s.usage_hours), 8);
   const maxLeak     = Math.max(...device.sessions.map(s => s.mask_leak), 24);
+  const isReadOnly  = device.readOnly !== false;
 
   const maintenanceItems = [
     { label: 'Mask',       value: '28 Days', pct: 70, icon: MaskIcon,   color: '#1d9e75' },
@@ -407,6 +410,20 @@ export default function DeviceDashboard() {
         {/* ── Therapy Settings Panel ──────────────────────────────────────────── */}
         <div style={{ ...sectionCard, marginBottom: 16 }}>
           <div style={sectionLabel}>Therapy Settings</div>
+          {isReadOnly && (
+            <div style={{
+              marginBottom: 14,
+              padding: '10px 12px',
+              borderRadius: 10,
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              color: '#1d4ed8',
+              fontSize: 12,
+              fontWeight: 600,
+            }}>
+              Read-only staging API: controls are shown for reference, but pushes are disabled.
+            </div>
+          )}
 
           {/* Mode Toggle */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 22, background: 'var(--panel-strong)', borderRadius: 12, padding: 6, border: '1px solid var(--line)' }}>
@@ -502,17 +519,19 @@ export default function DeviceDashboard() {
 
           {/* Save / Discard bar */}
           <div style={{ display: 'flex', gap: 10, marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
-            <button onClick={resetDraft} disabled={!dirty || saving}
+            <button onClick={resetDraft} disabled={isReadOnly || !dirty || saving}
               style={{ padding: '11px 22px', borderRadius: 10, fontWeight: 700, fontSize: 13, background: 'var(--panel)', border: '1px solid var(--line)', color: 'var(--muted)', cursor: dirty ? 'pointer' : 'not-allowed', opacity: dirty ? 1 : 0.5 }}>
               Discard Changes
             </button>
-            <button onClick={saveSettings} disabled={!dirty || saving}
+            <button onClick={saveSettings} disabled={isReadOnly || !dirty || saving}
               style={{ flex: 1, padding: '11px 22px', borderRadius: 10, fontWeight: 800, fontSize: 14, background: dirty ? 'linear-gradient(135deg, #0d7de6 0%, #27c6c7 100%)' : '#e2e8f0', color: dirty ? '#fff' : '#94a3b8', border: 'none', cursor: dirty ? 'pointer' : 'not-allowed', boxShadow: dirty ? '0 4px 16px rgba(13,125,230,0.3)' : 'none', transition: 'all 0.25s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-              {saving
-                ? <><span style={{ width: 15, height: 15, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }}/> Applying…</>
-                : isOnline
-                  ? <><SendIcon fontSize="small"/> Push Settings to Device</>
-                  : <><SaveIcon fontSize="small"/> Save &amp; Queue for Device</>
+              {isReadOnly
+                ? <><SaveIcon fontSize="small"/> Read-only</>
+                : saving
+                  ? <><span style={{ width: 15, height: 15, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }}/> Applying…</>
+                  : isOnline
+                    ? <><SendIcon fontSize="small"/> Push Settings to Device</>
+                    : <><SaveIcon fontSize="small"/> Save &amp; Queue for Device</>
               }
             </button>
           </div>

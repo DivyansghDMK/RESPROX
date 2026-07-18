@@ -20,6 +20,16 @@ function formatLastPulled(date) {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+function formatAdminLabel(username) {
+  if (!username) return 'Admin';
+  const base = username.includes('@') ? username.split('@')[0] : username;
+  return base
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
 export default function Header() {
   const { setSidebarOpen, lastServerPull } = useTherapy();
   const { username } = useAuth();
@@ -32,9 +42,7 @@ export default function Header() {
     return () => clearInterval(timer);
   }, [lastServerPull]);
 
-  const adminLabel = username
-    ? username.charAt(0).toUpperCase() + username.slice(1)
-    : 'Admin';
+  const adminLabel = formatAdminLabel(username);
 
   return (
     <header className="topbar-wrapper">
@@ -81,8 +89,8 @@ export default function Header() {
           </div>
         </div>
         <div className="mobile-header-center">
-          <span className="logo-deck">Deck</span>
-          <span className="logo-link">Link</span>
+          <span className="logo-deck">Res</span>
+          <span className="logo-link">prox</span>
         </div>
         <div className="mobile-header-right">
           <button className="mobile-bell-btn" aria-label="Notifications">

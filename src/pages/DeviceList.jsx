@@ -1,9 +1,10 @@
 // src/pages/DeviceList.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { devicesAPI } from '../services/api';
+import { devicesAPI } from '../services/respireeApi';
 import { useAuth } from '../context/AuthContext';
 import { useTherapy } from '../context/TherapyContext';
+import gsap from 'gsap';
 
 // Material UI Icons
 import DevicesIcon from '@mui/icons-material/Devices';
@@ -17,6 +18,16 @@ const STATUS_COLOR = {
   online:  { bg: '#e6f9f0', text: '#0f6e56', dot: '#1d9e75' },
   offline: { bg: '#f1efe8', text: '#5f5e5a', dot: '#888780' }
 };
+
+function formatAdminLabel(username) {
+  if (!username) return 'Admin';
+  const base = username.includes('@') ? username.split('@')[0] : username;
+  return base
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
 
 // ── Main DeviceList Component ──────────────────────────────────────────────────
 export default function DeviceList() {
@@ -52,6 +63,20 @@ export default function DeviceList() {
     fetchDevices();
   }, [fetchDevices]);
 
+  useEffect(() => {
+    if (!loading) {
+      // Staggered entry animation for cards and table rows
+      gsap.fromTo('.admin-stat-card',
+        { opacity: 0, y: 25, scale: 0.96 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.45, stagger: 0.08, ease: 'back.out(1.2)' }
+      );
+      gsap.fromTo('.admin-table-row, .mobile-device-card',
+        { opacity: 0, y: 20 },
+        { opacity: 1, y: 0, duration: 0.4, stagger: 0.05, ease: 'power2.out', delay: 0.2 }
+      );
+    }
+  }, [loading]);
+
   // Handle instant lookup — navigate directly to the device dashboard page
   const handleQuickSubmit = (e) => {
     e.preventDefault();
@@ -86,7 +111,7 @@ export default function DeviceList() {
     return true;
   });
 
-  const adminLabel = username ? (username.charAt(0).toUpperCase() + username.slice(1)) : 'Admin';
+  const adminLabel = formatAdminLabel(username);
   function formatLastPulled(date) {
     if (!date) return 'Never';
     const now = new Date();
