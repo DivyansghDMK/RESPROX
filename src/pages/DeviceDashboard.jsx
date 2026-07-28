@@ -67,7 +67,7 @@ function RingProgress({ pct, size = 72, stroke = 6, color = '#0ea5e9' }) {
 // ── Mini Bar Chart ────────────────────────────────────────────────────────────
 function MiniBarChart({ sessions, valueKey, maxVal, goodFn, goodColor = '#1d9e75', badColor = '#e24b4a' }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 80, padding: '0 4px' }}>
+    <div className="mini-bar-chart-container">
       {sessions.map((s, i) => {
         const val = s[valueKey];
         const pct = Math.min((val / maxVal) * 100, 100);
@@ -75,14 +75,14 @@ function MiniBarChart({ sessions, valueKey, maxVal, goodFn, goodColor = '#1d9e75
         return (
           <div key={i} title={`${s.date}: ${val}`}
             style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-            <span style={{ fontSize: 9, color: '#64748b', fontWeight: 700 }}>{val}</span>
+            <span className="bar-chart-val" style={{ fontSize: 9, color: '#64748b', fontWeight: 700 }}>{val}</span>
             <div style={{
               width: '100%', height: `${Math.max(pct, 8)}%`,
               background: `linear-gradient(180deg, ${clr}dd, ${clr})`,
               borderRadius: '4px 4px 2px 2px', minHeight: 6,
               boxShadow: `0 2px 8px ${clr}44`, transition: 'height 0.5s ease'
             }}/>
-            <span style={{ fontSize: 9, color: '#94a3b8' }}>{s.date?.split(' ')[0]}</span>
+            <span className="bar-chart-date" style={{ fontSize: 9, color: '#94a3b8' }}>{s.date?.split(' ')[0]}</span>
           </div>
         );
       })}

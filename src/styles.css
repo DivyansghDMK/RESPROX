@@ -6273,3 +6273,23 @@ textarea:focus-visible,
   display: inline-block;
 }
 
+.mini-bar-chart-container {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 80px;
+  padding: 0 4px;
+  width: 100%;
+}
+
+@media (max-width: 576px) {
+  .mini-bar-chart-container {
+    gap: 3px !important;
+    padding: 0 !important;
+  }
+  .bar-chart-val,
+  .bar-chart-date {
+    display: none !important;
+  }
+}
+
