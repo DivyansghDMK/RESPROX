@@ -40,4 +40,4 @@ ENV/
 env/
 
 # Nested HCP repository
-hcp/
+/hcp/
