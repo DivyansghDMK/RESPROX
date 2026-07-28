@@ -488,6 +488,19 @@ async def mock_sync_state(serial: str):
         }
     }
 
+@app.get("/devices/{serial}/commands/{command_id}/status")
+@app.get("/api/devices/{serial}/commands/{command_id}/status")
+async def mock_command_status(serial: str, command_id: str):
+    if serial not in DEVICES_DB:
+        return JSONResponse(
+            status_code=404,
+            content={"success": False, "error": f"Device not found: {serial}"}
+        )
+    if serial in PENDING_DB:
+        return {"status": "PENDING"}
+    else:
+        return {"status": "ACKED"}
+
 @app.patch("/devices/{serial}/settings")
 @app.patch("/api/devices/{serial}/settings")
 async def mock_patch_settings(serial: str, body: dict):

@@ -468,12 +468,25 @@ async function updateDeviceSettings(serial, settings) {
   });
 }
 
+async function pollCommandStatus(deviceId, commandId, { intervalMs = 2000, timeoutMs = 40000 } = {}) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const res = await request(`/devices/${encodeURIComponent(deviceId)}/commands/${encodeURIComponent(commandId)}/status`);
+    if (res && ["ACKED", "NACKED", "TIMEOUT"].includes(res.status)) {
+      return res;
+    }
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+  }
+  throw new Error("Polling timed out client-side");
+}
+
 export const devicesAPI = {
   getDevices,
   getDeviceDetail,
   getSyncState,
   getTelemetryHistory,
   updateDeviceSettings,
+  pollCommandStatus,
 };
 
 export {

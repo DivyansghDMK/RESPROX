@@ -207,13 +207,25 @@ export function TherapyProvider({ children }) {
         ramp: Number(ramp)
       };
       
-      setSaveState('success');
       if (res && res.status === 'NO_CHANGE') {
+        setSaveState('success');
         setToastMessage('No fields differ from current stored values; nothing saved.');
+        setTimeout(() => setShowToast(false), 4000);
+      } else if (res && res.commandId) {
+        setToastMessage('Database updated. Syncing with device...');
+        const pollRes = await devicesAPI.pollCommandStatus(adminActiveSerial, res.commandId);
+        if (pollRes.status === 'ACKED') {
+          setSaveState('success');
+          setToastMessage('Settings successfully applied to device ✓');
+        } else {
+          throw new Error(`Device failed to apply settings (Status: ${pollRes.status})`);
+        }
+        setTimeout(() => setShowToast(false), 4000);
       } else {
+        setSaveState('success');
         setToastMessage('Settings successfully updated in DB & pushed to device ✓');
+        setTimeout(() => setShowToast(false), 4000);
       }
-      setTimeout(() => setShowToast(false), 4000);
     } catch (e) {
       console.error("Save settings failed:", e);
       setSaveState('error');

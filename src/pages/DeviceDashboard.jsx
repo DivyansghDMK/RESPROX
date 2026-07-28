@@ -271,6 +271,14 @@ export default function DeviceDashboard() {
       
       if (res && res.status === 'NO_CHANGE') {
         showToast('No fields differ from current stored values; nothing saved.', 'warning');
+      } else if (res && res.commandId) {
+        showToast('Database updated. Syncing with device...', 'info');
+        const pollRes = await devicesAPI.pollCommandStatus(serial, res.commandId);
+        if (pollRes.status === 'ACKED') {
+          showToast('Settings successfully applied to device ✓', 'success');
+        } else {
+          throw new Error(`Device failed to apply settings (Status: ${pollRes.status})`);
+        }
       } else {
         showToast('Settings successfully updated in DB ✓', 'success');
       }
