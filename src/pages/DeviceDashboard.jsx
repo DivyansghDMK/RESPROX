@@ -540,23 +540,27 @@ export default function DeviceDashboard() {
                   <div style={fieldLabel}>Fixed Pressure</div>
                   <span style={modeBadge}>Fixed Mode (Range: 4–{maxLimit} cmH₂O)</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12 }}>
-                  <button onClick={() => setPressure(v => Math.max(4, +(v - 0.5).toFixed(1)))} style={stepBtn}><MinusIcon/></button>
-                  <div style={{ textAlign: 'center', minWidth: 110 }}>
-                    <span style={{ fontSize: 40, fontWeight: 900, color: '#0d7de6' }}>{pressure.toFixed(1)}</span>
-                    <span style={{ fontSize: 14, color: '#64748b', marginLeft: 4 }}>cmH₂O</span>
-                    {device.settings.pressure !== pressure && <div style={changedTag}>was {device.settings.pressure.toFixed(1)}</div>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <button onClick={() => setPressure(v => Math.max(4, +(v - 0.5).toFixed(1)))} style={stepBtn}><MinusIcon/></button>
+                    <div style={{ textAlign: 'center', minWidth: 110 }}>
+                      <span style={{ fontSize: 32, fontWeight: 900, color: '#0d7de6' }}>{pressure.toFixed(1)}</span>
+                      <span style={{ fontSize: 14, color: '#64748b', marginLeft: 4 }}>cmH₂O</span>
+                      {device.settings.pressure !== pressure && <div style={{ ...changedTag, display: 'block', margin: '2px auto 0' }}>was {device.settings.pressure.toFixed(1)}</div>}
+                    </div>
+                    <button onClick={() => setPressure(v => Math.min(maxLimit, +(v + 0.5).toFixed(1)))} style={stepBtn}><PlusIcon/></button>
                   </div>
-                  <button onClick={() => setPressure(v => Math.min(maxLimit, +(v + 0.5).toFixed(1)))} style={stepBtn}><PlusIcon/></button>
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: '1 1 200px', minWidth: 150 }}>
                     <StyledSlider value={Math.min(pressure, maxLimit)} min={4} max={maxLimit} step={0.5} onChange={setPressure} label="Pressure"/>
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 14, borderTop: '1px solid var(--line)', flexWrap: 'wrap' }}>
                   <span style={fieldLabel}>Ramp Time</span>
-                  <button onClick={() => setRamp(v => stepRampDown(v))} style={stepBtn}><MinusIcon/></button>
-                  <span style={{ fontWeight: 800, fontSize: 16, color: '#163257', minWidth: 110, textAlign: 'center' }}>{formatRampDisplay(ramp)}</span>
-                  <button onClick={() => setRamp(v => stepRampUp(v))} style={stepBtn}><PlusIcon/></button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <button onClick={() => setRamp(v => stepRampDown(v))} style={stepBtn}><MinusIcon/></button>
+                    <span style={{ fontWeight: 800, fontSize: 16, color: '#163257', minWidth: 110, textAlign: 'center' }}>{formatRampDisplay(ramp)}</span>
+                    <button onClick={() => setRamp(v => stepRampUp(v))} style={stepBtn}><PlusIcon/></button>
+                  </div>
                   <span style={{ fontSize: 12, color: 'var(--muted)' }}>Range: Off (0) to 45 min · Auto (30 min)</span>
                   {device.settings.ramp !== ramp && <span style={changedTag}>was {device.settings.ramp}</span>}
                 </div>
