@@ -2,7 +2,7 @@
 # FastAPI server — Devices-centric CPAP Settings Push & Telemetry
 # pip install fastapi uvicorn websockets boto3 httpx
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, status, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, status, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
@@ -503,7 +503,7 @@ async def mock_command_status(serial: str, command_id: str):
 
 @app.patch("/devices/{serial}/settings")
 @app.patch("/api/devices/{serial}/settings")
-async def mock_patch_settings(serial: str, body: dict):
+async def mock_patch_settings(serial: str, body: dict, background_tasks: BackgroundTasks):
     if serial not in DEVICES_DB:
         return JSONResponse(
             status_code=404,
@@ -628,6 +628,14 @@ async def mock_patch_settings(serial: str, body: dict):
     
     delivered = await manager.push_settings(serial, push_payload)
     PENDING_DB[serial] = push_payload
+    
+    async def simulate_device_ack():
+        await asyncio.sleep(1.5)
+        PENDING_DB.pop(serial, None)
+        logger.info(f"Simulated auto-ACK for device {serial} completed.")
+
+    background_tasks.add_task(simulate_device_ack)
+
     
     return {
         "success": True,
