@@ -156,147 +156,201 @@ export default function Therapy() {
               <AutoIcon />
               <span>AUTO CPAP</span>
             </button>
+            <button
+              className={`mode-button ${mode === 'bipap' ? 'active' : ''}`}
+              onClick={() => setMode('bipap')}
+              aria-pressed={mode === 'bipap'}
+              aria-label="Set mode to BiPAP"
+            >
+              <BreezeIcon />
+              <span>BiPAP</span>
+            </button>
           </div>
 
-          {mode === 'cpap' ? (
-            <div className="pressure-panel">
-              <div className="panel-head">
-                <h3>CPAP</h3>
-                <span>Pressure Setting</span>
-                <button className="micro-pill" aria-label="Fixed Pressure type">Fixed Pressure</button>
-              </div>
+          {(() => {
+            const maxLimit = mode === 'bipap' ? 30 : 20;
+            const RAMP_STEPS = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45];
+            const stepRampDown = (val) => {
+              const idx = RAMP_STEPS.indexOf(val);
+              if (idx <= 0) return RAMP_STEPS[0];
+              return RAMP_STEPS[idx - 1];
+            };
+            const stepRampUp = (val) => {
+              const idx = RAMP_STEPS.indexOf(val);
+              if (idx === -1 || idx >= RAMP_STEPS.length - 1) return RAMP_STEPS[RAMP_STEPS.length - 1];
+              return RAMP_STEPS[idx + 1];
+            };
+            const formatRampDisplay = (val) => {
+              if (val === 0) return 'Off';
+              if (val === 30) return '30 (Auto)';
+              return `${val} min`;
+            };
 
-              <div className="pressure-row">
-                <button
-                  className="round-button"
-                  onClick={() => setPressure((p) => Math.max(4, +(p - 0.5).toFixed(1)))}
-                  aria-label="Decrease pressure"
-                >
-                  <MinusIcon />
-                </button>
+            const safePressure = Math.min(pressure, maxLimit);
+            const safeMaxPressure = Math.min(maxPressure, maxLimit);
+            const safeMinPressure = Math.min(minPressure, safeMaxPressure);
+            const progress = ((safePressure - 4) / (maxLimit - 4)) * 100;
 
-                <div className="pressure-value">
-                  <strong>{pressure.toFixed(1)}</strong>
-                  <span>cm H2O</span>
+            return mode === 'cpap' ? (
+              <div className="pressure-panel">
+                <div className="panel-head">
+                  <h3>CPAP</h3>
+                  <span>Fixed Pressure Setting</span>
+                  <button className="micro-pill" aria-label="Fixed Pressure type">Fixed Mode</button>
                 </div>
 
-                <button
-                  className="round-button"
-                  onClick={() => setPressure((p) => Math.min(30, +(p + 0.5).toFixed(1)))}
-                  aria-label="Increase pressure"
-                >
-                  <PlusIcon />
-                </button>
-              </div>
+                <div className="pressure-row">
+                  <button
+                    className="round-button"
+                    onClick={() => setPressure((p) => Math.max(4, +(p - 0.5).toFixed(1)))}
+                    aria-label="Decrease pressure"
+                  >
+                    <MinusIcon />
+                  </button>
 
-              <div className="slider-wrap">
-                <span>4</span>
-                <input
-                  type="range"
-                  min="4"
-                  max="30"
-                  step="0.1"
-                  value={pressure}
-                  onChange={(e) => setPressure(Number(e.target.value))}
-                  style={{ '--progress': `${progress}%` }}
-                  aria-label="Pressure slider"
-                />
-                <span>30</span>
-              </div>
-
-              <div className="range-copy">Range: 4 - 30 cm H2O</div>
-            </div>
-          ) : (
-            <div className="auto-panel">
-              <div className="panel-head">
-                <h3>AUTO CPAP</h3>
-                <span>Settings</span>
-                <button className="micro-pill light" aria-label="Auto Adjusting type">Auto Adjusting</button>
-              </div>
-
-              <div className="auto-grid">
-                <div className="setting-card">
-                  <div className="setting-top">
-                    <h4>Min Pressure</h4>
+                  <div className="pressure-value">
+                    <strong>{safePressure.toFixed(1)}</strong>
+                    <span>cm H₂O</span>
                   </div>
-                  <div className="mini-stepper">
-                    <button onClick={() => setMinPressure((v) => Math.max(4, +(v - 0.5).toFixed(1)))} aria-label="Decrease Min Pressure">
-                      <MinusIcon />
-                    </button>
-                    <div className="mini-value">
-                      <strong>{minPressure.toFixed(1)}</strong>
-                      <span>cm H2O</span>
-                    </div>
-                    <button onClick={() => setMinPressure((v) => Math.min(maxPressure, +(v + 0.5).toFixed(1)))} aria-label="Increase Min Pressure">
-                      <PlusIcon />
-                    </button>
-                  </div>
-                  <div className="range-copy">Range: 4 - 30 cm H2O</div>
+
+                  <button
+                    className="round-button"
+                    onClick={() => setPressure((p) => Math.min(maxLimit, +(p + 0.5).toFixed(1)))}
+                    aria-label="Increase pressure"
+                  >
+                    <PlusIcon />
+                  </button>
                 </div>
 
-                <div className="setting-card">
-                  <div className="setting-top">
-                    <h4>Max Pressure</h4>
-                  </div>
-                  <div className="mini-stepper">
-                    <button onClick={() => setMaxPressure((v) => Math.max(minPressure, +(v - 0.5).toFixed(1)))} aria-label="Decrease Max Pressure">
-                      <MinusIcon />
-                    </button>
-                    <div className="mini-value">
-                      <strong>{maxPressure.toFixed(1)}</strong>
-                      <span>cm H2O</span>
-                    </div>
-                    <button onClick={() => setMaxPressure((v) => Math.min(30, +(v + 0.5).toFixed(1)))} aria-label="Increase Max Pressure">
-                      <PlusIcon />
-                    </button>
-                  </div>
-                  <div className="range-copy">Range: 4 - 30 cm H2O</div>
+                <div className="slider-wrap">
+                  <span>4</span>
+                  <input
+                    type="range"
+                    min="4"
+                    max={maxLimit}
+                    step="0.5"
+                    value={safePressure}
+                    onChange={(e) => setPressure(Number(e.target.value))}
+                    style={{ '--progress': `${progress}%` }}
+                    aria-label="Pressure slider"
+                  />
+                  <span>{maxLimit}</span>
                 </div>
 
-                <div className="setting-card">
+                <div className="range-copy">Range: 4 - {maxLimit} cm H₂O</div>
+
+                <div className="setting-card" style={{ marginTop: 20 }}>
                   <div className="setting-top">
-                    <h4>Aflex</h4>
+                    <h4>Ramp Time</h4>
                     <InfoIcon />
                   </div>
-                  <div className="segmented" role="group" aria-label="Aflex settings">
-                    {['Off', '1', '2', '3'].map((item, index) => (
-                      <button
-                        key={item}
-                        className={aflex === index ? 'active' : ''}
-                        onClick={() => setAflex(index)}
-                        aria-pressed={aflex === index}
-                        aria-label={`Aflex level ${item}`}
-                      >
-                        {item}
+                  <div className="mini-stepper">
+                    <button onClick={() => setRamp((v) => stepRampDown(v))} aria-label="Decrease ramp">
+                      <MinusIcon />
+                    </button>
+                    <div className="mini-value">
+                      <strong>{formatRampDisplay(ramp)}</strong>
+                    </div>
+                    <button onClick={() => setRamp((v) => stepRampUp(v))} aria-label="Increase ramp">
+                      <PlusIcon />
+                    </button>
+                  </div>
+                  <div className="range-copy">Range: Off (0) to 45 min · 30 min (Auto)</div>
+                </div>
+
+                <SaveButton />
+              </div>
+            ) : (
+              <div className="auto-panel">
+                <div className="panel-head">
+                  <h3>{mode === 'bipap' ? 'BiPAP' : 'AUTO CPAP'}</h3>
+                  <span>Settings</span>
+                  <button className="micro-pill light" aria-label="Auto Adjusting type">Auto Adjusting</button>
+                </div>
+
+                <div className="auto-grid">
+                  <div className="setting-card">
+                    <div className="setting-top">
+                      <h4>Min Pressure</h4>
+                    </div>
+                    <div className="mini-stepper">
+                      <button onClick={() => setMinPressure((v) => Math.max(4, +(v - 0.5).toFixed(1)))} aria-label="Decrease Min Pressure">
+                        <MinusIcon />
                       </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="setting-card">
-                  <div className="setting-top">
-                    <h4>Ramp</h4>
-                    <InfoIcon />
-                  </div>
-                  <div className="mini-stepper">
-                    <button onClick={() => setRamp((v) => Math.max(0, v - 1))} aria-label="Decrease ramp">
-                      <MinusIcon />
-                    </button>
-                    <div className="mini-value">
-                      <strong>{ramp}</strong>
-                      <span>min</span>
+                      <div className="mini-value">
+                        <strong>{safeMinPressure.toFixed(1)}</strong>
+                        <span>cm H₂O</span>
+                      </div>
+                      <button onClick={() => setMinPressure((v) => Math.min(safeMaxPressure, +(v + 0.5).toFixed(1)))} aria-label="Increase Min Pressure">
+                        <PlusIcon />
+                      </button>
                     </div>
-                    <button onClick={() => setRamp((v) => Math.min(45, v + 1))} aria-label="Increase ramp">
-                      <PlusIcon />
-                    </button>
+                    <div className="range-copy">Range: 4 - {safeMaxPressure} cm H₂O</div>
                   </div>
-                  <div className="range-copy">Range: 0 - 45 min</div>
-                </div>
-              </div>
 
-              <SaveButton />
-            </div>
-          )}
+                  <div className="setting-card">
+                    <div className="setting-top">
+                      <h4>Max Pressure</h4>
+                    </div>
+                    <div className="mini-stepper">
+                      <button onClick={() => setMaxPressure((v) => Math.max(safeMinPressure, +(v - 0.5).toFixed(1)))} aria-label="Decrease Max Pressure">
+                        <MinusIcon />
+                      </button>
+                      <div className="mini-value">
+                        <strong>{safeMaxPressure.toFixed(1)}</strong>
+                        <span>cm H₂O</span>
+                      </div>
+                      <button onClick={() => setMaxPressure((v) => Math.min(maxLimit, +(v + 0.5).toFixed(1)))} aria-label="Increase Max Pressure">
+                        <PlusIcon />
+                      </button>
+                    </div>
+                    <div className="range-copy">Range: {safeMinPressure} - {maxLimit} cm H₂O</div>
+                  </div>
+
+                  <div className="setting-card">
+                    <div className="setting-top">
+                      <h4>Aflex (EPR)</h4>
+                      <InfoIcon />
+                    </div>
+                    <div className="segmented" role="group" aria-label="Aflex settings">
+                      {['Off', '1', '2', '3'].map((item, index) => (
+                        <button
+                          key={item}
+                          className={aflex === index ? 'active' : ''}
+                          onClick={() => setAflex(index)}
+                          aria-pressed={aflex === index}
+                          aria-label={`Aflex level ${item}`}
+                        >
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="setting-card">
+                    <div className="setting-top">
+                      <h4>Ramp Time</h4>
+                      <InfoIcon />
+                    </div>
+                    <div className="mini-stepper">
+                      <button onClick={() => setRamp((v) => stepRampDown(v))} aria-label="Decrease ramp">
+                        <MinusIcon />
+                      </button>
+                      <div className="mini-value">
+                        <strong>{formatRampDisplay(ramp)}</strong>
+                      </div>
+                      <button onClick={() => setRamp((v) => stepRampUp(v))} aria-label="Increase ramp">
+                        <PlusIcon />
+                      </button>
+                    </div>
+                    <div className="range-copy">Range: Off (0) to 45 min · 30 min (Auto)</div>
+                  </div>
+                </div>
+
+                <SaveButton />
+              </div>
+            );
+          })()}
         </section>
 
         {/* Mobile Therapy Settings */}

@@ -21,13 +21,7 @@ function formatLastPulled(date) {
 }
 
 function formatAdminLabel(username) {
-  if (!username) return 'Admin';
-  const base = username.includes('@') ? username.split('@')[0] : username;
-  return base
-    .split(/[._-]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
+  return 'Admin';
 }
 
 export default function Header() {

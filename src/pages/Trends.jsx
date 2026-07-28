@@ -1,49 +1,61 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import GlassCard from '../components/GlassCard';
 import TrendChart from '../components/TrendChart';
 import { DownloadIcon } from '../components/Icons';
 import { useTherapy } from '../context/TherapyContext';
 
 export default function Trends() {
-  const { deviceData } = useTherapy();
+  const { deviceData, setDeviceData, setAdminActiveSerial } = useTherapy();
   const [timeFilter, setTimeFilter] = useState('week'); // 'week' | 'month' | 'custom'
   const [usageRange, setUsageRange] = useState('7d'); // '7d' | '30d' | '90d'
+
+
 
   const sessions = useMemo(() => {
     return deviceData ? deviceData.sessions : [];
   }, [deviceData]);
 
+  // Determine subset of data to plot based on time filters
+  const displaySessions = useMemo(() => {
+    if (timeFilter === 'week') {
+      return sessions.slice(-7);
+    }
+    if (timeFilter === 'month') {
+      return sessions.slice(-30);
+    }
+    return sessions;
+  }, [sessions, timeFilter]);
+
   const usage7d = useMemo(() => {
-    return sessions.map(s => ({
-      day: s.date.split(' ')[0],
+    return displaySessions.map(s => ({
+      day: s.date,
       usage: Math.round((s.usage_hours / 8) * 100)
     }));
-  }, [sessions]);
+  }, [displaySessions]);
 
   const ahiData = useMemo(() => {
-    return sessions.map(s => ({
-      day: s.date.split(' ')[0],
+    return displaySessions.map(s => ({
+      day: s.date,
       ahi: s.ahi
     }));
-  }, [sessions]);
+  }, [displaySessions]);
 
   const leakData = useMemo(() => {
-    return sessions.map(s => ({
-      day: s.date.split(' ')[0],
+    return displaySessions.map(s => ({
+      day: s.date,
       leak: s.mask_leak
     }));
-  }, [sessions]);
+  }, [displaySessions]);
 
   const pressureData = useMemo(() => {
-    return sessions.map(s => ({
-      day: s.date.split(' ')[0],
+    return displaySessions.map(s => ({
+      day: s.date,
       pressure: s.pressure_95
     }));
-  }, [sessions]);
+  }, [displaySessions]);
 
-  // Compute metrics stats dynamically
   const stats = useMemo(() => {
-    if (!sessions.length) {
+    if (!displaySessions.length) {
       return {
         avgUsage: '— hrs',
         compliance: '— Compliance',
@@ -55,16 +67,16 @@ export default function Trends() {
         maxPressure: '—'
       };
     }
-    const avgUsage = sessions.reduce((acc, s) => acc + s.usage_hours, 0) / sessions.length;
-    const complianceCount = sessions.filter(s => s.usage_hours >= 4.0).length;
-    const avgAhi = sessions.reduce((acc, s) => acc + s.ahi, 0) / sessions.length;
-    const avgLeak = sessions.reduce((acc, s) => acc + s.mask_leak, 0) / sessions.length;
-    const avgPressure = sessions.reduce((acc, s) => acc + s.pressure_95, 0) / sessions.length;
-    const maxPressure = Math.max(...sessions.map(s => s.pressure_95));
+    const avgUsage = displaySessions.reduce((acc, s) => acc + s.usage_hours, 0) / displaySessions.length;
+    const complianceCount = displaySessions.filter(s => s.usage_hours >= 4.0).length;
+    const avgAhi = displaySessions.reduce((acc, s) => acc + s.ahi, 0) / displaySessions.length;
+    const avgLeak = displaySessions.reduce((acc, s) => acc + s.mask_leak, 0) / displaySessions.length;
+    const avgPressure = displaySessions.reduce((acc, s) => acc + s.pressure_95, 0) / displaySessions.length;
+    const maxPressure = Math.max(...displaySessions.map(s => s.pressure_95));
 
     return {
       avgUsage: `${avgUsage.toFixed(1)} hrs`,
-      compliance: `${Math.round((complianceCount / sessions.length) * 100)}% Compliance`,
+      compliance: `${Math.round((complianceCount / displaySessions.length) * 100)}% Compliance`,
       avgAhi: `${avgAhi.toFixed(1)} / hr`,
       ahiStatus: avgAhi <= 5.0 ? 'Optimal' : 'Elevated',
       avgLeak: `${avgLeak.toFixed(1)} L/m`,
@@ -72,7 +84,7 @@ export default function Trends() {
       pressure95: `${avgPressure.toFixed(1)} cm H2O`,
       maxPressure: maxPressure.toFixed(1)
     };
-  }, [sessions]);
+  }, [displaySessions]);
 
   if (!deviceData) {
     return (
@@ -111,7 +123,7 @@ export default function Trends() {
               className={timeFilter === 'custom' ? 'active' : ''}
               onClick={() => setTimeFilter('custom')}
             >
-              Custom Date Range
+              Full History
             </button>
           </div>
           
@@ -122,15 +134,10 @@ export default function Trends() {
         </div>
 
         {timeFilter === 'custom' && (
-          <div className="custom-date-inputs" style={{ marginTop: '16px', display: 'flex', gap: '12px' }}>
-            <div className="input-field">
-              <label>Start Date</label>
-              <input type="date" defaultValue="2026-06-01" />
-            </div>
-            <div className="input-field">
-              <label>End Date</label>
-              <input type="date" defaultValue="2026-06-07" />
-            </div>
+          <div className="custom-date-inputs" style={{ marginTop: '16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>
+              Showing full record history of <strong>{sessions.length}</strong> therapy sessions spanning from <strong>{sessions[0]?.date || '—'}</strong> to <strong>{sessions[sessions.length - 1]?.date || '—'}</strong>.
+            </span>
           </div>
         )}
       </section>
@@ -157,7 +164,7 @@ export default function Trends() {
         <article className="kpi-card">
           <span>95th Percentile Pressure</span>
           <strong>{stats.pressure95}</strong>
-          <small style={{ color: 'var(--muted)' }}>Max: {stats.maxPressure}</small>
+          <small style={{ color: 'var(--muted)' }}>Max: {stats.maxPressure} cmH2O</small>
         </article>
       </section>
 

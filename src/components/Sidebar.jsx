@@ -15,7 +15,7 @@ import {
 
 export default function Sidebar() {
   const { sidebarOpen, setSidebarOpen, adminActiveSerial } = useTherapy();
-  const activeSerial = adminActiveSerial || localStorage.getItem('adminActiveSerial') || 'CVT30-C-9281';
+  const activeSerial = adminActiveSerial || localStorage.getItem('adminActiveSerial') || 'CVT3000001';
 
   const sidebarItems = [
     { label: 'Dashboard', path: `/device/${activeSerial}`, icon: HomeIcon },
@@ -52,12 +52,12 @@ export default function Sidebar() {
             <svg viewBox="0 0 64 64" style={{ width: '76px', height: '76px' }} fill="none">
               <defs>
                 <linearGradient id="sidebarBlueG" x1="16" y1="18" x2="42" y2="42" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stop-color="#ffffff"/>
-                  <stop offset="100%" stop-color="#d0e3ff"/>
+                  <stop offset="0%" stopColor="#ffffff"/>
+                  <stop offset="100%" stopColor="#d0e3ff"/>
                 </linearGradient>
                 <linearGradient id="sidebarTealG" x1="22" y1="22" x2="48" y2="46" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stop-color="#ffffff"/>
-                  <stop offset="100%" stop-color="#a7f3d0"/>
+                  <stop offset="0%" stopColor="#ffffff"/>
+                  <stop offset="100%" stopColor="#a7f3d0"/>
                 </linearGradient>
               </defs>
               <path d="M24 19H32C37.5 19 42 23.5 42 29C42 34.5 37.5 39 32 39H24C21.2 39 19 36.8 19 34V24C19 21.2 21.2 19 24 19Z" 

@@ -257,12 +257,25 @@ class LoginRequest(BaseModel):
     password: str
 
 class TherapySettings(BaseModel):
-    therapy_mode:  Optional[str]   = Field(None, pattern="^(CPAP|AUTO CPAP)$")
+    therapy_mode:  Optional[str]   = Field(None, pattern="^(CPAP|AUTO CPAP|BiPAP)$")
     pressure:      Optional[float] = Field(None, ge=4, le=30)
     min_pressure:  Optional[float] = Field(None, ge=4, le=30)
     max_pressure:  Optional[float] = Field(None, ge=4, le=30)
     aflex:         Optional[int]   = Field(None, ge=0, le=3)
-    ramp:          Optional[float] = Field(None, ge=4, le=30)
+    ramp:          Optional[float] = Field(None, ge=0, le=45)
+
+    S:             Optional[dict]  = None
+    T:             Optional[dict]  = None
+    ST:            Optional[dict]  = None
+    AUTO:          Optional[dict]  = None
+    CPAP:          Optional[dict]  = None
+    VAPS:          Optional[dict]  = None
+    CONFIG:        Optional[dict]  = None
+    COMFORT:       Optional[dict]  = None
+    OPTIONS:       Optional[dict]  = None
+
+    class Config:
+        extra = "allow"
 
 class SettingsAck(BaseModel):
     serial:    str
@@ -389,6 +402,229 @@ async def device_fetch_settings(serial: str):
         raise HTTPException(status_code=404, detail="Device not found")
     PENDING_DB.pop(serial, None)
     return {"settings": DEVICES_DB[serial]["settings"]}
+
+
+# ── AWS API Compatibility Mock Endpoints ────────────────────────
+
+import uuid
+
+def _get_mock_decoded_payload(device: dict) -> dict:
+    settings = device.get("settings", {})
+    return {
+        "S": None,
+        "T": None,
+        "ST": None,
+        "AUTO": {
+            "ramp": int(settings.get("ramp", 20)),
+            "aflex": int(settings.get("aflex", 2)),
+            "maxPressure": float(settings.get("max_pressure", 20.0)),
+            "minPressure": float(settings.get("min_pressure", 4.0))
+        },
+        "CPAP": {
+            "ramp": int(settings.get("ramp", 20)),
+            "pressure": float(settings.get("pressure", 10.0))
+        },
+        "VAPS": None,
+        "CONFIG": {
+            "reset": False,
+            "dateDD": 25,
+            "dateMM": 6,
+            "dateYY": 25,
+            "timeHH": 9,
+            "timeMM": 30,
+            "timeSS": 0,
+            "datePad": 0
+        },
+        "COMFORT": None,
+        "OPTIONS": None
+    }
+
+@app.get("/devices/{serial}/telemetry/latest")
+@app.get("/api/devices/{serial}/telemetry/latest")
+async def mock_telemetry_latest(serial: str):
+    if serial not in DEVICES_DB:
+        return JSONResponse(
+            status_code=404,
+            content={"success": False, "error": f"Device not found: {serial}"}
+        )
+    device = DEVICES_DB[serial]
+    therapy_mode = device["settings"].get("therapy_mode", "CPAP")
+    mode_code = "AUTO" if "AUTO" in therapy_mode else "CPAP"
+    
+    return {
+        "success": True,
+        "data": {
+            "id": str(uuid.uuid4()),
+            "message_id": str(uuid.uuid4()),
+            "device_id": serial,
+            "packet_type": "FULL_SYNC",
+            "device_type": "CPAP",
+            "mode": mode_code,
+            "decoded_payload": _get_mock_decoded_payload(device),
+            "device_timestamp": "2025-06-25T09:30:00.000Z",
+            "server_timestamp": "2026-07-27T11:35:41.566Z"
+        }
+    }
+
+@app.get("/devices/{serial}/sync-state")
+@app.get("/api/devices/{serial}/sync-state")
+async def mock_sync_state(serial: str):
+    if serial not in DEVICES_DB:
+        return JSONResponse(
+            status_code=404,
+            content={"success": False, "error": f"Device not found: {serial}"}
+        )
+    return {
+        "success": True,
+        "data": {
+            "device_id": serial,
+            "last_device_upload": "2025-06-25T09:30:00.000Z",
+            "last_server_download": "2026-07-27T11:35:41.438Z",
+            "last_acknowledgement": "2026-07-27T11:35:41.566Z",
+            "last_message_id": str(uuid.uuid4()),
+            "last_sync_direction": "DEVICE_TO_SERVER",
+            "sync_status": "SYNCED",
+            "updated_at": "2026-07-27T11:35:41.566Z"
+        }
+    }
+
+@app.patch("/devices/{serial}/settings")
+@app.patch("/api/devices/{serial}/settings")
+async def mock_patch_settings(serial: str, body: dict):
+    if serial not in DEVICES_DB:
+        return JSONResponse(
+            status_code=404,
+            content={"success": False, "error": f"Device not found: {serial}"}
+        )
+    
+    device = DEVICES_DB[serial]
+    original_decoded = _get_mock_decoded_payload(device)
+    
+    # Validate ranges
+    cpap_patch = body.get("CPAP")
+    if cpap_patch is not None:
+        pressure = cpap_patch.get("pressure")
+        if pressure is not None and not (4 <= pressure <= 20):
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": f"CPAP.pressure: {pressure} is out of range (encoded range 40-200)"}
+            )
+        ramp = cpap_patch.get("ramp")
+        if ramp is not None and not (0 <= ramp <= 45):
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": f"CPAP.ramp: {ramp} is out of range"}
+            )
+            
+    auto_patch = body.get("AUTO")
+    if auto_patch is not None:
+        min_p = auto_patch.get("minPressure")
+        if min_p is not None and not (4 <= min_p <= 20):
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": f"AUTO.minPressure: {min_p} is out of range (encoded range 40-200)"}
+            )
+        max_p = auto_patch.get("maxPressure")
+        if max_p is not None and not (4 <= max_p <= 20):
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": f"AUTO.maxPressure: {max_p} is out of range (encoded range 40-200)"}
+            )
+        aflex = auto_patch.get("aflex")
+        if aflex is not None and not (0 <= aflex <= 3):
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": f"AUTO.aflex: {aflex} is out of range (encoded range 0-3)"}
+            )
+        ramp = auto_patch.get("ramp")
+        if ramp is not None and not (0 <= ramp <= 45):
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": f"AUTO.ramp: {ramp} is out of range"}
+            )
+
+    # Compute changed fields
+    changed_fields = {}
+    has_changes = False
+    
+    # Reconstruct what was sent in the request structure for comparison
+    updated_modes = {
+        "CPAP": None,
+        "AUTO": None,
+        "S": None,
+        "ST": None,
+        "T": None,
+        "VAPS": None,
+        "CONFIG": None,
+        "COMFORT": None,
+        "OPTIONS": None
+    }
+    
+    # We only check keys: CPAP, AUTO
+    for mode_name in ["CPAP", "AUTO"]:
+        mode_patch = body.get(mode_name)
+        if mode_patch is None:
+            continue
+            
+        original_mode_val = original_decoded.get(mode_name) or {}
+        mode_changed_fields = {}
+        for k, v in mode_patch.items():
+            orig_v = original_mode_val.get(k)
+            if v != orig_v:
+                mode_changed_fields[k] = {"from": orig_v, "to": v}
+                has_changes = True
+                
+        if mode_changed_fields:
+            changed_fields[mode_name] = mode_changed_fields
+            updated_modes[mode_name] = mode_patch
+
+    if not has_changes:
+        return {
+            "success": True,
+            "commandId": None,
+            "status": "NO_CHANGE",
+            "deviceId": serial,
+            "message": "No fields differ from the current stored values; nothing saved."
+        }
+
+    # Apply changes to local DEVICES_DB settings store
+    settings = device["settings"]
+    if cpap_patch is not None:
+        settings["therapy_mode"] = "CPAP"
+        if "pressure" in cpap_patch:
+            settings["pressure"] = float(cpap_patch["pressure"])
+        if "ramp" in cpap_patch:
+            settings["ramp"] = float(cpap_patch["ramp"])
+            
+    if auto_patch is not None:
+        settings["therapy_mode"] = "AUTO CPAP"
+        if "minPressure" in auto_patch:
+            settings["min_pressure"] = float(auto_patch["minPressure"])
+        if "maxPressure" in auto_patch:
+            settings["max_pressure"] = float(auto_patch["maxPressure"])
+        if "aflex" in auto_patch:
+            settings["aflex"] = int(auto_patch["aflex"])
+        if "ramp" in auto_patch:
+            settings["ramp"] = float(auto_patch["ramp"])
+
+    push_payload = {
+        **settings,
+        "updated_by": "admin",
+        "timestamp": time.time(),
+    }
+    
+    delivered = await manager.push_settings(serial, push_payload)
+    PENDING_DB[serial] = push_payload
+    
+    return {
+        "success": True,
+        "commandId": str(uuid.uuid4()),
+        "status": "SAVED",
+        "deviceId": serial,
+        "original": original_decoded,
+        "updated": updated_modes,
+        "changedFields": changed_fields
+    }
 
 
 # ── AWS S3 Presigned URL ─────────────────────────────────────────

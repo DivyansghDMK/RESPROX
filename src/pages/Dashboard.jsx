@@ -55,35 +55,35 @@ export default function Dashboard() {
       const minsInt = Math.round((ld.usage_hours - hoursInt) * 60);
       return `${hoursInt}h ${minsInt}m`;
     }
-    return '7h 32m';
+    return '0h 0m';
   }, [deviceData]);
 
   const usagePct = useMemo(() => {
     if (deviceData && deviceData.live_data) {
       return deviceData.live_data.compliance_pct;
     }
-    return 94;
+    return 0;
   }, [deviceData]);
 
   const maskLeak = useMemo(() => {
     if (deviceData && deviceData.live_data) {
       return deviceData.live_data.mask_leak;
     }
-    return 24;
+    return 0;
   }, [deviceData]);
 
   const pressure95 = useMemo(() => {
     if (deviceData && deviceData.live_data) {
       return deviceData.live_data.pressure_95;
     }
-    return 11.8;
+    return 0.0;
   }, [deviceData]);
 
   const ahiValue = useMemo(() => {
     if (deviceData && deviceData.live_data) {
       return deviceData.live_data.ahi;
     }
-    return 2.1;
+    return 0.0;
   }, [deviceData]);
 
   const trendData = useMemo(() => {
@@ -93,22 +93,14 @@ export default function Dashboard() {
         usage: Math.round((s.usage_hours / 8) * 100)
       }));
     }
-    return [
-      { day: 'Mon', usage: 88 },
-      { day: 'Tue', usage: 94 },
-      { day: 'Wed', usage: 91 },
-      { day: 'Thu', usage: 97 },
-      { day: 'Fri', usage: 92 },
-      { day: 'Sat', usage: 95 },
-      { day: 'Sun', usage: 98 }
-    ];
+    return [];
   }, [deviceData]);
 
   const metrics = useMemo(() => [
     { title: 'Usage', subtitle: 'Last Night', value: usageFormatted, footer: `${usagePct}% of goal`, accent: 'ring' },
     { title: 'AHI', subtitle: 'Last Night', value: ahiValue.toString(), badge: ahiValue <= 5.0 ? 'Good' : 'Elevated', footer: 'Events / hr', accent: 'soft' },
     { title: 'Mask Seal', subtitle: 'Last Night', value: `${maskLeak} L/min`, badge: maskLeak <= 24 ? 'Good' : 'High Leak', footer: 'Leak Rate', accent: 'soft' },
-    { title: 'Pressure', subtitle: '95th Percentile', value: `${pressure95} cm H2O`, footer: `Max ${deviceData ? (Math.max(...deviceData.sessions.map(s => s.pressure_95), pressure95)).toFixed(1) : '12.4'} cm H2O`, accent: 'soft' },
+    { title: 'Pressure', subtitle: '95th Percentile', value: `${pressure95} cm H2O`, footer: `Max ${deviceData ? (Math.max(...deviceData.sessions.map(s => s.pressure_95), pressure95)).toFixed(1) : '0.0'} cm H2O`, accent: 'soft' },
   ], [deviceData, usageFormatted, usagePct, maskLeak, pressure95, ahiValue]);
 
   const progress = useMemo(() => ((pressure - 4) / (30 - 4)) * 100, [pressure]);

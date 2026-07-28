@@ -31,10 +31,10 @@ import WaveformAnalysis from './pages/WaveformAnalysis';
 import CreateOrg from './pages/CreateOrg';
 
 function AppContent() {
-  useDeviceSettings();
+  // useDeviceSettings();
   const location = useLocation();
   const { adminActiveSerial } = useTherapy();
-  const activeSerial = adminActiveSerial || localStorage.getItem('adminActiveSerial') || 'CVT30-C-9281';
+  const activeSerial = adminActiveSerial || localStorage.getItem('adminActiveSerial') || 'CVT3000001';
   const isAuthPage = location.pathname === '/login' || location.pathname === '/forgot-password' || location.pathname === '/';
 
   useEffect(() => {

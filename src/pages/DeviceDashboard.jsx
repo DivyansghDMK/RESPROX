@@ -117,10 +117,20 @@ export default function DeviceDashboard() {
   const [saving, setSaving]           = useState(false);
   const [toast, setToast]             = useState(null);
   const [lastPull, setLastPull]       = useState(null);
+  const [expandedRow, setExpandedRow] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const RECORDS_PER_PAGE = 10;
   const pollRef = useRef(null);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [serial]);
+
   const fetchDevicesList = useCallback(async () => {
-    try { const list = await devicesAPI.getDevices(); setDevices(list); }
+    try {
+      const list = await devicesAPI.getDevices();
+      setDevices(list);
+    }
     catch (e) { console.warn('Sidebar fetch failed:', e); }
   }, []);
 
@@ -155,10 +165,36 @@ export default function DeviceDashboard() {
   };
 
   useEffect(() => {
+    let timeoutId = null;
+    let isMounted = true;
+
+    async function loadData() {
+      if (!isMounted) return;
+      try {
+        await Promise.all([
+          fetchDevicesList(),
+          fetchDevice(true)
+        ]);
+      } catch (err) {
+        console.warn(err);
+      } finally {
+        if (isMounted) {
+          timeoutId = setTimeout(loadData, 30000);
+        }
+      }
+    }
+
+    // Initial loads
     fetchDevicesList();
     fetchDevice();
-    pollRef.current = setInterval(() => { fetchDevice(true); fetchDevicesList(); }, 5000);
-    return () => clearInterval(pollRef.current);
+
+    // Start background sync after 30 seconds
+    timeoutId = setTimeout(loadData, 30000);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
   }, [fetchDevice, fetchDevicesList]);
 
   useEffect(() => {
@@ -182,10 +218,68 @@ export default function DeviceDashboard() {
       maxPressure !== s.max_pressure || aflex !== s.aflex || ramp !== s.ramp;
   }, [device, mode, pressure, minPressure, maxPressure, aflex, ramp]);
 
+  const sortedSessions = useMemo(() => {
+    if (!device?.sessions) return [];
+    return [...device.sessions].sort((a, b) => {
+      const getMs = (item) => {
+        if (item.timestamp) return item.timestamp;
+        const rawTs = item.raw?.server_timestamp || item.raw?.serverTimestamp;
+        if (rawTs) return new Date(rawTs).getTime();
+        return 0;
+      };
+      return getMs(b) - getMs(a); // Descending order: Newest dates on top!
+    });
+  }, [device?.sessions]);
+
+  const totalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(sortedSessions.length / RECORDS_PER_PAGE));
+  }, [sortedSessions.length]);
+
+  const paginatedSessions = useMemo(() => {
+    const start = (currentPage - 1) * RECORDS_PER_PAGE;
+    return sortedSessions.slice(start, start + RECORDS_PER_PAGE);
+  }, [sortedSessions, currentPage]);
+
   const resetDraft = () => { if (device) applyDeviceState(device); };
 
   const saveSettings = async () => {
-    showToast('Read-only integration: device settings cannot be pushed from the staging API.', 'warning');
+    setSaving(true);
+    showToast('Pushing settings...', 'info');
+    try {
+      const payload = {
+        therapy_mode: mode, // Already CPAP or AUTO CPAP
+        pressure: Number(pressure),
+        min_pressure: Number(minPressure),
+        max_pressure: Number(maxPressure),
+        aflex: Number(aflex),
+        ramp: Number(ramp)
+      };
+      
+      const res = await devicesAPI.updateDeviceSettings(serial, payload);
+      
+      // Update local baseline settings
+      if (device) {
+        device.settings = {
+          therapy_mode: mode,
+          pressure: Number(pressure),
+          min_pressure: Number(minPressure),
+          max_pressure: Number(maxPressure),
+          aflex: Number(aflex),
+          ramp: Number(ramp)
+        };
+      }
+      
+      if (res && res.status === 'NO_CHANGE') {
+        showToast('No fields differ from current stored values; nothing saved.', 'warning');
+      } else {
+        showToast('Settings successfully updated in DB ✓', 'success');
+      }
+    } catch (e) {
+      console.error(e);
+      showToast(e.message || 'Failed to push settings', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   function showToast(msg, type = 'success') {
@@ -225,9 +319,9 @@ export default function DeviceDashboard() {
   const minsInt     = Math.round((ld.usage_hours - hoursInt) * 60);
   const usagePct    = Math.min(Math.round((ld.usage_hours / 8) * 100), 100);
   const isOnline    = device.device_online;
-  const maxAHI      = Math.max(...device.sessions.map(s => s.ahi), 5);
-  const maxUsageHrs = Math.max(...device.sessions.map(s => s.usage_hours), 8);
-  const maxLeak     = Math.max(...device.sessions.map(s => s.mask_leak), 24);
+  const maxAHI      = Math.max(...(device.sessions?.map(s => s.ahi) || [5]), 5);
+  const maxUsageHrs = Math.max(...(device.sessions?.map(s => s.usage_hours) || [8]), 8);
+  const maxLeak     = Math.max(...(device.sessions?.map(s => s.mask_leak) || [24]), 24);
   const isReadOnly  = device.readOnly !== false;
 
   const maintenanceItems = [
@@ -236,56 +330,11 @@ export default function DeviceDashboard() {
     { label: 'Humidifier', value: '75%',     pct: 75, icon: PulseIcon,  color: '#06b6d4' },
     { label: 'Tubing',     value: '4 Days',  pct: 40, icon: DeviceIcon, color: '#ef9f27' },
   ];
-
   return (
-    <div className="dashboard-layout-container">
-
-      {/* ── Device List Sidebar ───────────────────────────────────────────────── */}
-      <aside className="dashboard-master-sidebar">
-        <div style={{ padding: '14px 12px 10px', borderBottom: '1px solid var(--line)' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#6366f1', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: 2 }}>
-            Devices
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--muted)' }}>{devices.length} registered</div>
-        </div>
-        <div style={{ flex: 1, padding: '6px' }}>
-          {devices.map(d => {
-            const isActive = d.serial === serial;
-            const online   = d.status === 'online';
-            return (
-              <button key={d.serial}
-                onClick={() => navigate(`/device/${d.serial}`)}
-                style={{
-                  width: '100%', textAlign: 'left', padding: '9px 11px',
-                  borderRadius: 9, border: 'none', cursor: 'pointer',
-                  marginBottom: 3, transition: 'all 0.15s',
-                  background: isActive
-                    ? 'linear-gradient(135deg,rgba(13,125,230,0.13),rgba(39,198,199,0.07))'
-                    : 'transparent',
-                  borderLeft: isActive ? '3px solid #0d7de6' : '3px solid transparent',
-                }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-                  <span style={{
-                    fontSize: 11, fontWeight: 800, fontFamily: 'monospace',
-                    color: isActive ? '#0d7de6' : 'var(--text)',
-                  }}>{d.serial}</span>
-                  <span style={{
-                    width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-                    background: online ? '#1d9e75' : '#cbd5e1',
-                    boxShadow: online ? '0 0 6px #1d9e75aa' : 'none',
-                  }}/>
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 500 }}>
-                  {online ? 'Online' : 'Offline'}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </aside>
+    <div className="dashboard-layout-container" style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
 
       {/* ── Main Content ──────────────────────────────────────────────────────── */}
-      <div className="dashboard-main-content">
+      <div className="dashboard-main-content" style={{ width: '100%', maxWidth: '100%', padding: '20px 24px' }}>
 
         {/* Toast */}
         {toast && (
@@ -427,7 +476,7 @@ export default function DeviceDashboard() {
 
           {/* Mode Toggle */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 22, background: 'var(--panel-strong)', borderRadius: 12, padding: 6, border: '1px solid var(--line)' }}>
-            {['CPAP', 'AUTO CPAP'].map(m => (
+            {['CPAP', 'AUTO CPAP', 'BiPAP'].map(m => (
               <button key={m} onClick={() => setMode(m)}
                 style={{
                   flex: 1, padding: '10px', borderRadius: 8, fontWeight: 700, fontSize: 13,
@@ -442,80 +491,99 @@ export default function DeviceDashboard() {
             ))}
           </div>
 
-          {mode === 'CPAP' ? (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <div style={fieldLabel}>Fixed Pressure</div>
-                <span style={modeBadge}>Fixed Mode</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12 }}>
-                <button onClick={() => setPressure(v => Math.max(4, +(v - 0.5).toFixed(1)))} style={stepBtn}><MinusIcon/></button>
-                <div style={{ textAlign: 'center', minWidth: 110 }}>
-                  <span style={{ fontSize: 40, fontWeight: 900, color: '#0d7de6' }}>{pressure.toFixed(1)}</span>
-                  <span style={{ fontSize: 14, color: '#64748b', marginLeft: 4 }}>cmH₂O</span>
-                  {device.settings.pressure !== pressure && <div style={changedTag}>was {device.settings.pressure.toFixed(1)}</div>}
+          {(() => {
+            const maxLimit = mode === 'BiPAP' ? 30 : 20;
+            const RAMP_STEPS = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45];
+            const stepRampDown = (val) => {
+              const idx = RAMP_STEPS.indexOf(val);
+              if (idx <= 0) return RAMP_STEPS[0];
+              return RAMP_STEPS[idx - 1];
+            };
+            const stepRampUp = (val) => {
+              const idx = RAMP_STEPS.indexOf(val);
+              if (idx === -1 || idx >= RAMP_STEPS.length - 1) return RAMP_STEPS[RAMP_STEPS.length - 1];
+              return RAMP_STEPS[idx + 1];
+            };
+            const formatRampDisplay = (val) => {
+              if (val === 0) return 'Off';
+              if (val === 30) return '30 min (Auto)';
+              return `${val} min`;
+            };
+
+            return mode === 'CPAP' ? (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <div style={fieldLabel}>Fixed Pressure</div>
+                  <span style={modeBadge}>Fixed Mode (Range: 4–{maxLimit} cmH₂O)</span>
                 </div>
-                <button onClick={() => setPressure(v => Math.min(30, +(v + 0.5).toFixed(1)))} style={stepBtn}><PlusIcon/></button>
-                <div style={{ flex: 1 }}>
-                  <StyledSlider value={pressure} min={4} max={30} step={0.5} onChange={setPressure} label="Pressure"/>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12 }}>
+                  <button onClick={() => setPressure(v => Math.max(4, +(v - 0.5).toFixed(1)))} style={stepBtn}><MinusIcon/></button>
+                  <div style={{ textAlign: 'center', minWidth: 110 }}>
+                    <span style={{ fontSize: 40, fontWeight: 900, color: '#0d7de6' }}>{pressure.toFixed(1)}</span>
+                    <span style={{ fontSize: 14, color: '#64748b', marginLeft: 4 }}>cmH₂O</span>
+                    {device.settings.pressure !== pressure && <div style={changedTag}>was {device.settings.pressure.toFixed(1)}</div>}
+                  </div>
+                  <button onClick={() => setPressure(v => Math.min(maxLimit, +(v + 0.5).toFixed(1)))} style={stepBtn}><PlusIcon/></button>
+                  <div style={{ flex: 1 }}>
+                    <StyledSlider value={Math.min(pressure, maxLimit)} min={4} max={maxLimit} step={0.5} onChange={setPressure} label="Pressure"/>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
+                  <span style={fieldLabel}>Ramp Time</span>
+                  <button onClick={() => setRamp(v => stepRampDown(v))} style={stepBtn}><MinusIcon/></button>
+                  <span style={{ fontWeight: 800, fontSize: 16, color: '#163257', minWidth: 110, textAlign: 'center' }}>{formatRampDisplay(ramp)}</span>
+                  <button onClick={() => setRamp(v => stepRampUp(v))} style={stepBtn}><PlusIcon/></button>
+                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>Range: Off (0) to 45 min · Auto (30 min)</span>
+                  {device.settings.ramp !== ramp && <span style={changedTag}>was {device.settings.ramp}</span>}
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
-                <span style={fieldLabel}>Ramp Time</span>
-                <button onClick={() => setRamp(v => Math.max(0, v - 1))} style={stepBtn}><MinusIcon/></button>
-                <span style={{ fontWeight: 800, fontSize: 20, color: '#163257', minWidth: 32, textAlign: 'center' }}>{ramp}</span>
-                <button onClick={() => setRamp(v => Math.min(45, v + 1))} style={stepBtn}><PlusIcon/></button>
-                <span style={{ fontSize: 12, color: 'var(--muted)' }}>min · Range: 0–45</span>
-                {device.settings.ramp !== ramp && <span style={changedTag}>was {device.settings.ramp}</span>}
-              </div>
-            </div>
-          ) : (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                <div style={fieldLabel}>Auto CPAP Settings</div>
-                <span style={{ ...modeBadge, background: '#e0f2fe', color: '#0369a1' }}>Auto Adjusting</span>
-              </div>
-              <div className="dashboard-two-col" style={{ gap: 20, marginBottom: 16 }}>
-                {[
-                  { label: 'Min Pressure', val: minPressure, changed: device.settings.min_pressure !== minPressure, was: device.settings.min_pressure, dec: () => setMinPressure(v => Math.max(4, +(v - 0.5).toFixed(1))), inc: () => setMinPressure(v => Math.min(maxPressure - 0.5, +(v + 0.5).toFixed(1))), sliderMax: maxPressure - 0.5, onChange: setMinPressure },
-                  { label: 'Max Pressure', val: maxPressure, changed: device.settings.max_pressure !== maxPressure, was: device.settings.max_pressure, dec: () => setMaxPressure(v => Math.max(minPressure + 0.5, +(v - 0.5).toFixed(1))), inc: () => setMaxPressure(v => Math.min(30, +(v + 0.5).toFixed(1))), sliderMax: 30, onChange: setMaxPressure },
-                ].map(({ label, val, changed, was, dec, inc, sliderMax, onChange }) => (
-                  <div key={label}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>{label}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                      <button onClick={dec} style={stepBtn}><MinusIcon/></button>
-                      <span style={{ fontSize: 26, fontWeight: 900, color: '#163257' }}>{val.toFixed(1)}</span>
-                      <span style={{ fontSize: 12, color: '#64748b' }}>cmH₂O</span>
-                      <button onClick={inc} style={stepBtn}><PlusIcon/></button>
-                      {changed && <span style={changedTag}>was {was.toFixed(1)}</span>}
+            ) : (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <div style={fieldLabel}>{mode === 'BiPAP' ? 'BiPAP Settings' : 'Auto CPAP Settings'}</div>
+                  <span style={{ ...modeBadge, background: '#e0f2fe', color: '#0369a1' }}>Auto Adjusting (Range: 4–{maxLimit} cmH₂O)</span>
+                </div>
+                <div className="dashboard-two-col" style={{ gap: 20, marginBottom: 16 }}>
+                  {[
+                    { label: 'Min Pressure', val: Math.min(minPressure, maxPressure), changed: device.settings.min_pressure !== minPressure, was: device.settings.min_pressure, dec: () => setMinPressure(v => Math.max(4, +(v - 0.5).toFixed(1))), inc: () => setMinPressure(v => Math.min(maxPressure, +(v + 0.5).toFixed(1))), sliderMax: maxPressure, onChange: setMinPressure },
+                    { label: 'Max Pressure', val: Math.min(maxPressure, maxLimit), changed: device.settings.max_pressure !== maxPressure, was: device.settings.max_pressure, dec: () => setMaxPressure(v => Math.max(minPressure, +(v - 0.5).toFixed(1))), inc: () => setMaxPressure(v => Math.min(maxLimit, +(v + 0.5).toFixed(1))), sliderMax: maxLimit, onChange: setMaxPressure },
+                  ].map(({ label, val, changed, was, dec, inc, sliderMax, onChange }) => (
+                    <div key={label}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>{label}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                        <button onClick={dec} style={stepBtn}><MinusIcon/></button>
+                        <span style={{ fontSize: 26, fontWeight: 900, color: '#163257' }}>{val.toFixed(1)}</span>
+                        <span style={{ fontSize: 12, color: '#64748b' }}>cmH₂O</span>
+                        <button onClick={inc} style={stepBtn}><PlusIcon/></button>
+                        {changed && <span style={changedTag}>was {was.toFixed(1)}</span>}
+                      </div>
+                      <StyledSlider value={val} min={4} max={sliderMax} step={0.5} onChange={onChange} label={label}/>
                     </div>
-                    <StyledSlider value={val} min={4} max={sliderMax} step={0.5} onChange={onChange} label={label}/>
-                  </div>
-                ))}
-              </div>
-              <div className="dashboard-two-col" style={{ gap: 20, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>Aflex (EPR)</div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    {['Off', '1', '2', '3'].map((lbl, idx) => (
-                      <button key={lbl} onClick={() => setAflex(idx)} style={{ flex: 1, padding: '10px 4px', borderRadius: 8, fontSize: 13, fontWeight: 700, border: '1.5px solid', cursor: 'pointer', transition: 'all 0.2s', borderColor: aflex === idx ? 'transparent' : 'var(--line)', background: aflex === idx ? 'linear-gradient(135deg,#0d7de6,#27c6c7)' : 'var(--panel)', color: aflex === idx ? '#fff' : 'var(--muted)' }}>{lbl}</button>
-                    ))}
-                  </div>
-                  {device.settings.aflex !== aflex && <div style={{ ...changedTag, marginTop: 4 }}>was: {device.settings.aflex}</div>}
+                  ))}
                 </div>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>Ramp Time</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <button onClick={() => setRamp(v => Math.max(0, v - 1))} style={stepBtn}><MinusIcon/></button>
-                    <span style={{ fontWeight: 900, fontSize: 24, color: '#163257', minWidth: 32, textAlign: 'center' }}>{ramp}</span>
-                    <button onClick={() => setRamp(v => Math.min(45, v + 1))} style={stepBtn}><PlusIcon/></button>
-                    <span style={{ fontSize: 11, color: 'var(--muted)' }}>min · 0–45</span>
-                    {device.settings.ramp !== ramp && <span style={changedTag}>was {device.settings.ramp}</span>}
+                <div className="dashboard-two-col" style={{ gap: 20, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>Aflex (EPR)</div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {['Off', '1', '2', '3'].map((lbl, idx) => (
+                        <button key={lbl} onClick={() => setAflex(idx)} style={{ flex: 1, padding: '10px 4px', borderRadius: 8, fontSize: 13, fontWeight: 700, border: '1.5px solid', cursor: 'pointer', transition: 'all 0.2s', borderColor: aflex === idx ? 'transparent' : 'var(--line)', background: aflex === idx ? 'linear-gradient(135deg,#0d7de6,#27c6c7)' : 'var(--panel)', color: aflex === idx ? '#fff' : 'var(--muted)' }}>{lbl}</button>
+                      ))}
+                    </div>
+                    {device.settings.aflex !== aflex && <div style={{ ...changedTag, marginTop: 4 }}>was: {device.settings.aflex}</div>}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>Ramp Time</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <button onClick={() => setRamp(v => stepRampDown(v))} style={stepBtn}><MinusIcon/></button>
+                      <span style={{ fontWeight: 800, fontSize: 15, color: '#163257', minWidth: 100, textAlign: 'center' }}>{formatRampDisplay(ramp)}</span>
+                      <button onClick={() => setRamp(v => stepRampUp(v))} style={stepBtn}><PlusIcon/></button>
+                      {device.settings.ramp !== ramp && <span style={changedTag}>was {device.settings.ramp}</span>}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Save / Discard bar */}
           <div style={{ display: 'flex', gap: 10, marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
@@ -597,37 +665,207 @@ export default function DeviceDashboard() {
 
         {/* ── Session Log Table ─────────────────────────────────────────────────── */}
         <div style={sectionCard}>
-          <div style={sectionLabel}>Session Log — Past 7 Days</div>
-          <div className="admin-table-wrap" style={{ margin: 0, borderRadius: 10, border: '1px solid var(--line)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={sectionLabel}>Session Log — Past 7 Days</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>
+              Page {currentPage} of {totalPages} ({sortedSessions.length} total records)
+            </div>
+          </div>
+          <div className="admin-table-wrap" style={{ margin: 0, borderRadius: '10px 10px 0 0', border: '1px solid var(--line)' }}>
             <table className="admin-table">
               <thead>
                 <tr>{['Date', 'Usage', 'AHI', 'Mask Leak', '95th Pressure', 'Compliance'].map(h => <th key={h}>{h}</th>)}</tr>
               </thead>
               <tbody>
-                {[...device.sessions].reverse().map((s, i) => {
+                {paginatedSessions.map((s, i) => {
+                  const isSettings = s.type === 'SETTINGS_UPDATE';
                   const compliant = s.usage_hours >= 4;
+                  const globalIdx = (currentPage - 1) * RECORDS_PER_PAGE + i;
+                  const isExpanded = expandedRow === globalIdx;
+                  const rawPayload = s.raw?.decoded_payload || s.raw;
+                  const rawBytes = rawPayload?.raw;
+
                   return (
-                    <tr key={i}>
-                      <td><strong>{s.date}</strong></td>
-                      <td>{s.usage_hours}h</td>
-                      <td>
-                        <span className="admin-badge" style={{ background: s.ahi <= 5 ? '#dcfce7' : '#fef3c7', color: s.ahi <= 5 ? '#15803d' : '#92400e' }}>
-                          {s.ahi}
-                        </span>
-                      </td>
-                      <td>{s.mask_leak} L/min</td>
-                      <td>{s.pressure_95} cmH₂O</td>
-                      <td>
-                        <span className="admin-status-pill" style={{ background: compliant ? '#dcfce7' : '#fee2e2', color: compliant ? '#15803d' : '#b91c1c' }}>
-                          <span className="admin-status-dot" style={{ background: compliant ? '#16a34a' : '#dc2626' }}/>
-                          {compliant ? 'Compliant' : 'Non-compliant'}
-                        </span>
-                      </td>
-                    </tr>
+                    <React.Fragment key={globalIdx}>
+                      <tr 
+                        onClick={() => setExpandedRow(isExpanded ? null : globalIdx)}
+                        style={{ cursor: 'pointer', transition: 'background 0.2s' }}
+                        className={isExpanded ? 'admin-table-row-selected' : ''}
+                      >
+                        <td><strong>{s.date}</strong></td>
+                        <td>
+                          {isSettings ? (
+                            <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: 6, fontWeight: 700, fontSize: 11 }}>
+                              ⚙ Settings
+                            </span>
+                          ) : (
+                            `${s.usage_hours}h`
+                          )}
+                        </td>
+                        <td>
+                          <span className="admin-badge" style={{
+                            background: isSettings ? '#f0f4ff' : (s.ahi <= 5 ? '#dcfce7' : '#fef3c7'),
+                            color: isSettings ? '#4338ca' : (s.ahi <= 5 ? '#15803d' : '#92400e'),
+                          }}>
+                            {isSettings ? s.mode : s.ahi}
+                          </span>
+                        </td>
+                        <td>
+                          {isSettings ? (
+                            s.mode === 'CPAP' ? `Set: ${s.pressure} cmH₂O` : `Min: ${s.min_pressure} / Max: ${s.max_pressure}`
+                          ) : (
+                            `${s.mask_leak} L/min`
+                          )}
+                        </td>
+                        <td>
+                          {isSettings ? (
+                            `Ramp: ${s.ramp === 0 ? 'Off' : s.ramp === 30 ? '30m Auto' : `${s.ramp}m`}`
+                          ) : (
+                            `${s.pressure_95} cmH₂O`
+                          )}
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            {isSettings ? (
+                              <span className="admin-status-pill" style={{ background: '#dbeafe', color: '#1e40af' }}>
+                                <span className="admin-status-dot" style={{ background: '#2563eb' }}/>
+                                Settings Synced
+                              </span>
+                            ) : (
+                              <span className="admin-status-pill" style={{ background: compliant ? '#dcfce7' : '#fee2e2', color: compliant ? '#15803d' : '#b91c1c' }}>
+                                <span className="admin-status-dot" style={{ background: compliant ? '#16a34a' : '#dc2626' }}/>
+                                {compliant ? 'Compliant' : 'Non-compliant'}
+                              </span>
+                            )}
+                            <span style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 8 }}>
+                              {isExpanded ? '▲ Hide' : '▼ Inspect'}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr style={{ background: 'var(--panel-deep, #f8fafc)' }}>
+                          <td colSpan={6} style={{ padding: '16px 20px', borderBottom: '1px solid var(--line)' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+                              <div>
+                                <strong style={{ color: 'var(--text-strong)' }}>Packet ID:</strong>{' '}
+                                <code style={{ background: 'rgba(0,0,0,0.05)', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>
+                                  {s.raw?.id || '—'}
+                                </code>
+                              </div>
+                              <div>
+                                <strong style={{ color: 'var(--text-strong)' }}>Server Ingestion Time:</strong>{' '}
+                                <span style={{ color: 'var(--muted)' }}>{s.raw?.server_timestamp || '—'}</span>
+                              </div>
+                              <div>
+                                <strong style={{ color: 'var(--text-strong)' }}>{isSettings ? 'Decoded Payload JSON:' : 'Raw Payload Bytes:'}</strong>
+                                <div style={{ 
+                                  background: '#0f172a', 
+                                  color: isSettings ? '#38bdf8' : '#e2e8f0', 
+                                  padding: '10px 14px', 
+                                  borderRadius: '8px', 
+                                  fontFamily: 'monospace', 
+                                  fontSize: '11px', 
+                                  marginTop: '4px',
+                                  whiteSpace: 'pre-wrap',
+                                  wordBreak: 'break-all',
+                                  lineHeight: '1.4'
+                                }}>
+                                  {isSettings
+                                    ? JSON.stringify(rawPayload, null, 2)
+                                    : (rawBytes ? JSON.stringify(rawBytes) : JSON.stringify(rawPayload, null, 2))}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
             </table>
+          </div>
+
+          {/* ── Pagination Controls ───────────────────────────────────────────── */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justify: 'space-between',
+            padding: '12px 16px',
+            border: '1px solid var(--line)',
+            borderTop: 'none',
+            background: 'var(--panel-strong)',
+            borderRadius: '0 0 10px 10px',
+            fontSize: '12px',
+            flexWrap: 'wrap',
+            gap: '10px'
+          }}>
+            <div style={{ color: 'var(--muted)', fontWeight: 600 }}>
+              Showing {sortedSessions.length > 0 ? (currentPage - 1) * RECORDS_PER_PAGE + 1 : 0}–{Math.min(currentPage * RECORDS_PER_PAGE, sortedSessions.length)} of {sortedSessions.length} records
+            </div>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '7px',
+                  border: '1px solid var(--line)',
+                  background: 'var(--panel)',
+                  color: currentPage === 1 ? '#cbd5e1' : 'var(--text)',
+                  fontWeight: 700,
+                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                  fontSize: '12px',
+                  transition: 'all 0.2s'
+                }}
+              >
+                ← Previous
+              </button>
+              
+              <div style={{ display: 'flex', gap: 4 }}>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 6,
+                      border: page === currentPage ? 'none' : '1px solid var(--line)',
+                      background: page === currentPage ? 'linear-gradient(135deg, #0d7de6, #27c6c7)' : 'var(--panel)',
+                      color: page === currentPage ? '#ffffff' : 'var(--text)',
+                      fontWeight: 800,
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      display: 'grid',
+                      placeItems: 'center'
+                    }}
+                  >
+                    {page}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '7px',
+                  border: '1px solid var(--line)',
+                  background: 'var(--panel)',
+                  color: currentPage === totalPages ? '#cbd5e1' : 'var(--text)',
+                  fontWeight: 700,
+                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                  fontSize: '12px',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Next →
+              </button>
+            </div>
           </div>
         </div>
 
