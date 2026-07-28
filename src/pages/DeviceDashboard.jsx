@@ -34,17 +34,33 @@ function RingProgress({ pct, size = 72, stroke = 6, color = '#0ea5e9' }) {
   const circ = 2 * Math.PI * r;
   const dash = (Math.min(pct, 100) / 100) * circ;
   return (
-    <svg width={size} height={size} style={{ flexShrink: 0 }}>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#e2e8f0" strokeWidth={stroke}
-        style={{ transform: 'rotate(-90deg)', transformOrigin: 'center' }}/>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke}
-        strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
-        style={{ transform: 'rotate(-90deg)', transformOrigin: 'center', transition: 'stroke-dasharray 0.6s ease' }}/>
-      <text x="50%" y="50%" dy=".3em" translate="no" className="notranslate" textAnchor="middle"
-        style={{ fill: color, fontSize: size * 0.22, fontWeight: 800 }}>
+    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#e2e8f0" strokeWidth={stroke}
+          transform={`rotate(-90 ${size/2} ${size/2})`}/>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+          strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
+          transform={`rotate(-90 ${size/2} ${size/2})`}
+          style={{ transition: 'stroke-dasharray 0.6s ease' }}/>
+      </svg>
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: color,
+        fontSize: `${size * 0.22}px`,
+        fontWeight: 800,
+        pointerEvents: 'none',
+        lineHeight: 1
+      }}>
         {pct}%
-      </text>
-    </svg>
+      </div>
+    </div>
   );
 }
 
