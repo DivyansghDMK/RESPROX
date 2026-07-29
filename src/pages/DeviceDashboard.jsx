@@ -647,7 +647,7 @@ export default function DeviceDashboard() {
                   <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)' }}>{label}</span>
                   <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>{target}</span>
                 </div>
-                <MiniBarChart sessions={device.sessions} valueKey={key} maxVal={maxVal} goodFn={goodFn} goodColor={goodColor} badColor={badColor}/>
+                <MiniBarChart sessions={device.sessions?.slice(-7)} valueKey={key} maxVal={maxVal} goodFn={goodFn} goodColor={goodColor} badColor={badColor}/>
               </div>
             ))}
           </div>
