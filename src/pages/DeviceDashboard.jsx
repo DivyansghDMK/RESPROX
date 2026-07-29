@@ -515,16 +515,16 @@ export default function DeviceDashboard() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12, flexWrap: 'wrap' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <button onClick={() => setPressure(v => Math.max(4, +(v - 0.5).toFixed(1)))} style={stepBtn}><MinusIcon/></button>
+                    <button onClick={() => setPressure(v => Math.max(4, +(v - 0.1).toFixed(1)))} style={stepBtn}><MinusIcon/></button>
                     <div style={{ textAlign: 'center', minWidth: 110 }}>
                       <span style={{ fontSize: 32, fontWeight: 900, color: '#0d7de6' }}>{pressure.toFixed(1)}</span>
                       <span style={{ fontSize: 14, color: '#64748b', marginLeft: 4 }}>cmH₂O</span>
                       {device.settings.pressure !== pressure && <div style={{ ...changedTag, display: 'block', margin: '2px auto 0' }}>was {device.settings.pressure.toFixed(1)}</div>}
                     </div>
-                    <button onClick={() => setPressure(v => Math.min(maxLimit, +(v + 0.5).toFixed(1)))} style={stepBtn}><PlusIcon/></button>
+                    <button onClick={() => setPressure(v => Math.min(maxLimit, +(v + 0.1).toFixed(1)))} style={stepBtn}><PlusIcon/></button>
                   </div>
                   <div style={{ flex: '1 1 200px', minWidth: 150 }}>
-                    <StyledSlider value={Math.min(pressure, maxLimit)} min={4} max={maxLimit} step={0.5} onChange={setPressure} label="Pressure"/>
+                    <StyledSlider value={Math.min(pressure, maxLimit)} min={4} max={maxLimit} step={0.1} onChange={setPressure} label="Pressure"/>
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 14, borderTop: '1px solid var(--line)', flexWrap: 'wrap' }}>
@@ -546,8 +546,8 @@ export default function DeviceDashboard() {
                 </div>
                 <div className="dashboard-two-col" style={{ gap: 20, marginBottom: 16 }}>
                   {[
-                    { label: 'Min Pressure', val: Math.min(minPressure, maxPressure), changed: device.settings.min_pressure !== minPressure, was: device.settings.min_pressure, dec: () => setMinPressure(v => Math.max(4, +(v - 0.5).toFixed(1))), inc: () => setMinPressure(v => Math.min(maxPressure, +(v + 0.5).toFixed(1))), sliderMax: maxPressure, onChange: setMinPressure },
-                    { label: 'Max Pressure', val: Math.min(maxPressure, maxLimit), changed: device.settings.max_pressure !== maxPressure, was: device.settings.max_pressure, dec: () => setMaxPressure(v => Math.max(minPressure, +(v - 0.5).toFixed(1))), inc: () => setMaxPressure(v => Math.min(maxLimit, +(v + 0.5).toFixed(1))), sliderMax: maxLimit, onChange: setMaxPressure },
+                    { label: 'Min Pressure', val: Math.min(minPressure, maxPressure), changed: device.settings.min_pressure !== minPressure, was: device.settings.min_pressure, dec: () => setMinPressure(v => Math.max(4, +(v - 0.1).toFixed(1))), inc: () => setMinPressure(v => Math.min(maxPressure, +(v + 0.1).toFixed(1))), sliderMax: maxPressure, onChange: setMinPressure },
+                    { label: 'Max Pressure', val: Math.min(maxPressure, maxLimit), changed: device.settings.max_pressure !== maxPressure, was: device.settings.max_pressure, dec: () => setMaxPressure(v => Math.max(minPressure, +(v - 0.1).toFixed(1))), inc: () => setMaxPressure(v => Math.min(maxLimit, +(v + 0.1).toFixed(1))), sliderMax: maxLimit, onChange: setMaxPressure },
                   ].map(({ label, val, changed, was, dec, inc, sliderMax, onChange }) => (
                     <div key={label}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>{label}</div>
@@ -558,7 +558,7 @@ export default function DeviceDashboard() {
                         <button onClick={inc} style={stepBtn}><PlusIcon/></button>
                         {changed && <span style={changedTag}>was {was.toFixed(1)}</span>}
                       </div>
-                      <StyledSlider value={val} min={4} max={sliderMax} step={0.5} onChange={onChange} label={label}/>
+                      <StyledSlider value={val} min={4} max={sliderMax} step={0.1} onChange={onChange} label={label}/>
                     </div>
                   ))}
                 </div>
