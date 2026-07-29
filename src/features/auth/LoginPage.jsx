@@ -108,9 +108,12 @@ export default function Login() {
 
       <div className="auth-glass-panel">
         <div className="auth-header">
-          <div className="logo-brand">
-            <span className="logo-deck">Res</span>
-            <span className="logo-link">prox</span>
+          <div className="logo-brand" style={{ flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+            <img src="/resprox-logo.png" alt="Resprox Logo" style={{ width: '80px', height: '80px', objectFit: 'contain' }} />
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span className="logo-deck">Res</span>
+              <span className="logo-link">prox</span>
+            </div>
           </div>
           <h2 className="auth-title">Resprox Access</h2>
           <p className="auth-subtitle">Use `admin / 2026` for dev, or your Cognito email and password for staging</p>
