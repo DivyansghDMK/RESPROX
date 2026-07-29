@@ -47,13 +47,9 @@ export default function Sidebar() {
           <CloseIcon />
         </button>
 
-        <div className="brand">
-          <div className="brand-mark" style={{ background: 'none', boxShadow: 'none', borderRadius: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="brand" style={{ marginBottom: '16px' }}>
+          <div className="brand-mark">
             <img src="/resprox-logo.png" alt="Resprox Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-          </div>
-          <div>
-            <div className="brand-name">Resprox</div>
-            <div className="brand-tag">Breathe better. Live better.</div>
           </div>
         </div>
 

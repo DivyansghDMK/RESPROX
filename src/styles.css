@@ -98,19 +98,11 @@ svg {
 }
 
 .brand-mark {
-  width: 132px;
-  height: 132px;
-  border-radius: 32px;
-  background:
-    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.95) 0 14%, transparent 15%),
-    linear-gradient(145deg, #0f64df 0%, #15c7c5 100%);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5), 0 18px 38px rgba(15, 100, 223, 0.18);
-  display: grid;
-  place-items: center;
-  color: white;
-  font-size: 4rem;
-  font-weight: 800;
-  letter-spacing: -0.08em;
+  width: 156px;
+  height: 156px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .brand-r {
@@ -1908,9 +1900,8 @@ textarea:focus-visible,
   .brand-mark {
     width: 44px;
     height: 44px;
-    border-radius: 12px;
-    font-size: 1.8rem;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5), 0 8px 18px rgba(15, 100, 223, 0.15);
+    border-radius: 0;
+    box-shadow: none;
   }
 
   .brand-name,
