@@ -181,36 +181,9 @@ export default function DeviceDashboard() {
   };
 
   useEffect(() => {
-    let timeoutId = null;
-    let isMounted = true;
-
-    async function loadData() {
-      if (!isMounted) return;
-      try {
-        await Promise.all([
-          fetchDevicesList(),
-          fetchDevice(true)
-        ]);
-      } catch (err) {
-        console.warn(err);
-      } finally {
-        if (isMounted) {
-          timeoutId = setTimeout(loadData, 30000);
-        }
-      }
-    }
-
-    // Initial loads
+    // Initial loads only (no background polling)
     fetchDevicesList();
     fetchDevice();
-
-    // Start background sync after 30 seconds
-    timeoutId = setTimeout(loadData, 30000);
-
-    return () => {
-      isMounted = false;
-      clearTimeout(timeoutId);
-    };
   }, [fetchDevice, fetchDevicesList]);
 
   useEffect(() => {
