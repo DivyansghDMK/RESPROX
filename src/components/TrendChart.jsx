@@ -24,7 +24,7 @@ const CustomTooltip = ({ active, payload, yKey, yUnit }) => {
   return null;
 };
 
-export default function TrendChart({
+function TrendChart({
   data,
   xKey = 'day',
   yKey = 'usage',
@@ -89,3 +89,7 @@ export default function TrendChart({
     </div>
   );
 }
+
+// Recharts re-mounts its whole SVG on each render; four of these on the Trends
+// page made every unrelated context update visibly janky.
+export default React.memo(TrendChart);

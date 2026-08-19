@@ -1,3 +1,4 @@
+import { useNotify } from '../../context/NotifyContext';
 import React, { useState, useEffect } from "react";
 import {
   Activity, Users, Building2, Stethoscope, Shield, FileText,
@@ -1709,6 +1710,7 @@ function Table({ cols, rows, empty }) {
 /* ---------------- Root HCP Portal Component ---------------- */
 
 export default function HCPPortal() {
+  const notify = useNotify();
   const [data, setData] = useState(loadData());
   const [session, setSession] = useState(loadSession());
   const [screen, setScreen] = useState(session ? "dashboard" : "auth");
@@ -1859,7 +1861,7 @@ export default function HCPPortal() {
               goDashboard({ orgId: matchedOrgId, ...user, userName: user.name });
             }
           } else {
-            alert("Invalid credentials. Please verify your Name and Password.");
+            notify.error("Sign-in failed", { message: "Those credentials were not recognised. Check the name and password and try again." });
           }
         }
       }}

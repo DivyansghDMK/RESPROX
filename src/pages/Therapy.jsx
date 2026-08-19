@@ -68,7 +68,7 @@ export default function Therapy() {
     return (
       <div className="therapy-page-container" style={{ padding: '40px 20px', textAlign: 'center' }}>
         <GlassCard>
-          <h2 style={{ color: '#0d7de6', fontWeight: 800 }}>No Device Selected</h2>
+          <h2 style={{ color: 'var(--accent)', fontWeight: 800 }}>No Device Selected</h2>
           <p style={{ color: 'var(--muted)', marginTop: 8 }}>Please select a device from the Devices registry to view and adjust therapy settings.</p>
         </GlassCard>
       </div>

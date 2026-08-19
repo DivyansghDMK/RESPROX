@@ -1,27 +1,38 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useTherapy } from '../context/TherapyContext';
+import { prefetch, routeKeyForPath } from '../routes';
 import {
   HomeIcon,
   PulseIcon,
   ChartIcon,
   FileIcon,
   DeviceIcon,
+  ClipboardIcon,
   MaskIcon,
   GearIcon,
   HelpIcon,
   CloseIcon,
 } from './Icons';
 
-export default function Sidebar() {
+function Sidebar() {
   const { sidebarOpen, setSidebarOpen, adminActiveSerial } = useTherapy();
   const activeSerial = adminActiveSerial || localStorage.getItem('adminActiveSerial') || 'CVT3000001';
+
+  // Start fetching a route's chunk as soon as the pointer lands on its link.
+  // The ~200 ms between hover and click is normally enough to have it parsed
+  // and ready, so navigation never shows the loading fallback.
+  const warm = useCallback((path) => {
+    const key = routeKeyForPath(path);
+    if (key) prefetch(key);
+  }, []);
 
   const sidebarItems = [
     { label: 'Dashboard', path: `/device/${activeSerial}`, icon: HomeIcon },
     { label: 'Devices', path: '/devices', icon: DeviceIcon },
     { label: 'Therapy', path: '/therapy', icon: PulseIcon },
     { label: 'Reports', path: '/reports', icon: FileIcon },
+    { label: 'Upload Data', path: '/admin/upload', icon: ClipboardIcon },
     { label: 'Trends', path: '/trends', icon: ChartIcon },
     { label: 'Mask Fit', path: '/mask-fit', icon: MaskIcon },
     { label: 'Settings', path: '/settings', icon: GearIcon },
@@ -60,6 +71,9 @@ export default function Sidebar() {
               to={path}
               className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
               onClick={() => setSidebarOpen(false)}
+              onMouseEnter={() => warm(path)}
+              onFocus={() => warm(path)}
+              onTouchStart={() => warm(path)}
               aria-label={label}
             >
               <Icon />
@@ -71,3 +85,7 @@ export default function Sidebar() {
     </>
   );
 }
+
+// Always mounted, so it re-rendered on every TherapyContext change (device
+// data, toasts, last-pull clock) even though it only reads three values.
+export default React.memo(Sidebar);

@@ -1,8 +1,10 @@
+import { useNotify } from '../context/NotifyContext';
 import React, { useState } from 'react';
 import GlassCard from '../components/GlassCard';
 import { HelpIcon, DownloadIcon, FileIcon } from '../components/Icons';
 
 export default function HelpSupport() {
+  const notify = useNotify();
   const [openFaq, setOpenFaq] = useState(null);
 
   const faqs = [
@@ -13,11 +15,11 @@ export default function HelpSupport() {
   ];
 
   const handleDiagnosticAction = (action) => {
-    alert(`Initiating diagnostic procedure: "${action}"... Downloading report.`);
+    notify.info(`Running ${action}`, { message: "The diagnostic report will download when it is ready." });
   };
 
   const handleSupportTicket = () => {
-    alert('Support system accessed. Raising new patient service ticket...');
+    notify.success('Support ticket raised', { message: 'Our team will follow up by email.' });
   };
 
   return (

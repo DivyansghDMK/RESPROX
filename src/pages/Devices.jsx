@@ -1,8 +1,10 @@
+import { useNotify } from '../context/NotifyContext';
 import React, { useState } from 'react';
 import GlassCard from '../components/GlassCard';
 import { DeviceIcon, SyncIcon, TrashIcon, InfoIcon } from '../components/Icons';
 
 export default function Devices() {
+  const notify = useNotify();
   const [deviceName, setDeviceName] = useState('Dream Station Auto');
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -10,7 +12,7 @@ export default function Devices() {
     setIsSyncing(true);
     setTimeout(() => {
       setIsSyncing(false);
-      alert('Device data sync complete! Fetching telemetry...');
+      notify.success('Sync complete', { message: 'Fetching the latest telemetry.' });
     }, 2000);
   };
 
@@ -21,7 +23,7 @@ export default function Devices() {
 
   const handleRemove = () => {
     if (window.confirm('Are you sure you want to disconnect this device?')) {
-      alert('Device disconnected.');
+      notify.warning('Device disconnected', { message: 'It will reconnect on the next sync.' });
     }
   };
 

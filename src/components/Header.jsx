@@ -1,7 +1,31 @@
 import React, { useEffect, useState } from 'react';
 import { useTherapy } from '../context/TherapyContext';
 import { useAuth } from '../context/AuthContext';
-import { MenuIcon, BluetoothIcon, BellIcon, UserIcon } from './Icons';
+import { useNotifications } from '../hooks/useNotifications';
+import NotificationsPanel from './NotificationsPanel';
+import { MenuIcon, ServerIcon, BellIcon, UserIcon } from './Icons';
+
+const STALE_AFTER_MS = 10 * 60 * 1000;
+
+// The pill reports the state of the connection to the server, so it is driven
+// by whether a pull has actually succeeded — not hard-coded to "Connected".
+function serverStatus(lastServerPull, deviceData) {
+  if (!lastServerPull) {
+    return { label: 'Not connected', detail: 'Awaiting first sync', tone: '#94a3b8' };
+  }
+  if (Date.now() - new Date(lastServerPull).getTime() > STALE_AFTER_MS) {
+    return {
+      label: 'Data stale',
+      detail: deviceData?.serial || 'Refresh to update',
+      tone: '#f59e0b',
+    };
+  }
+  return {
+    label: 'Server Connected',
+    detail: deviceData ? `${deviceData.model || 'Device'} · ${deviceData.serial}` : 'No device selected',
+    tone: '#27b5c7',
+  };
+}
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -25,18 +49,45 @@ function formatAdminLabel(username) {
 }
 
 export default function Header() {
-  const { setSidebarOpen, lastServerPull } = useTherapy();
+  const { setSidebarOpen, lastServerPull, deviceData } = useTherapy();
   const { username } = useAuth();
   const [displayTime, setDisplayTime] = useState(() => formatLastPulled(lastServerPull));
+  const [, setTick] = useState(0);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const { notifications, unreadCount, markAllRead, dismiss, clearAll } = useNotifications();
 
-  // Refresh displayed time every 10 seconds so "Xs ago" stays accurate
+  // Refresh displayed time every 10 seconds so "Xs ago" stays accurate.
+  // The same tick re-evaluates the pill, so it can go stale on its own.
   useEffect(() => {
     setDisplayTime(formatLastPulled(lastServerPull));
-    const timer = setInterval(() => setDisplayTime(formatLastPulled(lastServerPull)), 10000);
+    const timer = setInterval(() => {
+      setDisplayTime(formatLastPulled(lastServerPull));
+      setTick((t) => t + 1);
+    }, 10000);
     return () => clearInterval(timer);
   }, [lastServerPull]);
 
   const adminLabel = formatAdminLabel(username);
+  const status = serverStatus(lastServerPull, deviceData);
+
+  const toggleNotifications = () => {
+    setNotifOpen((open) => {
+      if (!open) markAllRead(); // opening the panel is the read receipt
+      return !open;
+    });
+  };
+
+  const notificationsButton = (className) => (
+    <button
+      className={className}
+      data-notif-toggle
+      onClick={toggleNotifications}
+      aria-label={unreadCount ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+      aria-expanded={notifOpen}
+    >
+      <BellIcon showDot={unreadCount > 0} />
+    </button>
+  );
 
   return (
     <header className="topbar-wrapper">
@@ -61,15 +112,15 @@ export default function Header() {
 
         <div className="topbar-actions">
           <div className="status-pill">
-            <BluetoothIcon />
+            <span style={{ color: status.tone, display: 'grid', placeItems: 'center' }}>
+              <ServerIcon />
+            </span>
             <div>
-              <strong>Connected</strong>
-              <span>CVT30 C-Series</span>
+              <strong>{status.label}</strong>
+              <span>{status.detail}</span>
             </div>
           </div>
-          <button className="icon-button" aria-label="Notifications">
-            <BellIcon />
-          </button>
+          {notificationsButton('icon-button')}
         </div>
       </div>
 
@@ -87,11 +138,20 @@ export default function Header() {
           <span className="logo-link">prox</span>
         </div>
         <div className="mobile-header-right">
-          <button className="mobile-bell-btn" aria-label="Notifications">
-            <BellIcon />
-          </button>
+          {notificationsButton('mobile-bell-btn')}
         </div>
       </div>
+
+      {/* One panel for both header variants — mounting it twice would make the
+          hidden copy's outside-click handler close the visible one instantly. */}
+      {notifOpen && (
+        <NotificationsPanel
+          notifications={notifications}
+          onClose={() => setNotifOpen(false)}
+          onDismiss={dismiss}
+          onClearAll={clearAll}
+        />
+      )}
     </header>
   );
 }

@@ -1,10 +1,9 @@
 // src/pages/DeviceList.jsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { devicesAPI } from '../services/respireeApi';
 import { useAuth } from '../context/AuthContext';
 import { useTherapy } from '../context/TherapyContext';
-import gsap from 'gsap';
 
 // Material UI Icons
 import DevicesIcon from '@mui/icons-material/Devices';
@@ -13,6 +12,34 @@ import WarningIcon from '@mui/icons-material/Warning';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import SearchIcon from '@mui/icons-material/Search';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+
+const PAGE_SIZE = 20;
+const GAP = '…';
+const WINDOW = 5;   // page numbers shown between the first and last
+
+/**
+ * Page numbers to show: always the first and last, plus a run of pages around
+ * the current one, with gaps standing in for the rest. Fifty bare page buttons
+ * would be worse than none.
+ *
+ * The run keeps a constant width and clamps at either end, so page 1 of 50
+ * offers 1–6 to click rather than stranding the user with only "1 2 … 50".
+ */
+function pageWindow(current, total) {
+  if (total <= WINDOW + 2) return Array.from({ length: total }, (_, i) => i + 1);
+
+  // Candidate run centred on the current page, then slid inside [2, total-1].
+  let from = Math.max(2, current - Math.floor(WINDOW / 2));
+  let to = Math.min(total - 1, from + WINDOW - 1);
+  from = Math.max(2, to - WINDOW + 1);
+
+  const pages = [1];
+  if (from > 2) pages.push(GAP);
+  for (let n = from; n <= to; n++) pages.push(n);
+  if (to < total - 1) pages.push(GAP);
+  pages.push(total);
+  return pages;
+}
 
 const STATUS_COLOR = {
   online:  { bg: '#e6f9f0', text: '#0f6e56', dot: '#1d9e75' },
@@ -34,16 +61,21 @@ export default function DeviceList() {
   const [loading, setLoading] = useState(true);
 
   const [quickSerial, setQuickSerial] = useState('');
+  const [page, setPage] = useState(1);
 
-  // Clear any persisted device serial so we don't auto-navigate on load
-  useEffect(() => {
-    localStorage.removeItem('adminActiveSerial');
-  }, []);
+  // The persisted serial is deliberately left intact. Nothing on this page
+  // auto-navigates any more, but Reports/Trends/Therapy/Settings and the
+  // sidebar's Dashboard link all read it — clearing it here left those pages
+  // with no device and, in Reports' case, a blank screen.
 
+  // Fetch once. `search` deliberately is NOT a dependency: the registry is
+  // filtered client-side below, so keying the fetch on it meant one network
+  // round-trip, one full re-normalize and one GSAP stagger per keystroke —
+  // which froze the page while typing.
   const fetchDevices = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await devicesAPI.getDevices(search);
+      const data = await devicesAPI.getDevices();
       setDevices(data);
       setLastServerPull(new Date());
     } catch (e) {
@@ -51,15 +83,21 @@ export default function DeviceList() {
     } finally {
       setLoading(false);
     }
-  }, [search, setLastServerPull]);
+  }, [setLastServerPull]);
 
   useEffect(() => {
     fetchDevices();
   }, [fetchDevices]);
 
+  const hasAnimated = useRef(false);
   useEffect(() => {
-    if (!loading) {
-      // Staggered entry animation for cards and table rows
+    // Entrance animation runs once, after the first successful load.
+    if (loading || hasAnimated.current) return undefined;
+    hasAnimated.current = true;
+    let cancelled = false;
+    // gsap is loaded on demand so it stays out of this route's chunk.
+    import('gsap').then(({ default: gsap }) => {
+      if (cancelled) return;
       gsap.fromTo('.admin-stat-card',
         { opacity: 0, y: 25, scale: 0.96 },
         { opacity: 1, y: 0, scale: 1, duration: 0.45, stagger: 0.08, ease: 'back.out(1.2)' }
@@ -68,7 +106,8 @@ export default function DeviceList() {
         { opacity: 0, y: 20 },
         { opacity: 1, y: 0, duration: 0.4, stagger: 0.05, ease: 'power2.out', delay: 0.2 }
       );
-    }
+    });
+    return () => { cancelled = true; };
   }, [loading]);
 
   // Handle instant lookup — navigate directly to the device dashboard page
@@ -91,19 +130,45 @@ export default function DeviceList() {
     }
   };
 
-  // Compute stats on the fly
-  const totalCount = devices.length;
-  const onlineCount = devices.filter(d => d.status === 'online').length;
-  const criticalCount = devices.filter(d => d.ahi > 5.0).length;
-  const complianceAvg = totalCount ? Math.round(devices.reduce((acc, d) => acc + d.compliance_pct, 0) / totalCount) : 0;
+  // Compute stats on the fly — recomputed only when the registry changes,
+  // not on every keystroke in the search box.
+  const { totalCount, onlineCount, criticalCount, complianceAvg } = useMemo(() => {
+    const total = devices.length;
+    return {
+      totalCount: total,
+      onlineCount: devices.filter(d => d.status === 'online').length,
+      criticalCount: devices.filter(d => d.ahi > 5.0).length,
+      complianceAvg: total ? Math.round(devices.reduce((acc, d) => acc + d.compliance_pct, 0) / total) : 0,
+    };
+  }, [devices]);
 
-  const filteredDevices = devices.filter(d => {
-    const matchesSearch = d.serial.toLowerCase().includes(search.toLowerCase().trim());
-    if (!matchesSearch) return false;
-    if (statusFilter === 'online') return d.status === 'online';
-    if (statusFilter === 'offline') return d.status === 'offline';
-    return true;
-  });
+  const filteredDevices = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    return devices.filter(d => {
+      if (!d.serial.toLowerCase().includes(q)) return false;
+      if (statusFilter === 'online') return d.status === 'online';
+      if (statusFilter === 'offline') return d.status === 'offline';
+      return true;
+    });
+  }, [devices, search, statusFilter]);
+
+  // A registry of a thousand devices is unusable as one list — and it also
+  // renders a thousand rows on every keystroke in the search box.
+  const totalPages = Math.max(1, Math.ceil(filteredDevices.length / PAGE_SIZE));
+  const paginated = filteredDevices.length > PAGE_SIZE;
+
+  const pagedDevices = useMemo(() => (
+    paginated ? filteredDevices.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) : filteredDevices
+  ), [filteredDevices, page, paginated]);
+
+  // Filtering changes what page 1 means, so go back to it.
+  useEffect(() => { setPage(1); }, [search, statusFilter]);
+
+  // A narrowing filter can leave the current page past the end of the list.
+  useEffect(() => { setPage((p) => Math.min(p, totalPages)); }, [totalPages]);
+
+  const firstShown = filteredDevices.length ? (page - 1) * PAGE_SIZE + 1 : 0;
+  const lastShown = Math.min(page * PAGE_SIZE, filteredDevices.length);
 
   const adminLabel = formatAdminLabel(username);
   function formatLastPulled(date) {
@@ -128,7 +193,7 @@ export default function DeviceList() {
 
       {/* ── Hello Admin Welcome Banner ── */}
       <div style={{
-        background: 'linear-gradient(135deg, rgba(13,125,230,0.07) 0%, rgba(99,102,241,0.07) 100%)',
+        background: 'linear-gradient(135deg, rgba(0,71,204,0.07) 0%, rgba(22,224,179,0.07) 100%)',
         border: '1px solid rgba(13,125,230,0.12)',
         borderRadius: 18,
         padding: '18px 24px',
@@ -149,7 +214,7 @@ export default function DeviceList() {
         </div>
         <div style={{ textAlign: 'right', fontSize: 12, color: 'var(--muted)' }}>
           <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#94a3b8', marginBottom: 2 }}>Last pulled from server</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: lastServerPull ? '#0d7de6' : '#94a3b8' }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: lastServerPull ? 'var(--accent)' : '#94a3b8' }}>
             {formatLastPulled(lastServerPull)}
           </div>
           {lastServerPull && (
@@ -163,7 +228,7 @@ export default function DeviceList() {
       {/* ── Stats Bar ── */}
       <div className="admin-stats-bar">
         {[
-          { label: 'Total Devices', value: totalCount, icon: <DevicesIcon style={{ color: '#0d7de6', width: 28, height: 28 }} /> },
+          { label: 'Total Devices', value: totalCount, icon: <DevicesIcon style={{ color: 'var(--accent)', width: 28, height: 28 }} /> },
           { label: 'Devices Online', value: onlineCount, icon: <BoltIcon style={{ color: '#10b981', width: 28, height: 28 }} /> },
           { label: 'Elevated AHI (>5.0)', value: criticalCount, icon: <WarningIcon style={{ color: '#e24b4a', width: 28, height: 28 }} />, danger: criticalCount > 0 },
           { label: 'Avg Compliance', value: `${complianceAvg}%`, icon: <CheckCircleIcon style={{ color: '#1d9e75', width: 28, height: 28 }} /> }
@@ -179,14 +244,14 @@ export default function DeviceList() {
       {/* ── Quick Lookup Card ── */}
       <div className="admin-quick-lookup-card" style={{ marginBottom: 24 }}>
         <div style={{
-          background: 'linear-gradient(135deg, rgba(13, 125, 230, 0.05) 0%, rgba(39, 198, 199, 0.05) 100%)',
+          background: 'linear-gradient(135deg, rgba(0, 71, 204, 0.05) 0%, rgba(22, 224, 179, 0.05) 100%)',
           border: '1px solid rgba(13, 125, 230, 0.15)',
           borderRadius: '16px',
           padding: '20px',
           boxShadow: '0 4px 20px rgba(0,0,0,0.02)'
         }}>
-          <h3 style={{ margin: '0 0 10px 0', fontSize: 15, fontWeight: 750, color: '#0d7de6', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <SearchIcon style={{ color: '#0d7de6' }} /> Instant Serial Dashboard Lookup
+          <h3 style={{ margin: '0 0 10px 0', fontSize: 15, fontWeight: 750, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <SearchIcon style={{ color: 'var(--accent)' }} /> Instant Serial Dashboard Lookup
           </h3>
           <form onSubmit={handleQuickSubmit} style={{ display: 'flex', gap: 10 }}>
             <input
@@ -207,7 +272,7 @@ export default function DeviceList() {
             <button
               type="submit"
               style={{
-                background: 'linear-gradient(135deg, #0d7de6 0%, #27c6c7 100%)',
+                background: 'var(--brand-gradient)',
                 color: 'white',
                 border: 'none',
                 borderRadius: '10px',
@@ -255,7 +320,11 @@ export default function DeviceList() {
         </div>
 
         <span className="admin-count-label">
-          {loading ? '…' : `${filteredDevices.length} device${filteredDevices.length !== 1 ? 's' : ''}`}
+          {loading
+            ? '…'
+            : paginated
+              ? `${firstShown}–${lastShown} of ${filteredDevices.length}`
+              : `${filteredDevices.length} device${filteredDevices.length !== 1 ? 's' : ''}`}
         </span>
       </div>
 
@@ -286,7 +355,7 @@ export default function DeviceList() {
                 </tr>
               </thead>
               <tbody>
-                {filteredDevices.map(d => {
+                {pagedDevices.map(d => {
                   const sc = STATUS_COLOR[d.status] || STATUS_COLOR.offline;
                   return (
                     <tr
@@ -296,7 +365,7 @@ export default function DeviceList() {
                       style={{ cursor: 'pointer' }}
                     >
                       <td>
-                        <strong style={{ color: '#0d7de6', fontFamily: 'monospace', fontSize: 15 }}>{d.serial}</strong>
+                        <strong style={{ color: 'var(--accent)', fontFamily: 'monospace', fontSize: 15 }}>{d.serial}</strong>
                         <div style={{ fontSize: 11, color: 'var(--muted)' }}>FW: {d.firmware}</div>
                       </td>
                       <td className="admin-td-secondary">{d.model}</td>
@@ -343,7 +412,7 @@ export default function DeviceList() {
 
           {/* Mobile Card List View */}
           <div className="mobile-cards-view mobile-device-cards-grid">
-            {filteredDevices.map(d => {
+            {pagedDevices.map(d => {
               const sc = STATUS_COLOR[d.status] || STATUS_COLOR.offline;
               return (
                 <div
@@ -395,6 +464,38 @@ export default function DeviceList() {
               );
             })}
           </div>
+
+          {paginated && (
+            <nav className="device-pager" aria-label="Device list pages">
+              <span className="device-pager-count">
+                Showing <strong>{firstShown}–{lastShown}</strong> of {filteredDevices.length} devices
+              </span>
+
+              <div className="device-pager-controls">
+                <button type="button" onClick={() => setPage(1)} disabled={page === 1} aria-label="First page">«</button>
+                <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>Previous</button>
+
+                {pageWindow(page, totalPages).map((n, i) => (
+                  n === GAP
+                    ? <span key={`gap${i}`} className="device-pager-gap">…</span>
+                    : (
+                      <button
+                        key={n}
+                        type="button"
+                        className={n === page ? 'active' : ''}
+                        aria-current={n === page ? 'page' : undefined}
+                        onClick={() => setPage(n)}
+                      >
+                        {n}
+                      </button>
+                    )
+                ))}
+
+                <button type="button" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}>Next</button>
+                <button type="button" onClick={() => setPage(totalPages)} disabled={page === totalPages} aria-label="Last page">»</button>
+              </div>
+            </nav>
+          )}
         </>
       )}
     </div>

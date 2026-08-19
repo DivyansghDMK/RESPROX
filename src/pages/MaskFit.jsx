@@ -50,7 +50,7 @@ export default function MaskFit() {
     return (
       <div className="maskfit-page" style={{ padding: '40px 20px', textAlign: 'center' }}>
         <GlassCard>
-          <h2 style={{ color: '#0d7de6', fontWeight: 800 }}>No Device Selected</h2>
+          <h2 style={{ color: 'var(--accent)', fontWeight: 800 }}>No Device Selected</h2>
           <p style={{ color: 'var(--muted)', marginTop: 8 }}>Please select a device from the Devices registry to view mask fit telemetry.</p>
         </GlassCard>
       </div>
@@ -114,7 +114,7 @@ export default function MaskFit() {
               yKey="leak"
               yUnit=" L/min"
               type="line"
-              colorStart="#28d5c9"
+              colorStart="var(--accent-2)"
               domain={[0, 40]}
             />
           ) : (

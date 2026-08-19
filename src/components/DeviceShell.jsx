@@ -3,7 +3,8 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { BellIcon, ChevronRightIcon, DeviceIcon, HomeIcon, PulseIcon, ChartIcon, FileIcon, UserIcon } from './Icons';
 import { useTherapy } from '../context/TherapyContext';
 
-const BRAND_GRADIENT = 'linear-gradient(97deg, #001B66 -2.93%, #0047CC -1.33%, #16E0B3 94.91%)';
+// Defined once as --brand-gradient on :root in styles.css.
+const BRAND_GRADIENT = 'var(--brand-gradient)';
 
 function formatDeviceTitle(deviceData, serial) {
   if (!deviceData && !serial) return 'Enter a device serial to begin';

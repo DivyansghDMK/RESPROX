@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Resprox — Device Data, Settings & Messaging: Knowledge Transfer</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm 18mm; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 10pt; line-height: 1.55; color: #1d2433; -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  h1 { font-size: 26pt; margin: 0 0 6px; letter-spacing: -0.6px; color: #001B66; }
+  h2 {
+    font-size: 14pt; margin: 26px 0 10px; padding-bottom: 5px; color: #0047CC;
+    border-bottom: 2px solid #16E0B3; page-break-after: avoid;
+  }
+  h3 { font-size: 11pt; margin: 18px 0 6px; color: #1d2433; page-break-after: avoid; }
+  h4 { font-size: 10pt; margin: 14px 0 4px; color: #46506b; page-break-after: avoid; }
+  p, li { margin: 0 0 8px; }
+  ul, ol { margin: 0 0 10px; padding-left: 18px; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 8.6pt; background: #f2f5f9; padding: 1px 4px; border-radius: 3px; }
+  pre {
+    background: #0f172a; color: #d7e0ee; padding: 10px 12px; border-radius: 6px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 8pt; line-height: 1.5;
+    overflow-wrap: break-word; white-space: pre-wrap; page-break-inside: avoid;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 14px; font-size: 8.6pt; page-break-inside: auto; }
+  th { background: #eef3fb; text-align: left; font-weight: 700; color: #001B66; }
+  th, td { border: 1px solid #d8e0ec; padding: 5px 7px; vertical-align: top; }
+  tr { page-break-inside: avoid; }
+  td.n { font-family: ui-monospace, Menlo, monospace; white-space: nowrap; }
+  .cover { border-bottom: 3px solid #0047CC; padding-bottom: 14px; margin-bottom: 6px; }
+  .sub { font-size: 11pt; color: #46506b; margin: 0; }
+  .meta { font-size: 8.5pt; color: #6b7590; margin-top: 10px; }
+  .note {
+    border-left: 3px solid #0047CC; background: #f4f8ff; padding: 9px 12px;
+    margin: 10px 0; font-size: 9pt; page-break-inside: avoid;
+  }
+  .warn { border-left-color: #D97706; background: #fffaf0; }
+  .stop { border-left-color: #DC2626; background: #fff5f5; }
+  .ok   { border-left-color: #0ca30c; background: #f3fbf3; }
+  .page-break { page-break-before: always; }
+  .toc { columns: 2; column-gap: 26px; font-size: 9pt; }
+  .toc a { color: #1d2433; text-decoration: none; }
+  .pill {
+    display: inline-block; font-size: 7.5pt; font-weight: 700; padding: 1px 7px;
+    border-radius: 999px; background: #eef3fb; color: #0047CC; vertical-align: middle;
+  }
+  footer {
+    position: fixed; bottom: 4mm; left: 0; right: 0; text-align: center;
+    font-size: 7.5pt; color: #8792ab; background: #fff; padding-top: 2px;
+  }
+  @media screen { footer { position: static; margin-top: 30px; } }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>Resprox — Knowledge Transfer</h1>
+  <p class="sub">Device data files, the settings pipeline, and user-facing messaging — end to end.</p>
+  <p class="meta">
+    CPAP/BiPAP compliance dashboard (<code>cpap-dashboard</code> / RESPROX) &nbsp;·&nbsp;
+    React 18 + Vite &nbsp;·&nbsp; Document revision 1.0
+  </p>
+</div>
+
+<h2 id="toc">Contents</h2>
+<div class="toc">
+  <p>1. System boundary — what talks to what<br/>
+  2. Device data file: accepted formats<br/>
+  3. The record specification (41 fields)<br/>
+  4. Validation &amp; rejection rules<br/>
+  5. From records to nights: the aggregation<br/>
+  6. Known data quirks you must know about<br/>
+  7. The upload screen, step by step<br/>
+  8. Charts<br/>
+  9. Report generation (PDF)<br/>
+  10. Settings screen &amp; the push pipeline<br/>
+  11. Messaging: the notification frame<br/>
+  12. Complete message catalogue<br/>
+  13. BLE protocol reference module<br/>
+  14. File map<br/>
+  15. Running &amp; testing<br/>
+  16. Open items requiring a decision</p>
+</div>
+
+<h2 id="s1">1. System boundary — what talks to what</h2>
+
+<p>This is the single most important thing to understand before changing anything.</p>
+
+<pre>   Browser (this app)          Server                    Device
+   ┌────────────────┐   HTTPS  ┌──────────────┐  BLE     ┌──────────┐
+   │  React SPA     │ ───────▶ │  API, keyed  │ ───────▶ │ CPAP /   │
+   │                │ ◀─────── │  by SERIAL   │ ◀─────── │ BiPAP    │
+   └────────────────┘          └──────────────┘          └──────────┘
+        ▲ the app only ever speaks to the server
+        ▲ it never speaks Bluetooth, and never addresses a device directly</pre>
+
+<p>The web app communicates <strong>only with the backend server</strong>, and everything is addressed
+by <strong>device serial number</strong>. The server owns the conversation with the physical device,
+including the BLE hex protocol. The browser has no Bluetooth code and must not acquire any.</p>
+
+<div class="note">
+  <strong>Practical consequence.</strong> When a screen needs to change a device setting it
+  <code>PATCH</code>es the server and then polls a command status. It does not build device frames,
+  and it cannot know the device applied a change until the server says so.
+</div>
+
+<p>There are two independent data paths into the app:</p>
+<table>
+  <tr><th style="width:22%">Path</th><th>How data arrives</th><th style="width:26%">Used by</th></tr>
+  <tr>
+    <td><strong>Live telemetry</strong></td>
+    <td>Server API over HTTPS, per serial. Device pushes to the server; the app pulls.</td>
+    <td>Dashboard, Therapy, Trends, Reports, Settings</td>
+  </tr>
+  <tr>
+    <td><strong>Offline file</strong></td>
+    <td>An operator copies <code>REPORTFL.TXT</code> off the device's SD card / USB and uploads it in the browser. Parsed locally; never sent anywhere.</td>
+    <td>Upload Data screen (<code>/admin/upload</code>)</td>
+  </tr>
+</table>
+
+<h2 id="s2">2. Device data file: accepted formats</h2>
+
+<table>
+  <tr><th style="width:26%">Property</th><th>Accepted</th></tr>
+  <tr><td>Canonical filename</td><td><code>REPORTFL.TXT</code> (the name is not enforced — content is what matters)</td></tr>
+  <tr><td>File picker filter</td><td><code>.txt</code>, <code>.TXT</code>, <code>.csv</code>, <code>.log</code>, <code>text/plain</code></td></tr>
+  <tr><td>Maximum size</td><td><strong>8 MB</strong>. Larger is refused with the size stated back to the user.</td></tr>
+  <tr><td>Encoding</td><td>Plain text, read via the browser's <code>File.text()</code> (UTF-8).</td></tr>
+  <tr><td>Line endings</td><td><code>LF</code> or <code>CRLF</code> — both handled.</td></tr>
+  <tr><td>Blank lines</td><td>Ignored silently (the device writes many).</td></tr>
+  <tr><td>Record shape</td><td>Comma-separated, positional. Opens with <code>S</code>, closes with <code>A</code>, and most firmware appends the serial after the terminator.</td></tr>
+  <tr><td>Minimum fields</td><td><strong>39</strong> (through the leak value). The terminator and serial are optional, so older firmware without a trailing serial still parses.</td></tr>
+  <tr><td>Transport</td><td>None. Parsing happens entirely in the browser; the file is never uploaded to any server.</td></tr>
+</table>
+
+<p>A typical record — this is the reference example from the device specification:</p>
+<pre>S,22,12,23,22,12,23,4,554,20,4,0,0,163,0,215,339,0,0,14,28,15,30,5,0,2,0,39,0,3,4,3,0,2,1,1,1,6,8,A</pre>
+<p>and the same shape as emitted by current firmware, with a serial appended:</p>
+<pre>S,15,6,24,15,6,24,4,901,20,4,0,0,2,0,216,554,0,0,16,26,17,1,5,0,2,0,45,0,0,0,1,0,2,1,1,255,3,123,A,24000378</pre>
+
+<h2 id="s3" class="page-break">3. The record specification (41 fields)</h2>
+
+<p>Index 0 is the record marker. Both known firmware variants are supported: 40 fields
+(ending at the <code>A</code> terminator) and 41 fields (terminator plus serial).</p>
+
+<table>
+  <tr><th style="width:8%">Index</th><th style="width:26%">Field</th><th style="width:26%">Encoding</th><th>Notes</th></tr>
+  <tr><td class="n">0</td><td>Record marker</td><td><code>S</code></td><td>Anything else &rarr; line rejected</td></tr>
+  <tr><td class="n">1–3</td><td>Start day, month, year</td><td>uint8; 2-digit year &rarr; 2000+</td><td>Calendar-validated</td></tr>
+  <tr><td class="n">4–6</td><td>End day, month, year</td><td>uint8; 2-digit year &rarr; 2000+</td><td>Lets a session cross midnight</td></tr>
+  <tr><td class="n">7</td><td>Mode</td><td>uint8</td><td>Observed 3 and 4; the pressure columns are the reliable signal (see below)</td></tr>
+  <tr><td class="n">8</td><td>Volume transfer</td><td>uint16</td><td>Retained, not currently reported</td></tr>
+  <tr><td class="n">9</td><td>Max pressure</td><td>uint8 cmH₂O</td><td>Fixed set pressure when min is 0</td></tr>
+  <tr><td class="n">10</td><td>Min pressure</td><td>uint8 cmH₂O</td><td>&gt; 0 with max &gt; min &rarr; AUTO</td></tr>
+  <tr><td class="n">11–12</td><td>IPAP, EPAP</td><td>uint8 cmH₂O</td><td>Either &gt; 0 &rarr; BiPAP</td></tr>
+  <tr><td class="n">13</td><td>Pressure change count</td><td>uint8</td><td>Retained</td></tr>
+  <tr><td class="n">14</td><td>CPAP/BiPAP counter</td><td>uint8</td><td>Retained</td></tr>
+  <tr><td class="n">15–16</td><td>Air flow, tidal volume</td><td>uint16</td><td>Shown in CSV export</td></tr>
+  <tr><td class="n">17–18</td><td>Resp rate, start EPAP</td><td>uint8</td><td>Observed 0 across all sample data</td></tr>
+  <tr><td class="n">19–20</td><td>Start hour, minute</td><td>uint8, 0–23 / 0–59</td><td>Range-validated</td></tr>
+  <tr><td class="n">21–22</td><td>End hour, minute</td><td>uint8, 0–23 / 0–59</td><td>Range-validated</td></tr>
+  <tr><td class="n">23</td><td>Humidifier level</td><td>uint8</td><td>Carried into report settings</td></tr>
+  <tr><td class="n">24</td><td>Ramp time</td><td>uint8 minutes</td><td>Carried into report settings</td></tr>
+  <tr><td class="n">25–26</td><td>Auto on/off, titration factor</td><td>uint8</td><td>Retained</td></tr>
+  <tr><td class="n">27</td><td>Rate change factor / minute ventilation</td><td>uint8</td><td>Meaning depends on mode</td></tr>
+  <tr><td class="n">28</td><td>CSA count</td><td>uint8</td><td rowspan="3">Summed per night &rarr; AHI numerator</td></tr>
+  <tr><td class="n">29</td><td>OSA count</td><td>uint8</td></tr>
+  <tr><td class="n">30</td><td>HSA count</td><td>uint8</td></tr>
+  <tr><td class="n">31–32</td><td>Reserved</td><td>uint8</td><td>Undocumented; 32 is always 0 in sample data</td></tr>
+  <tr><td class="n">33–34</td><td>A-Flex on/off, level</td><td>uint8 (2 = on)</td><td>Carried into report settings</td></tr>
+  <tr><td class="n">35</td><td>Reserved</td><td>uint8</td><td>Undocumented</td></tr>
+  <tr><td class="n">36</td><td>Mask type</td><td>1 Nasal, 2 Full Face, 3 Pillow</td><td><code>255</code> seen on older firmware = unset</td></tr>
+  <tr><td class="n">37</td><td>Reserved</td><td>uint8</td><td>Undocumented</td></tr>
+  <tr><td class="n">38</td><td>Leak</td><td>uint8 L/min</td><td><strong>See §6 — values ≥ 120 are status codes, not leak</strong></td></tr>
+  <tr><td class="n">39</td><td>Terminator</td><td><code>A</code></td><td>Optional; recorded but not enforced</td></tr>
+  <tr><td class="n">40</td><td>Serial number</td><td>text</td><td>Optional; drives the serial shown on screen</td></tr>
+</table>
+
+<h4>Mode classification</h4>
+<p>The numeric mode byte is not trusted across firmware revisions. Mode is derived from the
+pressure columns, which have been consistent:</p>
+<table>
+  <tr><th style="width:30%">Condition</th><th>Result</th></tr>
+  <tr><td>IPAP &gt; 0 or EPAP &gt; 0</td><td><strong>BiPAP</strong> — set pressure taken as IPAP</td></tr>
+  <tr><td>min &gt; 0 and max &gt; min</td><td><strong>AUTO CPAP</strong> — reported as a min–max band</td></tr>
+  <tr><td>otherwise</td><td><strong>CPAP</strong> — fixed pressure taken from the max column</td></tr>
+</table>
+
+<h2 id="s4">4. Validation &amp; rejection rules</h2>
+
+<p>Parsing never throws. A bad line is collected with a reason and reported on screen; the rest of
+the file still parses. There are two distinct outcomes — <em>rejected</em> and <em>excluded</em>.</p>
+
+<h4>Rejected — the line is not a record at all</h4>
+<table>
+  <tr><th style="width:44%">Message shown</th><th>Trigger</th></tr>
+  <tr><td>does not start with the "S" record marker</td><td>First field is not <code>S</code></td></tr>
+  <tr><td>only <em>N</em> fields, expected at least 39</td><td>Truncated line</td></tr>
+  <tr><td>unreadable start date/time</td><td>Non-numeric, or a date the calendar rejects (month 13, day 32, hour 24)</td></tr>
+  <tr><td>unreadable end date/time</td><td>As above, on the end timestamp</td></tr>
+</table>
+<p>These appear on screen as <em>“<strong>N</strong> line(s) skipped”</em>, each with its line number and a
+48-character excerpt, capped at 5 with a “Show all <em>N</em>” toggle.</p>
+
+<h4>Excluded — a valid record that cannot be a night of therapy</h4>
+<table>
+  <tr><th style="width:44%">Rule</th><th>Why</th></tr>
+  <tr><td>End timestamp precedes the start</td><td>Impossible; almost always a device clock reset</td></tr>
+  <tr><td>Duration &gt; 24 hours</td><td>Not a single night; counting it inflates usage totals</td></tr>
+</table>
+<p>Excluded records are kept and counted, but contribute to no statistic. The screen states
+<em>“<strong>N</strong> session(s) excluded from the statistics”</em> and explains why. The per-night table shows
+a red <code>−N</code> beside the session count for affected days.</p>
+
+<div class="note ok">
+  <strong>Design principle.</strong> Nothing is silently dropped. Every record is either counted,
+  or visibly reported as skipped/excluded with a reason. A number on this screen can always be traced
+  back to the lines that produced it.
+</div>
+
+<h2 id="s5" class="page-break">5. From records to nights: the aggregation</h2>
+
+<p>One line is one <em>session</em> (a mask-on period). One row in the report is one <em>night</em>. The
+parser performs that collapse, deliberately, before the report builder sees the data.</p>
+
+<div class="note warn">
+  <strong>Why here and not in the report builder.</strong> The report builder keeps a single frame
+  per calendar day, which is correct for live telemetry (one frame per night) but would throw away
+  all but the last session of a day in a file that records every mask-on separately. Aggregating in
+  the parser makes the builder's de-duplication a no-op.
+</div>
+
+<table>
+  <tr><th style="width:26%">Quantity</th><th>Rule</th></tr>
+  <tr><td>Night attribution</td><td>A session belongs to the date it <strong>started</strong> on. A 23:35 → 01:50 session is one night, counted as 2 h 15 m, on the earlier date. This is the standard sleep-therapy convention.</td></tr>
+  <tr><td>Usage hours</td><td>Sum of all included session durations that day.</td></tr>
+  <tr><td>AHI</td><td>(CSA + OSA + HSA summed) ÷ usage hours. Zero usage &rarr; AHI 0.</td></tr>
+  <tr><td>Leak</td><td><strong>Duration-weighted</strong> mean of valid readings. Falls back to a plain mean if every contributing record has zero duration; <code>null</code> if none are valid.</td></tr>
+  <tr><td>Set pressure, tidal volume, air flow</td><td>Duration-weighted means.</td></tr>
+  <tr><td>Compliance</td><td>A night passes at <strong>≥ 4 hours</strong> of total usage.</td></tr>
+</table>
+
+<p>Duration weighting matters: the device writes short configuration frames alongside real
+sessions, and an unweighted mean would let a two-minute frame pull a night's average as hard as an
+eight-hour one.</p>
+
+<h2 id="s6">6. Known data quirks you must know about</h2>
+
+<h3>6.1 The leak field is not always a leak <span class="pill">ACTION NEEDED</span></h3>
+<p>Field 38 is bimodal. Plausible readings sit in <strong>0–30 L/min</strong>. Alongside them the devices
+emit codes at <strong>120–129</strong> and <strong>196</strong> — the 196 frames are the zero-duration
+configuration echoes written at power-on.</p>
+<p>In one 378-record sample, <strong>328 of 375</strong> counted records carried such a code. Read as
+litres per minute they would report almost every night as a blown mask. The mean of the plausible
+values is 7.4 L/min, which is clinically normal.</p>
+<p><strong>Current behaviour:</strong> anything <strong>≥ 120</strong> is treated as a status code — carried through
+as raw data, excluded from the leak average and the leak chart, and counted for the operator. The
+screen names the exact codes found so they can be taken to the firmware team.</p>
+<div class="note stop">
+  <strong>This needs confirming with firmware.</strong> If 120–129 actually encodes a real leak
+  (an offset? tenths?), the rule is a one-line change in <code>reportFileParser.js</code>
+  (<code>LEAK_SENTINEL</code>). Until then, leak statistics are based only on values below 120.
+</div>
+
+<h3>6.2 Set pressure is a setting, not a measurement</h3>
+<p>The file records the pressure the device was <em>told</em> to deliver. There is no measured pressure
+trace. Reporting that value under “median” or “95th percentile” would misstate it, so the report
+takes a <code>pressureSource: 'set'</code> flag which:</p>
+<ul>
+  <li>titles the chart <strong>Set Pressure (cmH₂O)</strong> rather than Pressure;</li>
+  <li>leaves median, 95th percentile and maximum blank (“—”);</li>
+  <li>reports the mean as <strong>Set Pressure (avg)</strong>;</li>
+  <li>adds a sentence to the report footnote explaining the omission.</li>
+</ul>
+<p>The live-telemetry path passes no flag and is completely unchanged.</p>
+
+<h3>6.3 Metrics the device does not transmit</h3>
+<p>The apnea/hypopnea split (AI/HI), central/obstructive/unknown apnea indices, daily median
+pressure, respiratory rate and minute ventilation are not present. They render as “—” and their
+sections stay hidden. A blank is correct where an estimate would be invented.</p>
+
+<h2 id="s7">7. The upload screen, step by step</h2>
+<p>Route <code>/admin/upload</code> · sidebar entry <strong>Upload Data</strong>.</p>
+<ol>
+  <li><strong>Drop or browse</strong> for the file. Drag-and-drop and click-to-browse both work; the drop zone is keyboard reachable.</li>
+  <li><strong>Parse.</strong> Runs synchronously in the browser. On success the file chip shows name, size, record count and day count.</li>
+  <li><strong>File Contents.</strong> Six tiles — Sessions, Days used, ≥ 4 hours, Total usage, AHI, Mode — plus any data-quality warnings (§4, §6).</li>
+  <li><strong>Report Details.</strong> Serial (pre-filled from the file), date range (pre-filled to the file's full span), and optional patient name, ID, date of birth, gender and device model for the report header.</li>
+  <li><strong>Quick ranges.</strong> Last 7 / 30 / 90 nights / All, measured back from the file's last night. These write the same start/end dates the report and CSV use, so the charts can never show a different period than the PDF.</li>
+  <li><strong>Charts</strong> for the selected range (§8).</li>
+  <li><strong>Parsed Nights</strong> table — first 12 rows on screen; the report and CSV cover all of them.</li>
+  <li><strong>Generate Therapy Report</strong> opens the printable document; <strong>Download Daily CSV</strong> exports every night in range.</li>
+</ol>
+
+<h4>Upload failure messages</h4>
+<table>
+  <tr><th style="width:46%">Message</th><th>Trigger</th></tr>
+  <tr><td>File is <em>N</em> MB — the limit is 8 MB.</td><td>Oversized file</td></tr>
+  <tr><td>The file is empty.</td><td>No content</td></tr>
+  <tr><td>No usable session records found. <em>N</em> line(s) could not be read — check this is a REPORTFL.TXT session log.</td><td>Parsed, but zero valid records</td></tr>
+  <tr><td>More than one serial number in this file</td><td>Records reference different serials; a report covers one device</td></tr>
+</table>
+
+<h2 id="s8" class="page-break">8. Charts</h2>
+<p>Four charts, matching the report's series and thresholds, rendered with recharts. Loaded lazily —
+the ~300 kB chart bundle only downloads once a file has been parsed.</p>
+<table>
+  <tr><th style="width:22%">Chart</th><th style="width:20%">Mark</th><th>Encoding</th></tr>
+  <tr><td>Usage (hours)</td><td>Bars</td><td>Green ≥ 4 h; red with a diagonal hatch below 4 h; dashed 4 h reference line</td></tr>
+  <tr><td>Set Pressure</td><td><strong>Step line</strong></td><td>A setting that holds for weeks is a level, not a nightly magnitude — bars merged into a solid block and hid when it changed</td></tr>
+  <tr><td>AHI</td><td>Bars</td><td>Single hue, dashed reference line at AHI 5</td></tr>
+  <tr><td>Mask Leak</td><td>Bars</td><td>Single hue, dashed reference line at 24 L/min</td></tr>
+</table>
+<p>Every chart has a hover tooltip giving that night's exact value, date and session count. A metric
+with no data in range shows “No values recorded for this metric in the selected range” rather than
+an empty axis, which reads as a rendering fault.</p>
+
+<div class="note warn">
+  <strong>Accessibility note that must not be regressed.</strong> The clinical green/red usage
+  convention fails colour-vision separation on its own (ΔE 4.1 under deuteranopia, measured with the
+  palette validator). It is never the only cue: the 4 h threshold line gives every bar a readable
+  position, short nights carry a diagonal hatch, the legend names both states, and the Parsed Nights
+  table carries compliance in words. Keep at least one non-colour cue if you restyle these.
+</div>
+
+<div class="note">
+  <strong>Global CSS trap.</strong> <code>styles.css</code> sets
+  <code>svg { fill:none; stroke:currentColor; stroke-width:1.8 }</code> for the icon set. Chart marks
+  that do not declare their own stroke <em>inherit</em> it — on a 2 px bar that dark stroke swamps the
+  fill and every series renders near-black. A reset inside <code>.recharts-wrapper</code> neutralises
+  it. If you add charts elsewhere, keep them inside that wrapper or repeat the reset.
+</div>
+
+<h2 id="s9">9. Report generation (PDF)</h2>
+<p><code>therapyReport.js</code> builds a self-contained printable HTML document and opens it in a new
+window with a Print / Save-as-PDF button. Charts are hand-rolled inline SVG rather than a charting
+library: the window has no bundler, printing must not depend on a JS runtime having finished laying
+anything out, and it keeps the module free of the chart bundle.</p>
+<p>It is shared by both data paths. The only difference is the <code>pressureSource</code> flag (§6.2)
+and a provenance line naming the uploaded file. If the browser blocks the pop-up, the app says so
+explicitly rather than failing silently.</p>
+
+<h2 id="s10">10. Settings screen &amp; the push pipeline</h2>
+<p>Route <code>/settings</code>. <strong>One common screen serves both CPAP and BiPAP devices</strong> — nothing is
+hidden or disabled based on device type.</p>
+
+<h4>Draft / committed editing</h4>
+<p>The user edits a <em>draft</em>. <em>Committed</em> values are what the device last confirmed. The floating
+apply bar appears only when they differ. Any failure reverts the draft wholesale, so what is on
+screen always matches what the device is believed to hold.</p>
+
+<h4>Flow states</h4>
+<pre>Idle ──▶ Confirming ──▶ Sending ──▶ Idle          (device ACKed)
+                              └────▶ Failed ──▶ Idle  (draft reverted)</pre>
+<p>The Confirming dialog lists exactly the changes that will be sent. The Sending dialog is
+non-dismissable but offers <strong>Stop waiting</strong>, which closes it and explains that the server has
+the change and will deliver it when the device next connects.</p>
+
+<h4>What gets sent</h4>
+<p>Only the groups that actually changed. Changing the humidifier must not rewrite the ramp block.</p>
+<table>
+  <tr><th style="width:22%">Group</th><th>Fields</th></tr>
+  <tr><td><code>COMFORT</code></td><td>rampTime, humidifier, tubeType, maskType</td></tr>
+  <tr><td><code>OPTIONS</code></td><td>iMode, leakAlert, sleepMode</td></tr>
+  <tr><td><code>CPAP</code> / <code>AUTO</code></td><td>Ramp and A-Flex, sent with the current pressures — the device rewrites the block whole</td></tr>
+</table>
+
+<h4>Server contract</h4>
+<pre>PATCH /devices/{serial}/settings
+{ "CPAP": null, "AUTO": null, "S": null, "ST": null, "T": null,
+  "VAPS": null, "CONFIG": null,
+  "COMFORT": { "rampTime": 20, "humidifier": 5, "tubeType": 1, "maskType": 1 },
+  "OPTIONS": { "iMode": true, "leakAlert": true, "sleepMode": false } }
+      ↓  response carries commandId
+GET /devices/{serial}/commands/{commandId}/status   →  ACKED | NACKED | TIMEOUT</pre>
+<p>A <code>NO_CHANGE</code> response means the server saw nothing to write; the draft is treated as
+already matching the device. The client polls for <strong>20 seconds</strong> (reduced from the API default
+of 40, which held a blocking dialog too long).</p>
+
+<table>
+  <tr><th style="width:30%">Outcome</th><th>User sees</th></tr>
+  <tr><td><code>ACKED</code></td><td>“Settings applied” — the device confirmed <em>N</em> changes</td></tr>
+  <tr><td><code>NACKED</code></td><td>“The device rejected the change” — values reported invalid, rolled back</td></tr>
+  <tr><td><code>TIMEOUT</code></td><td>“The device didn't confirm” — server accepted it, device never acknowledged; may be offline or asleep</td></tr>
+  <tr><td>HTTP error</td><td>Classified by status (§11)</td></tr>
+  <tr><td>Network failure</td><td>“Couldn't reach the server”</td></tr>
+</table>
+
+<h2 id="s11" class="page-break">11. Messaging: the notification frame</h2>
+
+<p>All user-facing messaging goes through one surface. <code>NotifyProvider</code> is mounted
+<strong>above the router</strong>, so a message raised anywhere — app shell, HCP portal, login, onboarding —
+lands in the same frame in the same corner. Screens no longer each invent their own
+<code>alert()</code> / toast / inline banner; there are now <strong>zero</strong> <code>alert()</code> calls in
+application screens.</p>
+
+<table>
+  <tr><th style="width:16%">Tone</th><th style="width:20%">Auto-dismiss</th><th>Use</th></tr>
+  <tr><td>success</td><td>4 s</td><td>An action completed</td></tr>
+  <tr><td>info</td><td>5 s</td><td>Something is under way</td></tr>
+  <tr><td>warning</td><td>8 s</td><td>Partial success, or a caveat</td></tr>
+  <tr><td><strong>error</strong></td><td><strong>Never</strong> — stays until dismissed</td><td>A message about changes that did not save must not vanish before it is read</td></tr>
+</table>
+
+<p>A maximum of four are visible; an identical repeat refreshes the existing card rather than
+stacking noise. Retryable errors carry a <strong>Try again</strong> button; non-retryable ones deliberately
+do not, so the user is never invited into a retry that is guaranteed to fail.</p>
+
+<h4>Error classification</h4>
+<p><code>apiError.js</code> converts any thrown failure into title / message / technical detail, so the
+same underlying problem reads identically on every screen. The API layer attaches
+<code>status</code> and the response body to its errors specifically to make this possible.</p>
+
+<table>
+  <tr><th style="width:16%">Condition</th><th style="width:34%">Title</th><th style="width:34%">Message</th><th>Retry</th></tr>
+  <tr><td>Offline / fetch failed</td><td>Couldn't reach the server</td><td>You appear to be offline. Check your connection and try again.</td><td>Yes</td></tr>
+  <tr><td>400 / 422</td><td>The server rejected those values</td><td>The server's own text — it normally names the offending field</td><td>No</td></tr>
+  <tr><td>401 / 403</td><td>Your session has expired</td><td>Sign in again to continue. Your unsaved changes were not sent.</td><td>No</td></tr>
+  <tr><td>404</td><td>Not found on the server</td><td>The server has no record of <em>subject</em>. It may have been removed, or the serial may be wrong.</td><td>No</td></tr>
+  <tr><td>409</td><td>Someone else changed this first</td><td>Refresh to load the current values, then apply your change again.</td><td>Yes</td></tr>
+  <tr><td>429</td><td>Too many requests</td><td>The server is rate-limiting this device. Wait a moment and try again.</td><td>Yes</td></tr>
+  <tr><td>5xx</td><td>The server had a problem</td><td>It could not <em>action</em>. This is on our side — try again shortly.</td><td>Yes</td></tr>
+  <tr><td>Anything else</td><td>Couldn't <em>action</em></td><td>The raw error text</td><td>Yes</td></tr>
+</table>
+
+<h2 id="s12">12. Complete message catalogue</h2>
+<p>Every message the app raises through the frame, by screen.</p>
+<table>
+  <tr><th style="width:26%">Screen</th><th style="width:12%">Tone</th><th>Message</th></tr>
+  <tr><td>Any (device load)</td><td>error</td><td>Classified failure loading a device, with retry. Previously a silent <code>console.warn</code> that left every screen on “Loading therapy data…” forever.</td></tr>
+  <tr><td>Settings</td><td>success</td><td>Settings applied — the device confirmed <em>N</em> change(s)</td></tr>
+  <tr><td>Settings</td><td>error</td><td>Couldn't apply settings / device rejected / didn't confirm — with retry where sensible</td></tr>
+  <tr><td>Settings</td><td>info</td><td>Still sending in the background — the server has the change for <em>serial</em></td></tr>
+  <tr><td>Device dashboard</td><td>error</td><td>Classified push failure; device did not apply the settings</td></tr>
+  <tr><td>Admin settings editor</td><td>error</td><td>Failed to load / save these settings, with retry</td></tr>
+  <tr><td>Admin patients</td><td>warning</td><td>Patient created, but the welcome email failed — copy the login link and send it manually</td></tr>
+  <tr><td>Admin patients</td><td>error / success</td><td>Onboarding failure (classified) · Login link copied</td></tr>
+  <tr><td>Reports</td><td>error</td><td>The report window was blocked — allow pop-ups, then generate again</td></tr>
+  <tr><td>Reports</td><td>success</td><td>Share link sent</td></tr>
+  <tr><td>Devices</td><td>success / warning</td><td>Sync complete · Device disconnected</td></tr>
+  <tr><td>Trends</td><td>info</td><td>Preparing export</td></tr>
+  <tr><td>Help &amp; Support</td><td>info / success</td><td>Running <em>diagnostic</em> · Support ticket raised</td></tr>
+  <tr><td>Preferences</td><td>success</td><td><em>Action</em> triggered — the device will apply it on next sync</td></tr>
+  <tr><td>Create organization</td><td>error</td><td>Classified registration failure</td></tr>
+  <tr><td>HCP portal</td><td>error</td><td>Sign-in failed — those credentials were not recognised</td></tr>
+</table>
+
+<h2 id="s13">13. BLE protocol reference module</h2>
+<p><code>protocol/bleProtocol.js</code> is a complete, tested implementation of the CPAP/BiPAP BLE hex
+protocol Rev 3.1 — FULL_SYNC, UPDATE and NACK frames, XOR checksums, range validation and
+engineering-unit conversion. <strong>It is not used by the web app</strong> (§1) and lives outside
+<code>src/</code> for that reason. It is there for whoever owns the server or firmware side.</p>
+<p>Run <code>node protocol/bleProtocol.test.mjs</code> — 47 assertions, no dependencies.</p>
+
+<h4>Errors found in the Rev 3.1 specification</h4>
+<p>The byte map is internally consistent and the codec matches it exactly. Three of the
+document's hand-written worked examples do not:</p>
+<table>
+  <tr><th style="width:34%">Example</th><th style="width:28%">Document states</th><th>Correct</th></tr>
+  <tr><td>CPAP FULL_SYNC</td><td>72 bytes, <code>CK 0x60</code></td><td>70 bytes, <code>CK 0x6B</code> (two extra <code>00</code> padding bytes)</td></tr>
+  <tr><td>BiPAP FULL_SYNC</td><td><code>CK 0x24</code></td><td><code>CK 0x2F</code></td></tr>
+  <tr><td>BiPAP <code>#4_ST</code> UPDATE</td><td><code>CK 0x56</code> (ACK <code>0x57</code>)</td><td><code>CK 0x5A</code> (ACK <code>0x5B</code>) — the XOR stops before SENS and RISE_TIME</td></tr>
+</table>
+<p>The CPAP <code>#1</code> UPDATE, its ACK and the NACK example all validate, which confirms the checksum
+rule itself is right.</p>
+
+<div class="note warn">
+  <strong>Packet discrimination.</strong> FULL_SYNC has no DIR byte, so byte 1 is its packet type
+  <code>0x01</code> — identical to an UPDATE ACK whose DIR is <code>0x01</code>. Byte 2 does not separate
+  them either (device type BIPAP and packet type UPDATE are both <code>0x02</code>). <strong>Length is the
+  only reliable discriminator.</strong> If firmware ever changes a packet length, this is what breaks.
+</div>
+
+<h2 id="s14" class="page-break">14. File map</h2>
+<table>
+  <tr><th style="width:38%">Path</th><th>Responsibility</th></tr>
+  <tr><td><code>src/services/reportFileParser.js</code></td><td>REPORTFL.TXT parsing, validation, nightly aggregation, CSV export</td></tr>
+  <tr><td><code>src/pages/AdminDataUpload.jsx</code></td><td>Upload screen: drop zone, summary, warnings, ranges, actions</td></tr>
+  <tr><td><code>src/components/ReportCharts.jsx</code></td><td>The four on-screen charts</td></tr>
+  <tr><td><code>src/services/therapyReport.js</code></td><td>Printable therapy report (HTML + inline SVG charts)</td></tr>
+  <tr><td><code>src/pages/Settings.jsx</code></td><td>Device comfort &amp; configuration screen</td></tr>
+  <tr><td><code>src/pages/AppPreferences.jsx</code></td><td>App-level preferences (units, notifications, account, appearance), route <code>/preferences</code></td></tr>
+  <tr><td><code>src/context/NotifyContext.jsx</code></td><td>Notification frame — provider, queue, card rendering</td></tr>
+  <tr><td><code>src/services/apiError.js</code></td><td>Error classification into user-facing language</td></tr>
+  <tr><td><code>src/services/respireeApi.js</code></td><td>Server API: devices, telemetry, settings groups, command polling</td></tr>
+  <tr><td><code>src/context/TherapyContext.jsx</code></td><td>Active device state and the shared fetch</td></tr>
+  <tr><td><code>protocol/</code></td><td>BLE protocol reference implementation + tests + README (not used by the app)</td></tr>
+</table>
+
+<h2 id="s15">15. Running &amp; testing</h2>
+<pre>npm install
+npm run dev      # Vite dev server, proxies the API
+npm run build    # production build
+node protocol/bleProtocol.test.mjs   # 47 protocol assertions</pre>
+<p>There is no test runner wired into the project; the protocol suite is a plain Node script with no
+dependencies and exits non-zero on failure, so it drops straight into CI.</p>
+
+<h2 id="s16">16. Open items requiring a decision</h2>
+<table>
+  <tr><th style="width:24%">Item</th><th style="width:40%">Current behaviour</th><th>Needed</th></tr>
+  <tr>
+    <td><strong>Leak codes ≥ 120</strong></td>
+    <td>Treated as status codes, excluded from leak statistics, surfaced to the operator</td>
+    <td>Firmware to confirm the encoding. One constant changes if they are real readings.</td>
+  </tr>
+  <tr>
+    <td><strong>COMFORT / OPTIONS on CPAP devices</strong></td>
+    <td>The settings screen offers them on every device; the server currently answers
+        <em>“Mode COMFORT is not applicable to device type CPAP”</em> and the frame reports it</td>
+    <td>Backend to accept those groups for CPAP-registered devices, or a product decision to the contrary.</td>
+  </tr>
+  <tr>
+    <td><strong>Mask vs tube counts</strong></td>
+    <td>UI offers 3 masks and 2 tubes; codec accepts mask 1–3</td>
+    <td>The protocol says mask 1–2 and tube 1–3 — the two rows look transposed in one document. Confirm which is authoritative.</td>
+  </tr>
+  <tr>
+    <td><strong>RISE_TIME valid set</strong></td>
+    <td>Any multiple of 50 ms in 100–650 accepted</td>
+    <td>The spec's “valid” list omits 300 ms, yet its own worked example uses it. Confirm the real constraint.</td>
+  </tr>
+  <tr>
+    <td><strong>Therapy-running lock</strong></td>
+    <td>Settings reads <code>deviceData.therapy_running</code>; nothing sets it, so the locked state never triggers</td>
+    <td>A therapy-running signal from the server.</td>
+  </tr>
+</table>
+
+<footer>Resprox — Knowledge Transfer · Revision 1.0 · DeckMount Electronics</footer>
+
+</body>
+</html>

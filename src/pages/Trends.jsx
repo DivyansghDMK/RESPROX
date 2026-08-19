@@ -1,3 +1,4 @@
+import { useNotify } from '../context/NotifyContext';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import GlassCard from '../components/GlassCard';
 import TrendChart from '../components/TrendChart';
@@ -5,6 +6,7 @@ import { DownloadIcon } from '../components/Icons';
 import { useTherapy } from '../context/TherapyContext';
 
 export default function Trends() {
+  const notify = useNotify();
   const { deviceData, setDeviceData, setAdminActiveSerial } = useTherapy();
   const [timeFilter, setTimeFilter] = useState('week'); // 'week' | 'month' | 'custom'
   const [usageRange, setUsageRange] = useState('7d'); // '7d' | '30d' | '90d'
@@ -90,7 +92,7 @@ export default function Trends() {
     return (
       <div className="trends-page" style={{ padding: '40px 20px', textAlign: 'center' }}>
         <GlassCard>
-          <h2 style={{ color: '#0d7de6', fontWeight: 800 }}>No Device Selected</h2>
+          <h2 style={{ color: 'var(--accent)', fontWeight: 800 }}>No Device Selected</h2>
           <p style={{ color: 'var(--muted)', marginTop: 8 }}>Please select a device from the Devices registry to view therapy trends.</p>
         </GlassCard>
       </div>
@@ -98,7 +100,7 @@ export default function Trends() {
   }
 
   const handleExportCSV = () => {
-    alert('Exporting CPAP compliance and metrics trends as CSV file...');
+    notify.info('Preparing export', { message: 'Compliance and metrics trends are being exported as CSV.' });
   };
 
   return (
@@ -197,7 +199,7 @@ export default function Trends() {
             <h3>Leak Rate Trend</h3>
           </div>
           {leakData.length ? (
-            <TrendChart data={leakData} yKey="leak" yUnit=" L/min" type="area" colorStart="#28d5c9" colorEnd="#1774e6" />
+            <TrendChart data={leakData} yKey="leak" yUnit=" L/min" type="area" colorStart="var(--accent-2)" colorEnd="var(--accent)" />
           ) : (
             <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)' }}>No data available</div>
           )}
@@ -208,7 +210,7 @@ export default function Trends() {
             <h3>Pressure Trend</h3>
           </div>
           {pressureData.length ? (
-            <TrendChart data={pressureData} yKey="pressure" yUnit=" cmH2O" type="line" colorStart="#1A7EE4" />
+            <TrendChart data={pressureData} yKey="pressure" yUnit=" cmH2O" type="line" colorStart="var(--accent)" />
           ) : (
             <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)' }}>No data available</div>
           )}

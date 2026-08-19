@@ -278,6 +278,39 @@ function normalizeDeviceDetail(summary, latest, history, syncState) {
   };
 }
 
+// ── Request de-duplication + short-lived cache ────────────────────────────────
+// TherapyContext and DeviceDashboard both mount at the same time and ask for the
+// same device, and StrictMode mounts each of them twice in dev. Without this,
+// one page load fired ~9-18 identical requests and the UI sat frozen on the
+// slowest of them. Callers asking for the same key share a single round-trip.
+const REQUEST_TIMEOUT_MS = 20000;
+const inflight = new Map();
+const cache = new Map();
+
+function dedupe(key, ttlMs, factory) {
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < ttlMs) return Promise.resolve(hit.value);
+
+  const pending = inflight.get(key);
+  if (pending) return pending;
+
+  const promise = factory()
+    .then((value) => {
+      cache.set(key, { at: Date.now(), value });
+      return value;
+    })
+    .finally(() => inflight.delete(key));
+
+  inflight.set(key, promise);
+  return promise;
+}
+
+function invalidate(prefix) {
+  for (const key of [...cache.keys()]) {
+    if (key.startsWith(prefix)) cache.delete(key);
+  }
+}
+
 async function fetchJson(path, options = {}) {
   const session = getCognitoSession();
   const headers = {
@@ -286,12 +319,49 @@ async function fetchJson(path, options = {}) {
     ...options.headers,
   };
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  // A request that never settles leaves the page stuck on its spinner forever,
+  // which is indistinguishable from a hang. Always give it a deadline.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(`${BASE_URL}${path}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
-  return res;
+// Single-flight session recovery: when several parallel requests get a 401 at
+// once we must not fire one token refresh (or silent re-login) per request.
+let sessionRecovery = null;
+
+function recoverSession() {
+  if (!sessionRecovery) {
+    sessionRecovery = (async () => {
+      const session = getCognitoSession();
+      if (session.refreshToken) {
+        try {
+          await refreshCognitoSession(session.refreshToken);
+          return true;
+        } catch (refreshErr) {
+          console.warn('[respireeApi] Refresh token failed:', refreshErr);
+        }
+      }
+      try {
+        console.log('[respireeApi] Performing silent re-authentication with Cognito...');
+        await loginWithCognito('kanishka.sharma@deckmount.in', 'KanishkaDeck@20');
+        return true;
+      } catch (loginErr) {
+        console.error('[respireeApi] Auto re-login failed:', loginErr);
+        clearCognitoSession();
+        return false;
+      }
+    })().finally(() => { sessionRecovery = null; });
+  }
+  return sessionRecovery;
 }
 
 async function request(path, options = {}, { retry = true } = {}) {
@@ -314,30 +384,24 @@ async function request(path, options = {}, { retry = true } = {}) {
 
   // Handle 401 Unauthorized by attempting token refresh or background re-authentication
   if (res.status === 401 && retry) {
-    const session = getCognitoSession();
-    if (session.refreshToken) {
-      try {
-        await refreshCognitoSession(session.refreshToken);
-        return request(path, options, { retry: false });
-      } catch (refreshErr) {
-        console.warn("[respireeApi] Refresh token failed:", refreshErr);
-      }
-    }
-    
-    // Fallback: silent auto re-login to restore valid tokens automatically
-    try {
-      console.log("[respireeApi] Performing silent re-authentication with Cognito...");
-      await loginWithCognito('kanishka.sharma@deckmount.in', 'KanishkaDeck@20');
+    if (await recoverSession()) {
       return request(path, options, { retry: false });
-    } catch (loginErr) {
-      console.error("[respireeApi] Auto re-login failed:", loginErr);
-      clearCognitoSession();
     }
   }
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error || errorData.message || errorData.detail || `API Error ${res.status}: ${res.statusText}`);
+    // The status code is what tells a caller whether this is worth retrying,
+    // a permissions problem, or a bad request — keep it on the error rather
+    // than flattening everything into a string.
+    const err = new Error(
+      errorData.error || errorData.message || errorData.detail || `API Error ${res.status}: ${res.statusText}`
+    );
+    err.status = res.status;
+    err.statusText = res.statusText;
+    err.body = errorData;
+    err.path = path;
+    throw err;
   }
 
   if (res.status === 204) {
@@ -347,22 +411,36 @@ async function request(path, options = {}, { retry = true } = {}) {
   return res.json();
 }
 
-async function getDevices() {
-  const json = await request('/devices');
-  const rawList = Array.isArray(json) ? json : (json.data || json.devices || json.items || []);
-  return rawList.map(normalizeDeviceSummary);
+const DEVICES_TTL_MS = 15000;
+const DETAIL_TTL_MS = 5000;
+
+async function getDevices({ force = false } = {}) {
+  if (force) invalidate('devices');
+  return dedupe('devices', DEVICES_TTL_MS, async () => {
+    const json = await request('/devices');
+    const rawList = Array.isArray(json) ? json : (json.data || json.devices || json.items || []);
+    return rawList.map(normalizeDeviceSummary);
+  });
 }
 
-async function getDeviceDetail(serial) {
-  const [devices, latest, history, syncState] = await Promise.all([
-    getDevices().catch(() => []),
-    request(`/devices/${encodeURIComponent(serial)}/telemetry/latest`),
-    request(`/devices/${encodeURIComponent(serial)}/telemetry/history?page=1&limit=20`),
-    request(`/devices/${encodeURIComponent(serial)}/sync-state`),
-  ]);
+async function getDeviceDetail(serial, { force = false } = {}) {
+  // Manual refresh must bypass both the detail entry and the device list it
+  // is built from, otherwise the button appears to do nothing.
+  if (force) {
+    invalidate('devices');
+    invalidate(`detail:${serial}`);
+  }
+  return dedupe(`detail:${serial}`, DETAIL_TTL_MS, async () => {
+    const [devices, latest, history, syncState] = await Promise.all([
+      getDevices().catch(() => []),
+      request(`/devices/${encodeURIComponent(serial)}/telemetry/latest`),
+      request(`/devices/${encodeURIComponent(serial)}/telemetry/history?page=1&limit=20`),
+      request(`/devices/${encodeURIComponent(serial)}/sync-state`),
+    ]);
 
-  const summary = devices.find((device) => device.serial === serial) || { serial, model: 'Device', firmware: '—', patient_name: serial, raw: {} };
-  return normalizeDeviceDetail(summary, latest, history, syncState);
+    const summary = devices.find((device) => device.serial === serial) || { serial, model: 'Device', firmware: '—', patient_name: serial, raw: {} };
+    return normalizeDeviceDetail(summary, latest, history, syncState);
+  });
 }
 
 async function getSyncState(serial) {
@@ -462,6 +540,41 @@ async function updateDeviceSettings(serial, settings) {
     }
   }
 
+  // Cached reads are stale the moment we write, so drop them.
+  invalidate('devices');
+  invalidate(`detail:${serial}`);
+
+  return request(`/devices/${encodeURIComponent(serial)}/settings`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * PATCH an explicit set of mode groups for one device.
+ *
+ * `updateDeviceSettings` above owns the CPAP/AUTO therapy pressures and diffs
+ * them against telemetry. This one is for screens that already know exactly
+ * which groups changed — the settings screen tracks its own draft, so
+ * re-deriving the diff here would only risk disagreeing with what the user was
+ * shown in the confirm dialog.
+ *
+ * `groups` is keyed by wire group name, e.g.
+ *   { COMFORT: { rampTime, humidifier, tubeType, maskType },
+ *     OPTIONS: { iMode, leakAlert, sleepMode } }
+ * Anything absent is sent as null, which the server reads as "unchanged".
+ */
+async function updateDeviceGroups(serial, groups = {}) {
+  const payload = {
+    CPAP: null, AUTO: null, S: null, ST: null, T: null,
+    VAPS: null, CONFIG: null, COMFORT: null, OPTIONS: null,
+    ...groups,
+  };
+
+  // Cached reads are stale the moment we write, so drop them.
+  invalidate('devices');
+  invalidate(`detail:${serial}`);
+
   return request(`/devices/${encodeURIComponent(serial)}/settings`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
@@ -486,6 +599,7 @@ export const devicesAPI = {
   getSyncState,
   getTelemetryHistory,
   updateDeviceSettings,
+  updateDeviceGroups,
   pollCommandStatus,
 };
 
