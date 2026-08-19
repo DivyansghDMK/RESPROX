@@ -1,3 +1,4 @@
+import { useNotify } from '../context/NotifyContext';
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, ArrowLeft, Send, CheckCircle2 } from 'lucide-react';
@@ -137,6 +138,7 @@ const backBtnStyle = {
 };
 
 export default function CreateOrg() {
+  const notify = useNotify();
   const navigate = useNavigate();
   const { setShowToast, setSaveState, setToastMessage } = useTherapy();
   
@@ -286,7 +288,7 @@ export default function CreateOrg() {
       setTimeout(() => setShowToast(false), 3000);
 
     } catch (error) {
-      alert("Registration failed: " + error.message);
+      notify.fromError(error, { action: "register this organization" });
     } finally {
       setSubmitting(false);
     }

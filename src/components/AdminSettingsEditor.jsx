@@ -3,6 +3,7 @@
 // Usage: <AdminSettingsEditor patientId={patient.id} initial={patient} />
 
 import { useState, useEffect, useRef } from 'react';
+import { useNotify } from '../context/NotifyContext';
 import SendIcon from '@mui/icons-material/Send';
 import SaveIcon from '@mui/icons-material/Save';
 
@@ -20,6 +21,7 @@ function headers() {
 }
 
 export default function AdminSettingsEditor({ patientId, initial }) {
+  const notify = useNotify();
   const [settings, setSettings]     = useState(null);
   const [draft, setDraft]           = useState(null);     // edited but not saved
   const [pending, setPending]       = useState(null);     // sent, waiting ack
@@ -47,6 +49,7 @@ export default function AdminSettingsEditor({ patientId, initial }) {
       setOnline(data.device_online);
       if (!draft) setDraft(data.settings);   // init draft on first load
     } catch (e) {
+      notify.fromError(e, { action: 'load these settings', subject: patientId, onRetry: fetchSettings });
       showToast('Failed to load settings', 'error');
     }
   }
@@ -92,6 +95,7 @@ export default function AdminSettingsEditor({ patientId, initial }) {
         showToast('Device offline — settings queued', 'warning');
       }
     } catch (e) {
+      notify.fromError(e, { action: 'save these settings', subject: patientId, onRetry: saveSettings });
       showToast(e.message || 'Save failed', 'error');
     } finally {
       setSaving(false);

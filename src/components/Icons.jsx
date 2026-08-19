@@ -44,8 +44,25 @@ export function BluetoothIcon() {
   return <SvgBox><path d="m8 7 8 10-4-3v-9l4 3-8 10" /></SvgBox>;
 }
 
-export function BellIcon() {
-  return <SvgBox><path d="M6 16h12c-1.5-1.3-2-2.5-2-5a4 4 0 1 0-8 0c0 2.5-.5 3.7-2 5Zm4 2a2 2 0 0 0 4 0" /><circle cx="18.5" cy="5.5" r="3" className="bell-dot" /></SvgBox>;
+// The unread dot is opt-in: the bell is also used as a plain section icon
+// (Settings), where a permanent "you have alerts" dot would be misleading.
+export function BellIcon({ showDot = false }) {
+  return (
+    <SvgBox>
+      <path d="M6 16h12c-1.5-1.3-2-2.5-2-5a4 4 0 1 0-8 0c0 2.5-.5 3.7-2 5Zm4 2a2 2 0 0 0 4 0" />
+      {showDot && <circle cx="18.5" cy="5.5" r="3" className="bell-dot" />}
+    </SvgBox>
+  );
+}
+
+export function ServerIcon() {
+  return (
+    <SvgBox>
+      <rect x="3" y="4" width="18" height="6" rx="1.5" />
+      <rect x="3" y="14" width="18" height="6" rx="1.5" />
+      <path d="M7 7h.01M7 17h.01" strokeLinecap="round" />
+    </SvgBox>
+  );
 }
 
 export function SmallDeviceIcon() {

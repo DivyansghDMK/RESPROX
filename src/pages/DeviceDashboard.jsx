@@ -3,7 +3,8 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import { devicesAPI } from '../services/respireeApi';
 import { useTherapy } from '../context/TherapyContext';
-import gsap from 'gsap';
+import { useNotify } from '../context/NotifyContext';
+import { describeCommandStatus } from '../services/apiError';
 import SendIcon from '@mui/icons-material/Send';
 import SaveIcon from '@mui/icons-material/Save';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -29,7 +30,7 @@ const AutoIcon = () => (
 );
 
 // ── Ring Progress ─────────────────────────────────────────────────────────────
-function RingProgress({ pct, size = 72, stroke = 6, color = '#0ea5e9' }) {
+const RingProgress = React.memo(function RingProgress({ pct, size = 72, stroke = 6, color = '#0ea5e9' }) {
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
   const dash = (Math.min(pct, 100) / 100) * circ;
@@ -62,10 +63,10 @@ function RingProgress({ pct, size = 72, stroke = 6, color = '#0ea5e9' }) {
       </div>
     </div>
   );
-}
+});
 
 // ── Mini Bar Chart ────────────────────────────────────────────────────────────
-function MiniBarChart({ sessions, valueKey, maxVal, goodFn, goodColor = '#1d9e75', badColor = '#e24b4a' }) {
+const MiniBarChart = React.memo(function MiniBarChart({ sessions = [], valueKey, maxVal, goodFn, goodColor = '#1d9e75', badColor = '#e24b4a' }) {
   return (
     <div className="mini-bar-chart-container">
       {sessions.map((s, i) => {
@@ -88,10 +89,10 @@ function MiniBarChart({ sessions, valueKey, maxVal, goodFn, goodColor = '#1d9e75
       })}
     </div>
   );
-}
+});
 
 // ── Styled Slider ─────────────────────────────────────────────────────────────
-function StyledSlider({ value, min, max, step, onChange, label }) {
+const StyledSlider = React.memo(function StyledSlider({ value, min, max, step, onChange, label }) {
   const pct = ((value - min) / (max - min)) * 100;
   return (
     <div>
@@ -108,10 +109,11 @@ function StyledSlider({ value, min, max, step, onChange, label }) {
       </div>
     </div>
   );
-}
+});
 
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 export default function DeviceDashboard() {
+  const notify = useNotify();
   const { serial } = useParams();
   const navigate   = useNavigate();
   const { setAdminActiveSerial, setLastServerPull, setDeviceData } = useTherapy();
@@ -123,7 +125,6 @@ export default function DeviceDashboard() {
   const [device, setDevice]           = useState(null);
   const [loading, setLoading]         = useState(true);
   const [refreshing, setRefreshing]   = useState(false);
-  const [devices, setDevices]         = useState([]);
   const [mode, setMode]               = useState('AUTO CPAP');
   const [pressure, setPressure]       = useState(12.0);
   const [minPressure, setMinPressure] = useState(8.0);
@@ -136,19 +137,15 @@ export default function DeviceDashboard() {
   const [expandedRow, setExpandedRow] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const RECORDS_PER_PAGE = 10;
-  const pollRef = useRef(null);
+
+  // Guards against a slow response for a previous serial landing after a newer
+  // one and clobbering state (and forcing another full re-render pass).
+  const requestId = useRef(0);
+  const animatedSerial = useRef(null);
 
   useEffect(() => {
     setCurrentPage(1);
   }, [serial]);
-
-  const fetchDevicesList = useCallback(async () => {
-    try {
-      const list = await devicesAPI.getDevices();
-      setDevices(list);
-    }
-    catch (e) { console.warn('Sidebar fetch failed:', e); }
-  }, []);
 
   const applyDeviceState = (data) => {
     setMode(data.settings.therapy_mode);
@@ -159,10 +156,12 @@ export default function DeviceDashboard() {
     setRamp(data.settings.ramp);
   };
 
-  const fetchDevice = useCallback(async (silent = false) => {
+  const fetchDevice = useCallback(async (silent = false, force = false) => {
+    const id = ++requestId.current;
     if (!silent) setLoading(true);
     try {
-      const data = await devicesAPI.getDeviceDetail(serial);
+      const data = await devicesAPI.getDeviceDetail(serial, { force });
+      if (id !== requestId.current) return; // stale response, ignore
       setDevice(data);
       // Sync to TherapyContext so Therapy/Trends/Reports/MaskFit pages auto-read live data
       setDeviceData(data);
@@ -171,34 +170,42 @@ export default function DeviceDashboard() {
       setLastServerPull(now);
       if (!silent) applyDeviceState(data);
     } catch (e) { console.error(e); }
-    finally { if (!silent) setLoading(false); }
+    finally { if (!silent && id === requestId.current) setLoading(false); }
   }, [serial, setLastServerPull, setDeviceData]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await fetchDevice(false);
+    await fetchDevice(false, true);
     setRefreshing(false);
   };
 
   useEffect(() => {
-    // Initial loads only (no background polling)
-    fetchDevicesList();
+    // Initial load only (no background polling). The device list is not used on
+    // this page — fetching it here cost an extra full /devices round-trip.
     fetchDevice();
-  }, [fetchDevice, fetchDevicesList]);
+  }, [fetchDevice]);
 
   useEffect(() => {
-    if (!loading && device) {
-      // Staggered entrance animation for dashboard metric cards and settings/logs sections
-      gsap.fromTo('.dashboard-metrics-grid > div', 
+    // Entrance animation runs once per device, not on every data refresh.
+    // Re-animating ~10 cards (opacity + scale + transform) on each pull was
+    // forcing a full layout/paint cycle every time data arrived.
+    if (loading || !device || animatedSerial.current === serial) return undefined;
+    animatedSerial.current = serial;
+    let cancelled = false;
+    // gsap is loaded on demand so it stays out of this route's chunk.
+    import('gsap').then(({ default: gsap }) => {
+      if (cancelled) return;
+      gsap.fromTo('.dashboard-metrics-grid > div',
         { opacity: 0, scale: 0.95, y: 25 },
         { opacity: 1, scale: 1, y: 0, duration: 0.5, stagger: 0.08, ease: 'back.out(1.2)' }
       );
-      gsap.fromTo('.dashboard-main-content > div:not(.dashboard-metrics-grid)', 
+      gsap.fromTo('.dashboard-main-content > div:not(.dashboard-metrics-grid)',
         { opacity: 0, y: 30 },
         { opacity: 1, y: 0, duration: 0.7, stagger: 0.1, ease: 'power2.out', delay: 0.2 }
       );
-    }
-  }, [loading, device]);
+    });
+    return () => { cancelled = true; };
+  }, [loading, device, serial]);
 
   const dirty = useMemo(() => {
     if (!device) return false;
@@ -228,6 +235,18 @@ export default function DeviceDashboard() {
     const start = (currentPage - 1) * RECORDS_PER_PAGE;
     return sortedSessions.slice(start, start + RECORDS_PER_PAGE);
   }, [sortedSessions, currentPage]);
+
+  // Stable identity for the 7-day charts so the memoized MiniBarChart is not
+  // re-rendered (and re-laid-out) on every unrelated state change.
+  const trend = useMemo(() => {
+    const all = device?.sessions || [];
+    return {
+      sessions: all.slice(-7),
+      maxAHI: Math.max(...all.map(s => s.ahi), 5),
+      maxUsageHrs: Math.max(...all.map(s => s.usage_hours), 8),
+      maxLeak: Math.max(...all.map(s => s.mask_leak), 24),
+    };
+  }, [device?.sessions]);
 
   const resetDraft = () => { if (device) applyDeviceState(device); };
 
@@ -262,17 +281,23 @@ export default function DeviceDashboard() {
         showToast('No fields differ from current stored values; nothing saved.', 'warning');
       } else if (res && res.commandId) {
         showToast('Database updated. Syncing with device...', 'info');
-        const pollRes = await devicesAPI.pollCommandStatus(serial, res.commandId);
+        const pollRes = await devicesAPI.pollCommandStatus(serial, res.commandId, { timeoutMs: 20000 });
         if (pollRes.status === 'ACKED') {
           showToast('Settings successfully applied to device ✓', 'success');
         } else {
-          throw new Error(`Device failed to apply settings (Status: ${pollRes.status})`);
+          const described = describeCommandStatus(pollRes.status, { subject: serial })
+            || { title: 'The device did not apply the settings', message: `Status: ${pollRes.status}`, retryable: true };
+          notify.fromDescription(described);
+          showToast(described.title, 'error');
+          return;
         }
       } else {
         showToast('Settings successfully updated in DB ✓', 'success');
       }
     } catch (e) {
-      console.error(e);
+      // The inline toast is easy to miss and disappears; the frame keeps the
+      // reason on screen until the user has dealt with it.
+      notify.fromError(e, { action: 'save these settings', subject: serial });
       showToast(e.message || 'Failed to push settings', 'error');
     } finally {
       setSaving(false);
@@ -316,14 +341,11 @@ export default function DeviceDashboard() {
   const minsInt     = Math.round((ld.usage_hours - hoursInt) * 60);
   const usagePct    = Math.min(Math.round((ld.usage_hours / 8) * 100), 100);
   const isOnline    = device.device_online;
-  const maxAHI      = Math.max(...(device.sessions?.map(s => s.ahi) || [5]), 5);
-  const maxUsageHrs = Math.max(...(device.sessions?.map(s => s.usage_hours) || [8]), 8);
-  const maxLeak     = Math.max(...(device.sessions?.map(s => s.mask_leak) || [24]), 24);
   const isReadOnly  = device.readOnly !== false;
 
   const maintenanceItems = [
     { label: 'Mask',       value: '28 Days', pct: 70, icon: MaskIcon,   color: '#1d9e75' },
-    { label: 'Filter',     value: '56%',     pct: 56, icon: DotsIcon,   color: '#0d7de6' },
+    { label: 'Filter',     value: '56%',     pct: 56, icon: DotsIcon,   color: 'var(--accent)' },
     { label: 'Humidifier', value: '75%',     pct: 75, icon: PulseIcon,  color: '#06b6d4' },
     { label: 'Tubing',     value: '4 Days',  pct: 40, icon: DeviceIcon, color: '#ef9f27' },
   ];
@@ -358,13 +380,13 @@ export default function DeviceDashboard() {
                 Admin Device Panel
               </div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                <h1 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 900, fontFamily: 'monospace', color: '#0d7de6', letterSpacing: '-0.5px' }}>
+                <h1 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 900, fontFamily: 'monospace', color: 'var(--accent)', letterSpacing: '-0.5px' }}>
                   {device.serial}
                 </h1>
                 <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 600 }}>{device.model}</span>
               </div>
               <div style={{ display: 'flex', gap: 5, marginTop: 3 }}>
-                <span style={{ fontSize: 10, background: '#e8f4fd', color: '#0d7de6', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>CPAP C-Series</span>
+                <span style={{ fontSize: 10, background: '#e8f4fd', color: 'var(--accent)', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>CPAP C-Series</span>
                 <span style={{ fontSize: 10, background: '#f0f4ff', color: '#6366f1', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>FW: {device.firmware}</span>
               </div>
             </div>
@@ -373,7 +395,7 @@ export default function DeviceDashboard() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ textAlign: 'right', fontSize: 10, color: 'var(--muted)' }}>
               <div style={{ fontWeight: 600 }}>Last synced</div>
-              <div style={{ color: '#0d7de6', fontWeight: 700, fontSize: 12 }}>{formatPull(lastPull)}</div>
+              <div style={{ color: 'var(--accent)', fontWeight: 700, fontSize: 12 }}>{formatPull(lastPull)}</div>
             </div>
             <button onClick={handleRefresh} disabled={refreshing}
               style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 9, fontSize: 12, fontWeight: 700, color: 'var(--muted)', cursor: 'pointer', opacity: refreshing ? 0.6 : 1 }}>
@@ -408,9 +430,9 @@ export default function DeviceDashboard() {
               <div>
                 <div style={{ fontSize: 30, fontWeight: 900, color: '#163257', lineHeight: 1 }}>{hoursInt}h {minsInt}m</div>
                 <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, fontWeight: 600 }}>Last night usage</div>
-                <div style={{ fontSize: 12, color: '#0d7de6', fontWeight: 700, marginTop: 2 }}>{usagePct}% of goal</div>
+                <div style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 700, marginTop: 2 }}>{usagePct}% of goal</div>
               </div>
-              <RingProgress pct={usagePct} size={68} stroke={6} color="#0d7de6"/>
+              <RingProgress pct={usagePct} size={68} stroke={6} color="var(--accent)"/>
             </div>
           </div>
 
@@ -448,7 +470,7 @@ export default function DeviceDashboard() {
             </div>
             <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, fontWeight: 600 }}>Max set: {device.settings.max_pressure} cmH₂O</div>
             <div style={{ height: 4, background: '#e2e8f0', borderRadius: 2, marginTop: 10, overflow: 'hidden' }}>
-              <div style={{ height: '100%', borderRadius: 2, transition: 'width 0.5s', width: `${Math.min((ld.pressure_95 / device.settings.max_pressure) * 100, 100)}%`, background: 'linear-gradient(90deg, #0d7de6, #27c6c7)' }}/>
+              <div style={{ height: '100%', borderRadius: 2, transition: 'width 0.5s', width: `${Math.min((ld.pressure_95 / device.settings.max_pressure) * 100, 100)}%`, background: 'var(--brand-gradient)' }}/>
             </div>
           </div>
         </div>
@@ -479,7 +501,7 @@ export default function DeviceDashboard() {
                   flex: 1, padding: '10px', borderRadius: 8, fontWeight: 700, fontSize: 13,
                   border: 'none', cursor: 'pointer', transition: 'all 0.25s',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-                  background: mode === m ? 'linear-gradient(135deg, #0d7de6, #27c6c7)' : 'transparent',
+                  background: mode === m ? 'var(--brand-gradient)' : 'transparent',
                   color: mode === m ? '#fff' : 'var(--muted)',
                   boxShadow: mode === m ? '0 2px 12px rgba(13,125,230,0.25)' : 'none',
                 }}>
@@ -517,7 +539,7 @@ export default function DeviceDashboard() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <button onClick={() => setPressure(v => Math.max(4, +(v - 0.1).toFixed(1)))} style={stepBtn}><MinusIcon/></button>
                     <div style={{ textAlign: 'center', minWidth: 110 }}>
-                      <span style={{ fontSize: 32, fontWeight: 900, color: '#0d7de6' }}>{pressure.toFixed(1)}</span>
+                      <span style={{ fontSize: 32, fontWeight: 900, color: 'var(--accent)' }}>{pressure.toFixed(1)}</span>
                       <span style={{ fontSize: 14, color: '#64748b', marginLeft: 4 }}>cmH₂O</span>
                       {device.settings.pressure !== pressure && <div style={{ ...changedTag, display: 'block', margin: '2px auto 0' }}>was {device.settings.pressure.toFixed(1)}</div>}
                     </div>
@@ -567,7 +589,7 @@ export default function DeviceDashboard() {
                     <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>Aflex (EPR)</div>
                     <div style={{ display: 'flex', gap: 8 }}>
                       {['Off', '1', '2', '3'].map((lbl, idx) => (
-                        <button key={lbl} onClick={() => setAflex(idx)} style={{ flex: 1, padding: '10px 4px', borderRadius: 8, fontSize: 13, fontWeight: 700, border: '1.5px solid', cursor: 'pointer', transition: 'all 0.2s', borderColor: aflex === idx ? 'transparent' : 'var(--line)', background: aflex === idx ? 'linear-gradient(135deg,#0d7de6,#27c6c7)' : 'var(--panel)', color: aflex === idx ? '#fff' : 'var(--muted)' }}>{lbl}</button>
+                        <button key={lbl} onClick={() => setAflex(idx)} style={{ flex: 1, padding: '10px 4px', borderRadius: 8, fontSize: 13, fontWeight: 700, border: '1.5px solid', cursor: 'pointer', transition: 'all 0.2s', borderColor: aflex === idx ? 'transparent' : 'var(--line)', background: aflex === idx ? 'var(--brand-gradient)' : 'var(--panel)', color: aflex === idx ? '#fff' : 'var(--muted)' }}>{lbl}</button>
                       ))}
                     </div>
                     {device.settings.aflex !== aflex && <div style={{ ...changedTag, marginTop: 4 }}>was: {device.settings.aflex}</div>}
@@ -593,7 +615,7 @@ export default function DeviceDashboard() {
               Discard Changes
             </button>
             <button onClick={saveSettings} disabled={isReadOnly || !dirty || saving}
-              style={{ flex: 1, padding: '11px 22px', borderRadius: 10, fontWeight: 800, fontSize: 14, background: dirty ? 'linear-gradient(135deg, #0d7de6 0%, #27c6c7 100%)' : '#e2e8f0', color: dirty ? '#fff' : '#94a3b8', border: 'none', cursor: dirty ? 'pointer' : 'not-allowed', boxShadow: dirty ? '0 4px 16px rgba(13,125,230,0.3)' : 'none', transition: 'all 0.25s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              style={{ flex: 1, padding: '11px 22px', borderRadius: 10, fontWeight: 800, fontSize: 14, background: dirty ? 'var(--brand-gradient)' : '#e2e8f0', color: dirty ? '#fff' : '#94a3b8', border: 'none', cursor: dirty ? 'pointer' : 'not-allowed', boxShadow: dirty ? '0 4px 16px rgba(0,71,204,0.3)' : 'none', transition: 'all 0.25s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               {isReadOnly
                 ? <><SaveIcon fontSize="small"/> Read-only</>
                 : saving
@@ -611,16 +633,16 @@ export default function DeviceDashboard() {
           <div style={sectionLabel}>7-Day Therapy Trends</div>
           <div className="dashboard-three-col">
             {[
-              { label: 'AHI (events/hr)',  key: 'ahi',         maxVal: maxAHI,      goodFn: v => v <= 5,  goodColor: '#1d9e75', badColor: '#f59e0b', target: 'Target ≤ 5.0' },
-              { label: 'Usage Hours',      key: 'usage_hours', maxVal: maxUsageHrs, goodFn: v => v >= 4,  goodColor: '#0ea5e9', badColor: '#e24b4a', target: 'Target ≥ 4h'  },
-              { label: 'Mask Leak (L/min)',key: 'mask_leak',   maxVal: maxLeak,     goodFn: v => v <= 24, goodColor: '#60a5fa', badColor: '#e24b4a', target: 'Target ≤ 24'  },
+              { label: 'AHI (events/hr)',  key: 'ahi',         maxVal: trend.maxAHI,      goodFn: v => v <= 5,  goodColor: '#1d9e75', badColor: '#f59e0b', target: 'Target ≤ 5.0' },
+              { label: 'Usage Hours',      key: 'usage_hours', maxVal: trend.maxUsageHrs, goodFn: v => v >= 4,  goodColor: '#0ea5e9', badColor: '#e24b4a', target: 'Target ≥ 4h'  },
+              { label: 'Mask Leak (L/min)',key: 'mask_leak',   maxVal: trend.maxLeak,     goodFn: v => v <= 24, goodColor: '#60a5fa', badColor: '#e24b4a', target: 'Target ≤ 24'  },
             ].map(({ label, key, maxVal, goodFn, goodColor, badColor, target }) => (
               <div key={key} style={{ background: 'var(--panel-strong)', borderRadius: 12, padding: '14px 16px', border: '1px solid var(--line)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                   <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)' }}>{label}</span>
                   <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>{target}</span>
                 </div>
-                <MiniBarChart sessions={device.sessions?.slice(-7)} valueKey={key} maxVal={maxVal} goodFn={goodFn} goodColor={goodColor} badColor={badColor}/>
+                <MiniBarChart sessions={trend.sessions} valueKey={key} maxVal={maxVal} goodFn={goodFn} goodColor={goodColor} badColor={badColor}/>
               </div>
             ))}
           </div>
@@ -835,7 +857,7 @@ export default function DeviceDashboard() {
                       height: 28,
                       borderRadius: 6,
                       border: page === currentPage ? 'none' : '1px solid var(--line)',
-                      background: page === currentPage ? 'linear-gradient(135deg, #0d7de6, #27c6c7)' : 'var(--panel)',
+                      background: page === currentPage ? 'var(--brand-gradient)' : 'var(--panel)',
                       color: page === currentPage ? '#ffffff' : 'var(--text)',
                       fontWeight: 800,
                       fontSize: '12px',
@@ -893,7 +915,7 @@ const sectionCard = {
 const sectionLabel = { fontSize: 12, fontWeight: 800, color: 'var(--muted)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.6px' };
 const cardEyebrow  = { fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' };
 const fieldLabel   = { fontSize: 13, fontWeight: 800, color: 'var(--text)' };
-const modeBadge    = { fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: '#e8f4fd', color: '#0d7de6' };
+const modeBadge    = { fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: '#e8f4fd', color: 'var(--accent)' };
 const stepBtn      = {
   width: 34, height: 34, borderRadius: 8, border: '1px solid var(--line, #e2e8f0)',
   background: 'var(--panel, #f8fafc)', color: 'var(--text)', cursor: 'pointer',

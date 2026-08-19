@@ -1,10 +1,18 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { HomeIcon, PhoneIcon, PulseIcon, ClipboardIcon } from './Icons';
+import { prefetch, routeKeyForPath } from '../routes';
 
-export default function BottomNavbar() {
+function BottomNavbar() {
   const { isAuthenticated } = useAuth();
+
+  // On touch devices `touchstart` fires well before the tap completes, which
+  // is the only prefetch window available without a hover state.
+  const warm = useCallback((path) => {
+    const key = routeKeyForPath(path);
+    if (key) prefetch(key);
+  }, []);
 
   const items = [
     { label: 'Dashboard', path: '/dashboard', icon: HomeIcon },
@@ -24,6 +32,9 @@ export default function BottomNavbar() {
           key={label}
           to={path}
           className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}
+          onTouchStart={() => warm(path)}
+          onMouseEnter={() => warm(path)}
+          onFocus={() => warm(path)}
           aria-label={label}
         >
           <div className="bottom-nav-icon-container">
@@ -35,3 +46,5 @@ export default function BottomNavbar() {
     </nav>
   );
 }
+
+export default React.memo(BottomNavbar);

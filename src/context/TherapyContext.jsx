@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useNotify } from './NotifyContext';
 import { devicesAPI } from '../services/respireeApi';
 
 const TherapyContext = createContext(null);
 
 export function TherapyProvider({ children }) {
+  const notify = useNotify();
   const [mode, setMode] = useState('cpap');
   const [pressure, setPressure] = useState(12);
   const [minPressure, setMinPressure] = useState(5);
@@ -56,9 +58,16 @@ export function TherapyProvider({ children }) {
         ramp: settings.ramp ?? 0
       };
     } catch (e) {
-      console.warn("Failed to fetch device data in TherapyContext:", e);
+      // Every screen renders off deviceData, so a silent failure here left the
+      // whole app sitting on a loading state with the reason only in the
+      // console. Say what happened and offer the retry.
+      notify.fromError(e, {
+        action: 'load this device',
+        subject: serial,
+        onRetry: () => fetchDeviceData(serial),
+      });
     }
-  }, []);
+  }, [notify]);
 
   useEffect(() => {
     console.log("[TherapyContext] useEffect trigger active serial:", adminActiveSerial);
@@ -101,7 +110,7 @@ export function TherapyProvider({ children }) {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasUnsavedChanges]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!adminActiveSerial) return;
     setSaveState('saving');
     setShowToast(true);
@@ -148,14 +157,17 @@ export function TherapyProvider({ children }) {
         setTimeout(() => setShowToast(false), 4000);
       }
     } catch (e) {
-      console.error("Save settings failed:", e);
+      notify.fromError(e, { action: 'save these settings', subject: adminActiveSerial });
       setSaveState('error');
       setToastMessage(e.message || 'Failed to update settings in DB.');
       setTimeout(() => setShowToast(false), 4000);
     }
-  };
+  }, [adminActiveSerial, mode, pressure, minPressure, maxPressure, aflex, ramp]);
 
-  const value = {
+  // Every page and the sidebar/header consume this context. A fresh object on
+  // each render re-rendered the whole tree on any state change (toast, sidebar,
+  // last-pull clock), which is what made the app stutter while data loaded.
+  const value = useMemo(() => ({
     mode,
     setMode,
     pressure,
@@ -185,7 +197,12 @@ export function TherapyProvider({ children }) {
     fetchDeviceData,
     lastServerPull,
     setLastServerPull
-  };
+  }), [
+    mode, pressure, minPressure, maxPressure, aflex, ramp,
+    sidebarOpen, saveState, showToast, toastMessage,
+    hasUnsavedChanges, handleSave,
+    adminActiveSerial, deviceData, fetchDeviceData, lastServerPull,
+  ]);
 
   return (
     <TherapyContext.Provider value={value}>

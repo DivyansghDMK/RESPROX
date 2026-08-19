@@ -1,3 +1,4 @@
+import { useNotify } from '../context/NotifyContext';
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getMockPatients, getMockStats, createMockPatient } from '../services/adminService';
@@ -18,6 +19,7 @@ const AHI_BADGE = (ahi) => {
 };
 
 export default function AdminPatients() {
+  const notify = useNotify();
   const navigate = useNavigate();
   const [stats, setStats]         = useState(null);
   const [patients, setPatients]   = useState([]);
@@ -115,7 +117,10 @@ export default function AdminPatients() {
           emailSent = true;
         }
       } catch (err) {
-        console.warn("AWS SES Onboarding email failed:", err);
+        notify.warning('Patient created, but the welcome email failed', {
+          message: `${newPatient.email} was not emailed. Copy the login link below and send it manually.`,
+          detail: err.message,
+        });
       }
 
       setCreationResult({
@@ -128,7 +133,7 @@ export default function AdminPatients() {
       fetchData();
 
     } catch (error) {
-      alert("Error onboarding patient: " + error.message);
+      notify.fromError(error, { action: "onboard this patient", subject: newPatient.email });
     } finally {
       setSubmitting(false);
     }
@@ -199,7 +204,7 @@ export default function AdminPatients() {
         <button 
           onClick={() => setShowCreateModal(true)}
           style={{
-            background: '#0d7de6',
+            background: 'var(--accent)',
             color: 'white',
             border: 'none',
             borderRadius: 6,
@@ -438,7 +443,7 @@ export default function AdminPatients() {
                   <button 
                     type="submit" 
                     disabled={submitting}
-                    style={{ background: '#0d7de6', border: 'none', borderRadius: 8, padding: '8px 20px', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: submitting ? 0.6 : 1 }}
+                    style={{ background: 'var(--accent)', border: 'none', borderRadius: 8, padding: '8px 20px', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: submitting ? 0.6 : 1 }}
                   >
                     {submitting ? 'Registering & Emailing...' : 'Save & Send Link'}
                   </button>
@@ -470,7 +475,7 @@ export default function AdminPatients() {
                     <button 
                       onClick={() => {
                         navigator.clipboard.writeText(creationResult.link);
-                        alert("Onboarding login link copied to clipboard!");
+                        notify.success("Login link copied", { message: "The onboarding link is on your clipboard." });
                       }}
                       style={{ background: '#334155', border: 'none', borderRadius: 8, padding: '0 16px', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                     >
@@ -481,7 +486,7 @@ export default function AdminPatients() {
 
                 <button 
                   onClick={() => { setShowCreateModal(false); setCreationResult(null); }}
-                  style={{ width: '100%', background: '#0d7de6', border: 'none', borderRadius: 8, padding: '10px', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginTop: 8 }}
+                  style={{ width: '100%', background: 'var(--accent)', border: 'none', borderRadius: 8, padding: '10px', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginTop: 8 }}
                 >
                   Done
                 </button>
