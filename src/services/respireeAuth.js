@@ -101,6 +101,34 @@ export async function loginWithCognito(username, password) {
   return session;
 }
 
+/**
+ * Team alias sign-in (e.g. admin / 2026) through the server function
+ * /api/alias-login, which holds the shared account's real password.
+ */
+export async function loginWithAlias(username, password) {
+  const res = await fetch('/api/alias-login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(json?.error || `Alias sign-in failed (${res.status})`);
+    err.cognitoType = res.status === 401 ? 'NotAuthorizedException' : res.status === 404 ? 'AliasDisabled' : 'AliasServerError';
+    err.status = res.status;
+    throw err;
+  }
+  const session = {
+    idToken: json.idToken,
+    accessToken: json.accessToken,
+    refreshToken: json.refreshToken,
+    username: json.username,
+    expiresAt: Date.now() + (Number(json.expiresIn || 3600) * 1000),
+  };
+  storeSession(session);
+  return session;
+}
+
 export async function refreshCognitoSession(refreshTokenInput) {
   const refreshToken = refreshTokenInput || getStoredSession().refreshToken;
   if (!refreshToken) {

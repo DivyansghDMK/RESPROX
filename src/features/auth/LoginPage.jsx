@@ -28,6 +28,8 @@ function loginErrorMessage(err) {
     case 'UserNotFoundException': return 'Incorrect email or password.';
     case 'UserNotConfirmedException': return 'This account has not been confirmed yet. Contact your administrator.';
     case 'PasswordResetRequiredException': return 'A password reset is required. Use "Forgot password?" to set a new one.';
+    case 'AliasDisabled': return 'Sign-in with a username is turned off. Use your email address.';
+    case 'AliasServerError': return err.message;
     case 'TooManyRequestsException':
     case 'LimitExceededException': return 'Too many attempts. Wait a few minutes and try again.';
     default: break;

@@ -1,6 +1,6 @@
 // src/context/AuthContext.jsx
 import React, { createContext, useContext, useState } from 'react';
-import { clearCognitoSession, getCognitoSession, loginWithCognito } from '../services/respireeAuth';
+import { clearCognitoSession, getCognitoSession, loginWithAlias, loginWithCognito } from '../services/respireeAuth';
 
 const AuthContext = createContext(null);
 
@@ -12,12 +12,10 @@ export function AuthProvider({ children }) {
   const [isAuthenticated, setIsAuthenticated] = useState(skipLogin || !!(initialSession.idToken || localStorage.getItem('adminToken')));
 
   const login = async (user, pass) => {
-    // Team shortcut: a short alias (e.g. admin / 2026) signs in with the real Cognito
-    // account named in env vars. On by default only in `npm run dev`. A deployed build
-    // includes it only when VITE_ENABLE_LOGIN_ALIAS=true is set for that deployment —
-    // meant for the internal team deployment, which must sit behind Vercel Deployment
-    // Protection, because these values are readable in the built JavaScript.
-    if (import.meta.env.DEV || import.meta.env.VITE_ENABLE_LOGIN_ALIAS === 'true') {
+    // Team shortcut: a short alias (e.g. admin / 2026) signs in with one shared Cognito
+    // account. In `npm run dev` it comes from .env.local; on Vercel a name without "@"
+    // goes to /api/alias-login, which keeps the real password server-side.
+    if (import.meta.env.DEV) {
       const env = import.meta.env;
       if (env.VITE_DEV_ALIAS_USER && user === env.VITE_DEV_ALIAS_USER && pass === env.VITE_DEV_ALIAS_PASS
         && env.VITE_DEV_LOGIN_EMAIL && env.VITE_DEV_LOGIN_PASSWORD) {
@@ -26,10 +24,12 @@ export function AuthProvider({ children }) {
       }
     }
     try {
-      const res = await loginWithCognito(user, pass);
+      const res = !import.meta.env.DEV && !user.includes('@')
+        ? await loginWithAlias(user, pass)
+        : await loginWithCognito(user, pass);
       localStorage.setItem('adminToken', res.idToken);
       localStorage.setItem('adminUsername', res.username);
-      localStorage.setItem('adminEmail', user);
+      localStorage.setItem('adminEmail', res.username || user);
       setToken(res.idToken);
       setUsername(res.username);
       setIsAuthenticated(true);
