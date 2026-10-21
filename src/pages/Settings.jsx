@@ -22,6 +22,7 @@
 // server's side of that conversation, not the browser's.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import DeviceDataState from '../components/DeviceDataState';
 import { useTherapy } from '../context/TherapyContext';
 import {
   MaskIcon, BreezeIcon, GaugeIcon, ShieldIcon, CheckIcon,
@@ -366,6 +367,8 @@ export default function Settings() {
   sendChangesRef.current = sendChanges;
 
   const locked = isTherapyRunning;
+
+  if (!deviceData) return <DeviceDataState what="device settings" />;
 
   return (
     <div className="setting-screen">

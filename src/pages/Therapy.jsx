@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import DeviceDataState from '../components/DeviceDataState';
 import { useTherapy } from '../context/TherapyContext';
 import SaveButton from '../components/SaveButton';
 import GlassCard from '../components/GlassCard';
@@ -62,16 +63,8 @@ export default function Therapy() {
     ? reported.pressure != null && reported.ramp != null
     : mode === 'auto' && [reported.min_pressure, reported.max_pressure, reported.aflex, reported.ramp].every((v) => v != null);
 
-  if (!deviceData) {
-    return (
-      <div className="therapy-page-container" style={{ padding: '40px 20px', textAlign: 'center' }}>
-        <GlassCard>
-          <h2 style={{ color: 'var(--accent)', fontWeight: 800 }}>No Device Selected</h2>
-          <p style={{ color: 'var(--muted)', marginTop: 8 }}>Please select a device from the Devices registry to view and adjust therapy settings.</p>
-        </GlassCard>
-      </div>
-    );
-  }
+  if (!deviceData) return <DeviceDataState what="therapy settings" />;
+
 
   return (
     <div className="therapy-page-container">
