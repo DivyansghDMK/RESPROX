@@ -1,12 +1,13 @@
 import React, { useEffect, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { TherapyProvider, useTherapy } from './context/TherapyContext';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Toast from './components/Toast';
 import BottomNavbar from './components/BottomNavbar';
 import RouteFallback from './components/RouteFallback';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import ConnectionBanner from './components/ConnectionBanner';
 import { NotifyProvider } from './context/NotifyContext';
 
 // Login is the entry point for every session, so it stays in the main chunk —
@@ -28,20 +29,31 @@ import {
   Settings,
   AppPreferences,
   HelpSupport,
-  AdminPatients,
-  AdminPatientDetail,
   AdminDataUpload,
-  WaveformAnalysis,
-  HCPPortal,
-  CreateOrg,
   ForgotPassword,
 } from './routes';
 
+// Authentication is always required; there is no demo/bypass mode.
+const SKIP_LOGIN = false;
+
 function AppContent() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { logout } = useAuth();
+
+  // The API layer raises this when the session can no longer be refreshed.
+  useEffect(() => {
+    const onExpired = () => {
+      logout();
+      navigate('/login', { replace: true, state: { reason: 'expired' } });
+    };
+    window.addEventListener('resprox:session-expired', onExpired);
+    return () => window.removeEventListener('resprox:session-expired', onExpired);
+  }, [logout, navigate]);
+
   const { adminActiveSerial } = useTherapy();
-  const activeSerial = adminActiveSerial || localStorage.getItem('adminActiveSerial') || 'CVT3000001';
-  const isAuthPage = location.pathname === '/login' || location.pathname === '/forgot-password' || location.pathname === '/';
+  const activeSerial = adminActiveSerial || localStorage.getItem('adminActiveSerial') || '';
+  const isAuthPage = !SKIP_LOGIN && (location.pathname === '/login' || location.pathname === '/forgot-password' || location.pathname === '/');
 
   useEffect(() => {
     if (isAuthPage) return;
@@ -129,7 +141,7 @@ function AppContent() {
         {/* The shell above renders immediately; only the route body suspends. */}
         <Suspense fallback={<RouteFallback />}>
           <Routes>
-            <Route path="/dashboard" element={<Navigate to={`/device/${activeSerial}`} replace />} /> {/* Admin: redirect to device dashboard */}
+            <Route path="/dashboard" element={activeSerial ? <Navigate to={`/device/${activeSerial}`} replace /> : <Navigate to="/devices" replace />} />
             <Route path="/therapy" element={<Therapy />} />
             <Route path="/trends" element={<Trends />} />
             <Route path="/reports" element={<Reports />} />
@@ -140,11 +152,8 @@ function AppContent() {
             <Route path="/settings" element={<Settings />} /> {/* Device comfort & configuration */}
             <Route path="/preferences" element={<AppPreferences />} /> {/* App-level preferences */}
             <Route path="/help" element={<HelpSupport />} />
-            <Route path="/admin" element={<AdminPatients />} />
             <Route path="/admin/upload" element={<AdminDataUpload />} /> {/* Admin: device file upload → report */}
-            <Route path="/admin/patient/:id" element={<AdminPatientDetail />} />
-            <Route path="/waveform-analysis" element={<WaveformAnalysis />} />
-            <Route path="*" element={<Navigate to="/login" replace />} />
+            <Route path="*" element={<Navigate to={SKIP_LOGIN ? '/devices' : '/login'} replace />} />
           </Routes>
         </Suspense>
       </main>
@@ -161,13 +170,9 @@ export default function App() {
       <NotifyProvider>
         <TherapyProvider>
           <Router>
+            <ConnectionBanner />
             <Suspense fallback={<RouteFallback />}>
               <Routes>
-                {/* HCP Clinician Portal — fully self-contained, bypasses main app shell */}
-                <Route path="/hcp/*" element={<HCPPortal />} />
-                {/* Standalone Organization Onboarding */}
-                <Route path="/createorg" element={<CreateOrg />} />
-                {/* Patient / Admin portal — main app shell */}
                 <Route path="/*" element={<AppContent />} />
               </Routes>
             </Suspense>

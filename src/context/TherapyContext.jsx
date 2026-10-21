@@ -1,17 +1,21 @@
 import React, { createContext, useContext, useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useNotify } from './NotifyContext';
+import { describeCommandStatus, describeError } from '../services/apiError';
+import { useAuth } from './AuthContext';
 import { devicesAPI } from '../services/respireeApi';
 
 const TherapyContext = createContext(null);
 
 export function TherapyProvider({ children }) {
   const notify = useNotify();
-  const [mode, setMode] = useState('cpap');
-  const [pressure, setPressure] = useState(12);
-  const [minPressure, setMinPressure] = useState(5);
-  const [maxPressure, setMaxPressure] = useState(15);
-  const [aflex, setAflex] = useState(2);
-  const [ramp, setRamp] = useState(20);
+  const { isAuthenticated } = useAuth();
+  // No invented starting values: these hold what the device reported, or null.
+  const [mode, setMode] = useState(null);
+  const [pressure, setPressure] = useState(null);
+  const [minPressure, setMinPressure] = useState(null);
+  const [maxPressure, setMaxPressure] = useState(null);
+  const [aflex, setAflex] = useState(null);
+  const [ramp, setRamp] = useState(null);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [saveState, setSaveState] = useState('idle'); // 'idle' | 'saving' | 'success' | 'error'
@@ -27,11 +31,11 @@ export function TherapyProvider({ children }) {
 
   // Reference for checking unsaved changes
   const initialSettings = useRef({
-    pressure: 12,
-    minPressure: 5,
-    maxPressure: 15,
-    aflex: 2,
-    ramp: 20
+    pressure: null,
+    minPressure: null,
+    maxPressure: null,
+    aflex: null,
+    ramp: null
   });
 
   const fetchDeviceData = useCallback(async (serial) => {
@@ -43,19 +47,19 @@ export function TherapyProvider({ children }) {
       setLastServerPull(new Date());
 
       const settings = data.settings || {};
-      setMode(settings.therapy_mode === 'AUTO CPAP' ? 'auto' : settings.therapy_mode === 'BiPAP' ? 'bipap' : 'cpap');
-      setPressure(settings.pressure ?? 12);
-      setMinPressure(settings.min_pressure ?? 4);
-      setMaxPressure(settings.max_pressure ?? (settings.therapy_mode === 'BiPAP' ? 30 : 20));
-      setAflex(settings.aflex ?? 0);
-      setRamp(settings.ramp ?? 30);
+      setMode(settings.therapy_mode === 'AUTO CPAP' ? 'auto' : settings.therapy_mode === 'CPAP' ? 'cpap' : null);
+      setPressure(settings.pressure ?? null);
+      setMinPressure(settings.min_pressure ?? null);
+      setMaxPressure(settings.max_pressure ?? null);
+      setAflex(settings.aflex ?? null);
+      setRamp(settings.ramp ?? null);
 
       initialSettings.current = {
-        pressure: settings.pressure ?? 12,
-        minPressure: settings.min_pressure ?? 4,
-        maxPressure: settings.max_pressure ?? 30,
-        aflex: settings.aflex ?? 0,
-        ramp: settings.ramp ?? 0
+        pressure: settings.pressure ?? null,
+        minPressure: settings.min_pressure ?? null,
+        maxPressure: settings.max_pressure ?? null,
+        aflex: settings.aflex ?? null,
+        ramp: settings.ramp ?? null
       };
     } catch (e) {
       // Every screen renders off deviceData, so a silent failure here left the
@@ -70,15 +74,20 @@ export function TherapyProvider({ children }) {
   }, [notify]);
 
   useEffect(() => {
-    console.log("[TherapyContext] useEffect trigger active serial:", adminActiveSerial);
-    if (adminActiveSerial) {
-      localStorage.setItem('adminActiveSerial', adminActiveSerial);
-      fetchDeviceData(adminActiveSerial);
-    } else {
+    if (!adminActiveSerial) {
       localStorage.removeItem('adminActiveSerial');
       setDeviceData(null);
+      return;
     }
-  }, [adminActiveSerial, fetchDeviceData]);
+
+    // The serial survives in localStorage between sessions, and this provider
+    // is mounted above the router — so without this guard a signed-out visitor
+    // on /login pulled the previous session's device, and any failure surfaced
+    // as an error card on the login screen.
+    localStorage.setItem('adminActiveSerial', adminActiveSerial);
+    if (!isAuthenticated) return;
+    fetchDeviceData(adminActiveSerial);
+  }, [adminActiveSerial, fetchDeviceData, isAuthenticated]);
 
   const stateRef = useRef({ deviceData, pressure, minPressure, maxPressure, aflex, ramp });
   useEffect(() => {
@@ -112,54 +121,59 @@ export function TherapyProvider({ children }) {
 
   const handleSave = useCallback(async () => {
     if (!adminActiveSerial) return;
+    if (stateRef.current.deviceData?.therapy_running) {
+      setShowToast(true);
+      setToastMessage('Therapy is running. Stop therapy before changing settings.');
+      return;
+    }
     setSaveState('saving');
     setShowToast(true);
     setToastMessage('Pushing settings to device...');
     
     try {
       const payload = {
-        therapy_mode: mode === 'auto' ? 'AUTO CPAP' : mode === 'bipap' ? 'BiPAP' : 'CPAP',
-        pressure: Number(pressure),
-        min_pressure: Number(minPressure),
-        max_pressure: Number(maxPressure),
-        aflex: Number(aflex),
-        ramp: Number(ramp)
+        therapy_mode: mode === 'auto' ? 'AUTO CPAP' : mode === 'cpap' ? 'CPAP' : null,
+        // Missing values stay missing; the API layer refuses to send them.
+        pressure,
+        min_pressure: minPressure,
+        max_pressure: maxPressure,
+        aflex,
+        ramp,
       };
       
       const res = await devicesAPI.updateDeviceSettings(adminActiveSerial, payload);
-      
-      // Update local reference to avoid unsaved warning
-      initialSettings.current = {
-        pressure: Number(pressure),
-        minPressure: Number(minPressure),
-        maxPressure: Number(maxPressure),
-        aflex: Number(aflex),
-        ramp: Number(ramp)
+      const confirmed = () => {
+        // Only once the device has the values do they become the new baseline.
+        initialSettings.current = { pressure, minPressure, maxPressure, aflex, ramp };
       };
-      
+
       if (res && res.status === 'NO_CHANGE') {
+        confirmed();
         setSaveState('success');
-        setToastMessage('No fields differ from current stored values; nothing saved.');
-        setTimeout(() => setShowToast(false), 4000);
+        setToastMessage('Nothing to send: the device already has these values.');
       } else if (res && res.commandId) {
-        setToastMessage('Database updated. Syncing with device...');
+        setToastMessage('Sent. Waiting for the device to confirm…');
         const pollRes = await devicesAPI.pollCommandStatus(adminActiveSerial, res.commandId);
-        if (pollRes.status === 'ACKED') {
-          setSaveState('success');
-          setToastMessage('Settings successfully applied to device ✓');
+        const bad = describeCommandStatus(pollRes.status, { subject: adminActiveSerial });
+        if (bad) {
+          notify.fromDescription(bad);
+          setSaveState('error');
+          setToastMessage(bad.title);
         } else {
-          throw new Error(`Device failed to apply settings (Status: ${pollRes.status})`);
+          confirmed();
+          setSaveState('success');
+          setToastMessage('Settings applied — the device confirmed them ✓');
         }
-        setTimeout(() => setShowToast(false), 4000);
       } else {
-        setSaveState('success');
-        setToastMessage('Settings successfully updated in DB & pushed to device ✓');
-        setTimeout(() => setShowToast(false), 4000);
+        // Accepted, but with no command id there is no device confirmation to wait for.
+        setSaveState('idle');
+        setToastMessage('Sent to the server. The device has not confirmed it yet.');
       }
+      setTimeout(() => setShowToast(false), 4000);
     } catch (e) {
       notify.fromError(e, { action: 'save these settings', subject: adminActiveSerial });
       setSaveState('error');
-      setToastMessage(e.message || 'Failed to update settings in DB.');
+      setToastMessage(describeError(e, { action: 'save these settings' }).title);
       setTimeout(() => setShowToast(false), 4000);
     }
   }, [adminActiveSerial, mode, pressure, minPressure, maxPressure, aflex, ramp]);

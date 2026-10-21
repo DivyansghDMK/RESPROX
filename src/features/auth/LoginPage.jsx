@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState } from 'react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useTherapy } from '../../context/TherapyContext';
 import { useAuth } from '../../context/AuthContext';
 import { UserIcon, LockIcon } from '../../components/Icons';
@@ -18,6 +18,29 @@ const EyeOffIcon = () => (
   </svg>
 );
 
+/** The real reason a sign-in failed, in words the user can act on. */
+function loginErrorMessage(err) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return "You're offline. Check your internet connection and try again.";
+  }
+  switch (err?.cognitoType) {
+    case 'NotAuthorizedException': return 'Incorrect email or password.';
+    case 'UserNotFoundException': return 'Incorrect email or password.';
+    case 'UserNotConfirmedException': return 'This account has not been confirmed yet. Contact your administrator.';
+    case 'PasswordResetRequiredException': return 'A password reset is required. Use "Forgot password?" to set a new one.';
+    case 'TooManyRequestsException':
+    case 'LimitExceededException': return 'Too many attempts. Wait a few minutes and try again.';
+    default: break;
+  }
+  if (/IdToken/.test(String(err?.message))) {
+    return 'This account needs extra sign-in steps (such as a new password) that this site does not support yet. Contact your administrator.';
+  }
+  if (err?.name === 'TypeError') {
+    return "Couldn't reach the sign-in service. Try again in a minute.";
+  }
+  return 'Sign-in failed. Try again, and contact support if it keeps happening.';
+}
+
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -28,35 +51,7 @@ export default function Login() {
   const { setShowToast, setSaveState, setToastMessage } = useTherapy();
   const { login } = useAuth();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const autologin = params.get('autologin');
-    const serial = params.get('serial');
-    const emailParam = params.get('email');
-    const nameParam = params.get('name');
-
-    if (autologin === 'true' && serial) {
-      localStorage.setItem('adminToken', 'patient-secret-token');
-      localStorage.setItem('adminUsername', nameParam || emailParam || 'Patient User');
-      localStorage.setItem('adminActiveSerial', serial);
-      
-      try {
-        localStorage.setItem('active_device_serial', serial);
-      } catch (e) {}
-
-      setToastMessage('Direct access verified! Redirecting to CPAP dashboard...');
-      setSaveState('success');
-      setShowToast(true);
-      
-      setTimeout(() => {
-        setShowToast(false);
-        setSaveState('idle');
-        setToastMessage('');
-        window.location.href = `/device/${serial}`;
-      }, 1500);
-    }
-  }, []);
+  const sessionExpired = useLocation().state?.reason === 'expired';
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
@@ -87,14 +82,14 @@ export default function Login() {
       }
     } catch (err) {
       setLoading(false);
-      setToastMessage('Invalid email or password. Please try again.');
+      setToastMessage(loginErrorMessage(err));
       setSaveState('error');
       setShowToast(true);
       setTimeout(() => {
         setShowToast(false);
         setSaveState('idle');
         setToastMessage('');
-      }, 3000);
+      }, 5000);
     }
   };
 
@@ -116,7 +111,10 @@ export default function Login() {
             </div>
           </div>
           <h2 className="auth-title">Resprox Access</h2>
-          <p className="auth-subtitle">Use `admin / 2026` for dev, or your Cognito email and password for staging</p>
+          <p className="auth-subtitle">Sign in with your Cognito email and password</p>
+          {sessionExpired && (
+            <p className="auth-notice" role="status">Your session expired. Please sign in again.</p>
+          )}
         </div>
 
         <form onSubmit={handleLoginSubmit} className="auth-form">
@@ -127,7 +125,7 @@ export default function Login() {
               <input
                 type="text"
                 id="username"
-                placeholder="admin or kanishka.sharma@deckmount.in"
+                placeholder="name@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -191,13 +189,6 @@ export default function Login() {
             )}
           </button>
         </form>
-
-        <div className="auth-footer">
-          <p>Dev login: <strong>admin</strong> / <strong>2026</strong></p>
-          <a href="/hcp" className="hcp-login-link">
-            DeckLink HCP Portal →
-          </a>
-        </div>
       </div>
     </div>
   );

@@ -1,30 +1,14 @@
 # server/main.py
 # FastAPI server — Devices-centric CPAP Settings Push & Telemetry
-# pip install fastapi uvicorn websockets boto3 httpx
+# pip install fastapi uvicorn websockets
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, status, Query, BackgroundTasks
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, status, Query, BackgroundTasks, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Set, List
-import asyncio, json, logging, time, os
-
-# AWS / HTTP clients (install: pip install boto3 httpx)
-try:
-    import boto3
-    from botocore.exceptions import ClientError, NoCredentialsError
-    BOTO3_AVAILABLE = True
-except ImportError:
-    BOTO3_AVAILABLE = False
-    logging.warning("boto3 not installed — S3 presigned URL features disabled. Run: pip install boto3")
-
-try:
-    import httpx
-    HTTPX_AVAILABLE = True
-except ImportError:
-    HTTPX_AVAILABLE = False
-    logging.warning("httpx not installed — reports proxy disabled. Run: pip install httpx")
+import asyncio, hashlib, hmac, json, logging, secrets, time, os
 
 def load_dotenv():
     # Look for .env in the parent directory of this file
@@ -49,49 +33,42 @@ def load_dotenv():
 
 load_dotenv()
 
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "admin-secret-token-change-me")
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+def _require_env(name: str, bad_values=()) -> str:
+    val = os.getenv(name, "")
+    if not val or val in bad_values:
+        raise RuntimeError(f"{name} must be set to a non-default value (see .env)")
+    return val
 
-# ── AWS Configuration ────────────────────────────────────────────
-AWS_ACCESS_KEY_ID     = os.getenv("AWS_ACCESS_KEY_ID", "")
-AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
-AWS_S3_BUCKET         = os.getenv("AWS_S3_BUCKET", "deck-backend-demo")
-AWS_S3_REGION         = os.getenv("AWS_S3_REGION", "us-east-1")
+ADMIN_TOKEN = _require_env("ADMIN_TOKEN", ("admin-secret-token-change-me",))
+ADMIN_USERNAME = _require_env("ADMIN_USERNAME")
+ADMIN_PASSWORD = _require_env("ADMIN_PASSWORD", ("admin123",))
 
-REVIEWED_REPORTS_API_URL = os.getenv(
-    "REVIEWED_REPORTS_API_URL",
-    "https://6jhix49qt6.execute-api.us-east-1.amazonaws.com/api/public/reviewed-reports"
-)
-REVIEWED_REPORTS_API_KEY = os.getenv("REVIEWED_REPORTS_API_KEY", "9q7RZrcSkc7UMYwXLAJXo33N4AvulrfF5r23KrIL")
-DOCTOR_REVIEW_API_URL    = os.getenv("DOCTOR_REVIEW_API_URL", "")
-DOCTOR_REVIEW_API_KEY    = os.getenv("DOCTOR_REVIEW_API_KEY", "")
+# Devices authenticate with HMAC(DEVICE_TOKEN_SECRET, serial). Unset => a random secret,
+# so no device can authenticate until one is configured.
+DEVICE_TOKEN_SECRET = os.getenv("DEVICE_TOKEN_SECRET") or secrets.token_hex(32)
+if not os.getenv("DEVICE_TOKEN_SECRET"):
+    logging.warning("DEVICE_TOKEN_SECRET not set — device endpoints will reject all devices")
 
-def get_s3_client():
-    """Return a boto3 S3 client using credentials from .env"""
-    if not BOTO3_AVAILABLE:
-        return None
-    if not AWS_ACCESS_KEY_ID or not AWS_SECRET_ACCESS_KEY:
-        return None
-    return boto3.client(
-        "s3",
-        region_name=AWS_S3_REGION,
-        aws_access_key_id=AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-    )
+COGNITO_REGION = os.getenv("VITE_COGNITO_REGION", "us-east-1")
+COGNITO_USER_POOL_ID = os.getenv("VITE_COGNITO_USER_POOL_ID", "")
+COGNITO_CLIENT_ID = os.getenv("VITE_COGNITO_APP_CLIENT_ID", "")
+
+# Simulated acknowledgements are disabled unless explicitly enabled for tests.
+DEV_SIMULATE_ACK = os.getenv("DEV_SIMULATE_ACK") == "1"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cpap-server")
 
-app = FastAPI(title="DeckLink CPAP Server (Devices-Centric)", version="2.0.0")
+app = FastAPI(title="Resprox CPAP Server (Devices-Centric)", version="2.0.0")
 
-cors_origins_str = os.getenv("CORS_ALLOWED_ORIGINS", "*")
-allow_origins = [origin.strip() for origin in cors_origins_str.split(",")] if cors_origins_str else ["*"]
+# Explicit origins only; auth is a bearer header, so cookies/credentials are not needed.
+cors_origins_str = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:5175")
+allow_origins = [o.strip() for o in cors_origins_str.split(",") if o.strip() and o.strip() != "*"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -135,10 +112,9 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# ── DB Store (in-memory mock) ───────────────────────────────────
-# Serial format: CVT30-C-XXXX
-# CVT30 = product line, C = CPAP series, XXXX = unit serial number
-DEVICES_DB = {
+# Device records must come from the configured production data source. This
+# legacy local server does not seed devices or fabricate telemetry.
+DEVICES_DB: Dict[str, dict] = {
     "CVT30-C-9281": {
         "serial": "CVT30-C-9281",
         "product_line": "CVT30",
@@ -243,14 +219,55 @@ DEVICES_DB = {
     }
 }
 
+# No local/demo records are allowed in runtime state. Production callers must
+# provide device data through the real API/database integration.
+DEVICES_DB.clear()
+
 PENDING_DB: Dict[str, dict] = {} # serial → pending settings payload
 
 # ── Auth & Security ──────────────────────────────────────────────
 bearer = HTTPBearer()
 
+_jwk_client = None
+
+def _verify_cognito(token: str) -> bool:
+    """True if token is a valid, unexpired id token from our Cognito pool."""
+    global _jwk_client
+    if not COGNITO_USER_POOL_ID:
+        return False
+    try:
+        import jwt
+        issuer = f"https://cognito-idp.{COGNITO_REGION}.amazonaws.com/{COGNITO_USER_POOL_ID}"
+        if _jwk_client is None:
+            _jwk_client = jwt.PyJWKClient(f"{issuer}/.well-known/jwks.json", cache_keys=True)
+        key = _jwk_client.get_signing_key_from_jwt(token).key
+        claims = jwt.decode(
+            token, key, algorithms=["RS256"], issuer=issuer,
+            audience=COGNITO_CLIENT_ID or None,
+            options={"verify_aud": bool(COGNITO_CLIENT_ID)},
+        )
+        return claims.get("token_use") == "id"
+    except Exception:
+        return False
+
 def require_admin(creds: HTTPAuthorizationCredentials = Depends(bearer)):
-    if creds.credentials != ADMIN_TOKEN:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin token")
+    """Static admin token, or a valid Cognito id token."""
+    tok = creds.credentials
+    if hmac.compare_digest(tok, ADMIN_TOKEN) or _verify_cognito(tok):
+        return
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+def device_token(serial: str) -> str:
+    return hmac.new(DEVICE_TOKEN_SECRET.encode(), serial.encode(), hashlib.sha256).hexdigest()
+
+def _device_token_ok(serial: str, token: Optional[str]) -> bool:
+    return bool(token) and hmac.compare_digest(token, device_token(serial))
+
+def require_device(serial: str, x_device_token: Optional[str] = Header(None)):
+    if not _device_token_ok(serial, x_device_token):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid device token")
+
+ADMIN = [Depends(require_admin)]
 
 class LoginRequest(BaseModel):
     username: str
@@ -286,7 +303,7 @@ class SettingsAck(BaseModel):
 
 @app.post("/api/auth/login")
 def login(body: LoginRequest):
-    if body.username == ADMIN_USERNAME and body.password == ADMIN_PASSWORD:
+    if hmac.compare_digest(body.username, ADMIN_USERNAME) and hmac.compare_digest(body.password, ADMIN_PASSWORD):
         return {
             "token": ADMIN_TOKEN,
             "username": ADMIN_USERNAME,
@@ -387,20 +404,33 @@ async def update_settings(serial: str, body: TherapySettings):
     }
 
 
-@app.post("/api/device/settings/ack")
-async def ack_settings(body: SettingsAck):
+COMMANDS: Dict[str, dict] = {}   # commandId → {serial, timestamp, status}
+COMMAND_TIMEOUT_S = 30
+MAX_COMMANDS = 500
+
+def _apply_ack(body: SettingsAck):
     pending = PENDING_DB.get(body.serial)
-    if pending and abs(pending["timestamp"] - body.timestamp) < 5:
-        PENDING_DB.pop(body.serial, None)
-        logger.info(f"Settings ACK received for {body.serial} (applied={body.applied})")
+    if not pending or abs(pending["timestamp"] - body.timestamp) >= 5:
+        return
+    PENDING_DB.pop(body.serial, None)
+    for c in COMMANDS.values():
+        if c["serial"] == body.serial and c["status"] == "PENDING" and abs(c["timestamp"] - body.timestamp) < 5:
+            c["status"] = "ACKED" if body.applied else "NACKED"
+    logger.info(f"Settings ACK received for {body.serial} (applied={body.applied})")
+
+@app.post("/api/device/settings/ack")
+async def ack_settings(body: SettingsAck, x_device_token: Optional[str] = Header(None)):
+    if not _device_token_ok(body.serial, x_device_token):
+        raise HTTPException(status_code=401, detail="Invalid device token")
+    _apply_ack(body)
     return {"ok": True}
 
 
-@app.get("/api/device/settings/{serial}")
+@app.get("/api/device/settings/{serial}", dependencies=[Depends(require_device)])
 async def device_fetch_settings(serial: str):
     if serial not in DEVICES_DB:
         raise HTTPException(status_code=404, detail="Device not found")
-    PENDING_DB.pop(serial, None)
+    # Pending stays until the device ACKs; fetching alone does not prove it was applied.
     return {"settings": DEVICES_DB[serial]["settings"]}
 
 
@@ -439,8 +469,8 @@ def _get_mock_decoded_payload(device: dict) -> dict:
         "OPTIONS": None
     }
 
-@app.get("/devices/{serial}/telemetry/latest")
-@app.get("/api/devices/{serial}/telemetry/latest")
+@app.get("/devices/{serial}/telemetry/latest", dependencies=ADMIN)
+@app.get("/api/devices/{serial}/telemetry/latest", dependencies=ADMIN)
 async def mock_telemetry_latest(serial: str):
     if serial not in DEVICES_DB:
         return JSONResponse(
@@ -466,8 +496,8 @@ async def mock_telemetry_latest(serial: str):
         }
     }
 
-@app.get("/devices/{serial}/sync-state")
-@app.get("/api/devices/{serial}/sync-state")
+@app.get("/devices/{serial}/sync-state", dependencies=ADMIN)
+@app.get("/api/devices/{serial}/sync-state", dependencies=ADMIN)
 async def mock_sync_state(serial: str):
     if serial not in DEVICES_DB:
         return JSONResponse(
@@ -488,110 +518,90 @@ async def mock_sync_state(serial: str):
         }
     }
 
-@app.get("/devices/{serial}/commands/{command_id}/status")
-@app.get("/api/devices/{serial}/commands/{command_id}/status")
+@app.get("/devices/{serial}/commands/{command_id}/status", dependencies=ADMIN)
+@app.get("/api/devices/{serial}/commands/{command_id}/status", dependencies=ADMIN)
 async def mock_command_status(serial: str, command_id: str):
-    if serial not in DEVICES_DB:
+    cmd = COMMANDS.get(command_id)
+    if serial not in DEVICES_DB or not cmd or cmd["serial"] != serial:
         return JSONResponse(
             status_code=404,
-            content={"success": False, "error": f"Device not found: {serial}"}
+            content={"success": False, "error": f"Command not found: {command_id}"}
         )
-    if serial in PENDING_DB:
-        return {"status": "PENDING"}
-    else:
-        return {"status": "ACKED"}
+    if cmd["status"] == "PENDING" and time.time() - cmd["timestamp"] > COMMAND_TIMEOUT_S:
+        cmd["status"] = "TIMEOUT"
+    return {"status": cmd["status"]}
 
-@app.patch("/devices/{serial}/settings")
-@app.patch("/api/devices/{serial}/settings")
+def _num(group: dict, key: str, lo: float, hi: float, label: str):
+    """Return the validated number at group[key], or None if absent. Raises ValueError."""
+    v = group.get(key)
+    if v is None:
+        return None
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        raise ValueError(f"{label}.{key}: must be a number")
+    if not (lo <= v <= hi):
+        raise ValueError(f"{label}.{key}: {v} is out of range ({lo}-{hi})")
+    return v
+
+SUPPORTED_GROUPS = ("CPAP", "AUTO")
+UNSUPPORTED_GROUPS = ("S", "ST", "T", "VAPS", "CONFIG", "COMFORT", "OPTIONS")
+
+@app.patch("/devices/{serial}/settings", dependencies=ADMIN)
+@app.patch("/api/devices/{serial}/settings", dependencies=ADMIN)
 async def mock_patch_settings(serial: str, body: dict, background_tasks: BackgroundTasks):
     if serial not in DEVICES_DB:
         return JSONResponse(
             status_code=404,
             content={"success": False, "error": f"Device not found: {serial}"}
         )
-    
+
+    def bad(msg):
+        return JSONResponse(status_code=400, content={"success": False, "error": msg})
+
+    for g in UNSUPPORTED_GROUPS:
+        if body.get(g) is not None:
+            return bad(f"{g}: not supported by this server")
+    for g in SUPPORTED_GROUPS:
+        if body.get(g) is not None and not isinstance(body[g], dict):
+            return bad(f"{g}: must be an object")
+
     device = DEVICES_DB[serial]
     original_decoded = _get_mock_decoded_payload(device)
-    
-    # Validate ranges
     cpap_patch = body.get("CPAP")
-    if cpap_patch is not None:
-        pressure = cpap_patch.get("pressure")
-        if pressure is not None and not (4 <= pressure <= 20):
-            return JSONResponse(
-                status_code=400,
-                content={"success": False, "error": f"CPAP.pressure: {pressure} is out of range (encoded range 40-200)"}
-            )
-        ramp = cpap_patch.get("ramp")
-        if ramp is not None and not (0 <= ramp <= 45):
-            return JSONResponse(
-                status_code=400,
-                content={"success": False, "error": f"CPAP.ramp: {ramp} is out of range"}
-            )
-            
     auto_patch = body.get("AUTO")
-    if auto_patch is not None:
-        min_p = auto_patch.get("minPressure")
-        if min_p is not None and not (4 <= min_p <= 20):
-            return JSONResponse(
-                status_code=400,
-                content={"success": False, "error": f"AUTO.minPressure: {min_p} is out of range (encoded range 40-200)"}
-            )
-        max_p = auto_patch.get("maxPressure")
-        if max_p is not None and not (4 <= max_p <= 20):
-            return JSONResponse(
-                status_code=400,
-                content={"success": False, "error": f"AUTO.maxPressure: {max_p} is out of range (encoded range 40-200)"}
-            )
-        aflex = auto_patch.get("aflex")
-        if aflex is not None and not (0 <= aflex <= 3):
-            return JSONResponse(
-                status_code=400,
-                content={"success": False, "error": f"AUTO.aflex: {aflex} is out of range (encoded range 0-3)"}
-            )
-        ramp = auto_patch.get("ramp")
-        if ramp is not None and not (0 <= ramp <= 45):
-            return JSONResponse(
-                status_code=400,
-                content={"success": False, "error": f"AUTO.ramp: {ramp} is out of range"}
-            )
+
+    try:
+        if cpap_patch is not None:
+            _num(cpap_patch, "pressure", 4, 20, "CPAP")
+            _num(cpap_patch, "ramp", 0, 45, "CPAP")
+        if auto_patch is not None:
+            min_p = _num(auto_patch, "minPressure", 4, 20, "AUTO")
+            max_p = _num(auto_patch, "maxPressure", 4, 20, "AUTO")
+            _num(auto_patch, "aflex", 0, 3, "AUTO")
+            _num(auto_patch, "ramp", 0, 45, "AUTO")
+            eff_min = min_p if min_p is not None else original_decoded["AUTO"]["minPressure"]
+            eff_max = max_p if max_p is not None else original_decoded["AUTO"]["maxPressure"]
+            if eff_min >= eff_max:
+                raise ValueError("AUTO: minPressure must be less than maxPressure")
+    except ValueError as e:
+        return bad(str(e))
 
     # Compute changed fields
     changed_fields = {}
-    has_changes = False
-    
-    # Reconstruct what was sent in the request structure for comparison
-    updated_modes = {
-        "CPAP": None,
-        "AUTO": None,
-        "S": None,
-        "ST": None,
-        "T": None,
-        "VAPS": None,
-        "CONFIG": None,
-        "COMFORT": None,
-        "OPTIONS": None
-    }
-    
-    # We only check keys: CPAP, AUTO
-    for mode_name in ["CPAP", "AUTO"]:
+    updated_modes = {g: None for g in ("CPAP", "AUTO", "S", "ST", "T", "VAPS", "CONFIG", "COMFORT", "OPTIONS")}
+    for mode_name in SUPPORTED_GROUPS:
         mode_patch = body.get(mode_name)
         if mode_patch is None:
             continue
-            
         original_mode_val = original_decoded.get(mode_name) or {}
-        mode_changed_fields = {}
-        for k, v in mode_patch.items():
-            orig_v = original_mode_val.get(k)
-            if v != orig_v:
-                mode_changed_fields[k] = {"from": orig_v, "to": v}
-                has_changes = True
-                
-        if mode_changed_fields:
-            changed_fields[mode_name] = mode_changed_fields
+        mode_changed = {
+            k: {"from": original_mode_val.get(k), "to": v}
+            for k, v in mode_patch.items() if v != original_mode_val.get(k)
+        }
+        if mode_changed:
+            changed_fields[mode_name] = mode_changed
             updated_modes[mode_name] = mode_patch
 
-    if not has_changes:
+    if not changed_fields:
         return {
             "success": True,
             "commandId": None,
@@ -608,7 +618,7 @@ async def mock_patch_settings(serial: str, body: dict, background_tasks: Backgro
             settings["pressure"] = float(cpap_patch["pressure"])
         if "ramp" in cpap_patch:
             settings["ramp"] = float(cpap_patch["ramp"])
-            
+
     if auto_patch is not None:
         settings["therapy_mode"] = "AUTO CPAP"
         if "minPressure" in auto_patch:
@@ -620,641 +630,43 @@ async def mock_patch_settings(serial: str, body: dict, background_tasks: Backgro
         if "ramp" in auto_patch:
             settings["ramp"] = float(auto_patch["ramp"])
 
-    push_payload = {
-        **settings,
-        "updated_by": "admin",
-        "timestamp": time.time(),
-    }
-    
+    ts = time.time()
+    push_payload = {**settings, "updated_by": "admin", "timestamp": ts}
     delivered = await manager.push_settings(serial, push_payload)
     PENDING_DB[serial] = push_payload
-    
-    async def simulate_device_ack():
-        await asyncio.sleep(1.5)
-        PENDING_DB.pop(serial, None)
-        logger.info(f"Simulated auto-ACK for device {serial} completed.")
 
-    background_tasks.add_task(simulate_device_ack)
+    command_id = str(uuid.uuid4())
+    COMMANDS[command_id] = {"serial": serial, "timestamp": ts, "status": "PENDING"}
+    while len(COMMANDS) > MAX_COMMANDS:
+        COMMANDS.pop(next(iter(COMMANDS)))
 
-    
+    # Real ACKs come from the device over the websocket/REST. Without one the command
+    # stays PENDING and then TIMEOUT. The simulator is a local-dev convenience only.
+    if DEV_SIMULATE_ACK:
+        async def simulate_device_ack():
+            await asyncio.sleep(1.5)
+            _apply_ack(SettingsAck(serial=serial, timestamp=ts, applied=True))
+        background_tasks.add_task(simulate_device_ack)
+
     return {
         "success": True,
-        "commandId": str(uuid.uuid4()),
+        "commandId": command_id,
         "status": "SAVED",
         "deviceId": serial,
+        "deviceOnline": delivered,
         "original": original_decoded,
         "updated": updated_modes,
         "changedFields": changed_fields
     }
 
 
-# ── AWS S3 Presigned URL ─────────────────────────────────────────
-
-@app.get("/api/s3/presign")
-def get_presigned_url(
-    key: str = Query(..., description="S3 object key, e.g. reports/A010/2026-07-01.pdf"),
-    expires: int = Query(900, ge=60, le=3600, description="URL expiry in seconds"),
-    _: str = Depends(require_admin)
-):
-    """Generate a short-lived presigned GET URL for any S3 object in the configured bucket."""
-    s3 = get_s3_client()
-    if not s3:
-        raise HTTPException(503, "S3 client not configured — check AWS credentials in .env")
-    try:
-        url = s3.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": AWS_S3_BUCKET, "Key": key},
-            ExpiresIn=expires,
-        )
-        return {"url": url, "expires_in": expires, "bucket": AWS_S3_BUCKET, "key": key}
-    except (ClientError, NoCredentialsError) as e:
-        raise HTTPException(500, f"S3 presign failed: {str(e)}")
-
-
-@app.get("/api/s3/list")
-def list_s3_objects(
-    prefix: str = Query("", description="S3 key prefix to list"),
-    _: str = Depends(require_admin)
-):
-    """List objects in the S3 bucket under a given prefix."""
-    s3 = get_s3_client()
-    if not s3:
-        raise HTTPException(503, "S3 client not configured — check AWS credentials in .env")
-    try:
-        resp = s3.list_objects_v2(Bucket=AWS_S3_BUCKET, Prefix=prefix, MaxKeys=100)
-        items = []
-        for obj in resp.get("Contents", []):
-            items.append({
-                "key": obj["Key"],
-                "size": obj["Size"],
-                "last_modified": obj["LastModified"].isoformat(),
-            })
-        return {"bucket": AWS_S3_BUCKET, "prefix": prefix, "count": len(items), "objects": items}
-    except (ClientError, NoCredentialsError) as e:
-        raise HTTPException(500, f"S3 list failed: {str(e)}")
-
-
-# ── Reports API Proxy (keeps API key server-side) ─────────────────
-
-@app.get("/api/reports/reviewed")
-async def proxy_reviewed_reports(
-    serial: Optional[str] = Query(None, description="Filter by device serial"),
-    _: str = Depends(require_admin)
-):
-    """Proxy to the live reviewed reports API — keeps the API key server-side."""
-    if not HTTPX_AVAILABLE:
-        raise HTTPException(503, "httpx not installed. Run: pip install httpx")
-    url = REVIEWED_REPORTS_API_URL
-    if serial:
-        url += f"?RhythmUltra_serial={serial}"
-    headers = {"Content-Type": "application/json", "x-api-key": REVIEWED_REPORTS_API_KEY}
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            return resp.json()
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(e.response.status_code, f"Upstream reports API error: {e.response.text[:200]}")
-    except Exception as e:
-        raise HTTPException(502, f"Could not reach reports API: {str(e)}")
-
-
-# ── S3 ECG Reports Scanner ────────────────────────────────────────
-# S3 path: reports/{YYYY}/{MM}/{DD}/{serial}/ECG_Report_*.pdf|json
-# Used by the HCP portal to show org reports by registered device serials
-
-import re
-from datetime import datetime, timedelta, timezone
-
-def _parse_report_meta(key: str) -> dict:
-    """
-    Parse S3 key like:
-      reports/2026/07/06/A076/ECG_Report_12_1_DM ECG V1.0 A076_20260706_181928.pdf
-      reports/2026/06/24/0010/Hyperkalemia_Report_DM ECG V1.0 0010_20260624_161810.pdf
-      reports/2026/07/06/A010/ecg_data_20260610_144913.json
-    Returns structured metadata dict.
-    """
-    parts = key.split("/")
-    # parts: ['reports', '2026', '07', '06', 'A076', 'filename.ext']
-    serial = parts[4] if len(parts) >= 5 else "unknown"
-    filename = parts[-1] if parts else key
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-
-    # Try to parse datetime from filename — two patterns:
-    #   _20260706_181928   (most reports)
-    #   ecg_data_20260610_144913  (raw data files)
-    dt_match = re.search(r"_(\d{8})_(\d{6})", filename)
-    report_dt = None
-    if dt_match:
-        try:
-            report_dt = datetime.strptime(
-                dt_match.group(1) + dt_match.group(2), "%Y%m%d%H%M%S"
-            ).replace(tzinfo=timezone.utc).isoformat()
-        except Exception:
-            pass
-
-    # Detect report type from filename prefix
-    fname_upper = filename.upper()
-    if "HYPERKALEMIA" in fname_upper:
-        rtype = "hyperkalemia"
-    elif "HRV" in fname_upper:
-        rtype = "hrv"
-    elif "12_1" in fname_upper or "12LEAD" in fname_upper:
-        rtype = "12_lead"
-    elif "4_3" in fname_upper or "4LEAD" in fname_upper or "HOLTER" in fname_upper:
-        rtype = "holter"
-    elif "ECG_DATA" in fname_upper:
-        rtype = "raw_ecg"
-    else:
-        rtype = "ecg"
-
-    return {
-        "serial": serial,
-        "filename": filename,
-        "ext": ext,
-        "report_type": rtype,
-        "created_at": report_dt,
-        "s3_key": key,
-    }
-
-
-# ── S3 Cache and Mock ECG Waveform Synthesizer ──────────────────
-S3_CACHE = {}
-S3_CACHE_TTL = 300  # 5 minutes cache
-
-def generate_mock_waveform(rhythm_type="nsr"):
-    import math
-    import random
-    sr = 500
-    duration = 10
-    total_samples = sr * duration
-    leads = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
-    
-    hr = 72
-    if rhythm_type == "tachycardia":
-        hr = 115
-    elif rhythm_type == "bradycardia":
-        hr = 48
-    elif rhythm_type == "afib":
-        hr = 95
-    elif rhythm_type == "pvc":
-        hr = 75
-        
-    rr_interval = 60.0 / hr
-    
-    leads_data = {}
-    for lead in leads:
-        samples = []
-        last_r_peak = -0.5
-        next_rr = rr_interval
-        
-        random.seed(hash(lead) + 42)
-        
-        for i in range(total_samples):
-            t = i / sr
-            val = 2048.0
-            
-            if (t - last_r_peak) >= next_rr:
-                last_r_peak = t
-                if rhythm_type == "afib":
-                    next_rr = rr_interval * (0.6 + random.random() * 0.8)
-                elif rhythm_type == "pvc" and random.random() > 0.65:
-                    next_rr = rr_interval * 0.65
-                else:
-                    next_rr = rr_interval * (0.95 + random.random() * 0.1)
-            
-            d = t - last_r_peak
-            
-            if rhythm_type != "afib":
-                p_onset = -0.16
-                p_width = 0.08
-                p_time = d + p_onset
-                if 0 <= p_time <= p_width:
-                    p_amp = 35.0 * (0.6 if "V" in lead else 1.0)
-                    val += math.sin((p_time / p_width) * math.pi) * p_amp
-            else:
-                val += math.sin(t * math.pi * 30) * 15 * (random.random() * 0.8 + 0.2)
-                
-            q_onset = -0.03
-            q_width = 0.02
-            q_time = d + q_onset
-            if 0 <= q_time <= q_width:
-                val += math.sin((q_time / q_width) * math.pi) * -45.0
-                
-            r_width = 0.04
-            r_time = d - 0.01
-            if 0 <= r_time <= r_width:
-                r_amp = 480.0 * (-0.8 if lead == "aVR" else 1.2) * (1.5 if lead in ["V3", "V4"] else 1.0)
-                val += math.sin((r_time / r_width) * math.pi) * r_amp
-                
-            s_onset = 0.03
-            s_width = 0.03
-            s_time = d - s_onset
-            if 0 <= s_time <= s_width:
-                s_amp = -120.0 * (-0.5 if lead == "aVR" else 1.0)
-                val += math.sin((s_time / s_width) * math.pi) * s_amp
-                
-            t_onset = 0.15
-            t_width = 0.16
-            t_time = d - t_onset
-            if 0 <= t_time <= (t_onset + t_width):
-                t_amp = 90.0 * (-0.7 if lead == "aVR" else 1.0) * (-1.5 if rhythm_type == "pvc" and d < 0.2 else 1.0)
-                val += math.sin((t_time / t_width) * math.pi) * t_amp
-                
-            val += math.sin(t * math.pi * 0.5) * 50.0
-            val += (random.random() - 0.5) * 8.0
-            
-            samples.append(int(val))
-            
-        leads_data[lead] = samples
-        
-    return {
-        "sampling_rate": sr,
-        "leads_data": leads_data
-    }
-
-from fastapi import Response
-
-def make_mock_pdf_bytes(report_id: str):
-    import random
-    parts = report_id.split("_")
-    rhythm = "nsr"
-    serial = "0000"
-    
-    if len(parts) >= 3:
-        serial = parts[2]
-    if len(parts) >= 4:
-        rhythm = parts[3]
-        
-    names = {
-        "0000": "Arjun Sharma",
-        "0010": "Priya Mehta",
-        "A010": "Ravi Kumar",
-        "A057": "Sunita Verma",
-        "CVT30-C-9281": "Deepak Nair",
-        "CVT30-C-4028": "Kavita Joshi",
-        "CVT30-C-1002": "Suresh Patel"
-    }
-    patient_name = names.get(serial, f"Patient ({serial})")
-    gender = "Male" if hash(serial) % 2 == 0 else "Female"
-    age = 35 + (hash(serial) % 30)
-    
-    rtype_lbl = "12-Lead ECG Report"
-    if "holter" in report_id:
-        rtype_lbl = "Holter / 4-Lead Report"
-    elif "hyperkalemia" in report_id:
-        rtype_lbl = "Hyperkalemia Screen"
-        
-    content_stream = f"""BT
-/F1 22 Tf
-50 720 Td
-(CardioX / DeckLink Clinical Report) Tj
-/F2 12 Tf
-0 -40 Td
-(Report ID: {report_id}) Tj
-0 -25 Td
-(Patient Name: {patient_name}) Tj
-0 -20 Td
-(Age: {age}   |   Gender: {gender}) Tj
-0 -20 Td
-(Device Serial: {serial}) Tj
-0 -30 Td
-(Test Parameter: {rtype_lbl}) Tj
-0 -25 Td
-(Status: Available - Pending Review) Tj
-0 -40 Td
-(Metrics Summary:) Tj
-0 -20 Td
-(Heart Rate: {115 if rhythm == "tachycardia" else 48 if rhythm == "bradycardia" else 72} BPM) Tj
-0 -20 Td
-(PR Interval: 160 ms   |   QRS Duration: 85 ms) Tj
-0 -20 Td
-(QT / QTc: 360 / 380 ms) Tj
-0 -40 Td
-(Specialist Comments:) Tj
-0 -20 Td
-(Normal P-QRS-T complexes. No acute ischemic changes observed.) Tj
-ET"""
-    
-    stream_bytes = content_stream.encode("utf-8")
-    stream_len = len(stream_bytes)
-    
-    pdf = f"""%PDF-1.4
-1 0 obj
-<< /Type /Catalog /Pages 3 0 R >>
-endobj
-2 0 obj
-<< /Type /Outlines /Count 0 >>
-endobj
-3 0 obj
-<< /Type /Pages /Kids [4 0 R] /Count 1 >>
-endobj
-4 0 obj
-<<
-  /Type /Page
-  /Parent 3 0 R
-  /MediaBox [0 0 612 792]
-  /Resources <<
-    /Font <<
-      /F1 <<
-        /Type /Font
-        /Subtype /Type1
-        /BaseFont /Helvetica-Bold
-      >>
-      /F2 <<
-        /Type /Font
-        /Subtype /Type1
-        /BaseFont /Helvetica
-      >>
-    >>
-  >>
-  /Contents 5 0 R
->>
-endobj
-5 0 obj
-<< /Length {stream_len} >>
-stream
-"""
-    pdf_start = pdf.encode("utf-8")
-    pdf_end = b"\nendstream\nendobj\ntrailer\n<< /Size 6 /Root 1 0 R >>\n%%EOF"
-    
-    return pdf_start + stream_bytes + pdf_end
-
-@app.get("/api/reports/mock/{report_id}/pdf")
-def get_mock_pdf(report_id: str):
-    pdf_bytes = make_mock_pdf_bytes(report_id)
-    return Response(content=pdf_bytes, media_type="application/pdf")
-
-@app.get("/api/reports/mock/{report_id}/json")
-def get_mock_json(report_id: str):
-    import random
-    parts = report_id.split("_")
-    rhythm = "nsr"
-    serial = "0000"
-    
-    if len(parts) >= 3:
-        serial = parts[2]
-    if len(parts) >= 4:
-        rhythm = parts[3]
-        if rhythm == "12lead" or rhythm == "12":
-            rhythm = "nsr"
-        elif rhythm == "holter":
-            rhythm = "bradycardia"
-        elif rhythm == "hyperkalemia":
-            rhythm = "pvc"
-            
-    names = {
-        "0000": "Arjun Sharma",
-        "0010": "Priya Mehta",
-        "A010": "Ravi Kumar",
-        "A057": "Sunita Verma",
-        "CVT30-C-9281": "Deepak Nair",
-        "CVT30-C-4028": "Kavita Joshi",
-        "CVT30-C-1002": "Suresh Patel"
-    }
-    patient_name = names.get(serial, f"Patient ({serial})")
-    waveform = generate_mock_waveform(rhythm)
-    
-    return {
-        "report_id": report_id,
-        "sampling_rate": waveform["sampling_rate"],
-        "patient_details": {
-            "name": patient_name,
-            "age": 45,
-            "gender": "M" if hash(serial) % 2 == 0 else "F",
-            "serial": serial
-        },
-        "ecg_data": {
-            "leads_data": waveform["leads_data"]
-        }
-    }
-
-
-@app.get("/api/reports/s3")
-def list_s3_ecg_reports(
-    serials: str = Query(..., description="Comma-separated device serials, e.g. A076,0010"),
-    days: int = Query(30, ge=1, le=365, description="How many days back to scan"),
-    presign_expiry: int = Query(900, ge=60, le=3600),
-):
-    """
-    Scan S3 for ECG reports (PDF + JSON) for the given device serials over the last N days.
-    Optimized with multi-threaded parallel prefix scanning and in-memory TTL caching.
-    Returns merged list of actual S3 reports and instant preloaded mock reports.
-    """
-    serial_list = [s.strip() for s in serials.split(",") if s.strip()]
-    if not serial_list:
-        raise HTTPException(400, "No serials provided")
-
-    today = datetime.now(tz=timezone.utc)
-    date_range = [(today - timedelta(days=d)) for d in range(days)]
-    
-    reports_map = {}
-    
-    # 1. Fetch from Cache if present and valid
-    cache_key = (tuple(sorted(serial_list)), days)
-    now_ts = time.time()
-    if cache_key in S3_CACHE:
-        cache_ts, cached_reports = S3_CACHE[cache_key]
-        if now_ts - cache_ts < S3_CACHE_TTL:
-            reports_map = cached_reports.copy()
-            
-    # 2. Run Parallel S3 Scan if cache is cold and S3 configured
-    s3 = get_s3_client()
-    if s3 and not reports_map:
-        from concurrent.futures import ThreadPoolExecutor
-        
-        def scan_single_prefix(day_dt, serial):
-            prefix = f"reports/{day_dt.strftime('%Y/%m/%d')}/{serial}/"
-            try:
-                resp = s3.list_objects_v2(Bucket=AWS_S3_BUCKET, Prefix=prefix, MaxKeys=50)
-                return (day_dt, serial, resp.get("Contents", []))
-            except Exception:
-                return (day_dt, serial, [])
-
-        with ThreadPoolExecutor(max_workers=20) as executor:
-            futures = [
-                executor.submit(scan_single_prefix, day_dt, serial)
-                for day_dt in date_range
-                for serial in serial_list
-            ]
-            results = [f.result() for f in futures]
-            
-        for day_dt, serial, contents in results:
-            for obj in contents:
-                key = obj["Key"]
-                if key.endswith("/"):
-                    continue
-
-                meta = _parse_report_meta(key)
-                base = re.sub(r"\.(pdf|json)$", "", key, flags=re.IGNORECASE)
-
-                if base not in reports_map:
-                    reports_map[base] = {
-                        "report_id": base.replace("/", "_").replace(" ", "_"),
-                        "serial": meta["serial"],
-                        "report_type": meta["report_type"],
-                        "created_at": meta["created_at"],
-                        "date_label": day_dt.strftime("%d %b %Y"),
-                        "pdf_url": None,
-                        "json_url": None,
-                        "pdf_key": None,
-                        "json_key": None,
-                        "size_bytes": 0,
-                        "status": "Available",
-                    }
-
-                entry = reports_map[base]
-                try:
-                    if meta["ext"] == "pdf":
-                        signed = s3.generate_presigned_url(
-                            "get_object",
-                            Params={
-                                "Bucket": AWS_S3_BUCKET,
-                                "Key": key,
-                                "ResponseContentDisposition": "inline",
-                                "ResponseContentType": "application/pdf",
-                            },
-                            ExpiresIn=presign_expiry,
-                        )
-                    else:
-                        signed = s3.generate_presigned_url(
-                            "get_object",
-                            Params={"Bucket": AWS_S3_BUCKET, "Key": key},
-                            ExpiresIn=presign_expiry,
-                        )
-                except Exception:
-                    signed = None
-
-                if meta["ext"] == "pdf":
-                    entry["pdf_url"] = signed
-                    entry["pdf_key"] = key
-                    entry["size_bytes"] = max(entry["size_bytes"], obj["Size"])
-                elif meta["ext"] == "json":
-                    entry["json_url"] = signed
-                    entry["json_key"] = key
-                    
-        # Update cache
-        if reports_map:
-            S3_CACHE[cache_key] = (time.time(), reports_map)
-
-    # 3. Create instant preloaded reports (always appended so reports load instantly)
-    preloaded_reports = []
-    for serial in serial_list:
-        # a. 12-Lead ECG
-        dt1 = today - timedelta(days=1)
-        id1 = f"mock_report_{serial}_12lead_1"
-        preloaded_reports.append({
-            "report_id": id1,
-            "serial": serial,
-            "report_type": "12_lead",
-            "created_at": dt1.isoformat(),
-            "date_label": dt1.strftime("%d %b %Y"),
-            "pdf_url": f"http://localhost:8000/api/reports/mock/{id1}/pdf",
-            "json_url": f"http://localhost:8000/api/reports/mock/{id1}/json",
-            "pdf_key": f"mock/reports/{serial}/12_lead.pdf",
-            "json_key": f"mock/reports/{serial}/12_lead.json",
-            "size_bytes": 124500,
-            "status": "Available",
-            "is_preloaded": True
-        })
-        
-        # b. Holter / 4-Lead
-        dt2 = today - timedelta(days=3)
-        id2 = f"mock_report_{serial}_holter_3"
-        preloaded_reports.append({
-            "report_id": id2,
-            "serial": serial,
-            "report_type": "holter",
-            "created_at": dt2.isoformat(),
-            "date_label": dt2.strftime("%d %b %Y"),
-            "pdf_url": f"http://localhost:8000/api/reports/mock/{id2}/pdf",
-            "json_url": f"http://localhost:8000/api/reports/mock/{id2}/json",
-            "pdf_key": f"mock/reports/{serial}/holter.pdf",
-            "json_key": f"mock/reports/{serial}/holter.json",
-            "size_bytes": 98200,
-            "status": "Available",
-            "is_preloaded": True
-        })
-        
-        # c. Hyperkalemia Screen
-        dt3 = today - timedelta(days=5)
-        id3 = f"mock_report_{serial}_hyperkalemia_5"
-        preloaded_reports.append({
-            "report_id": id3,
-            "serial": serial,
-            "report_type": "hyperkalemia",
-            "created_at": dt3.isoformat(),
-            "date_label": dt3.strftime("%d %b %Y"),
-            "pdf_url": f"http://localhost:8000/api/reports/mock/{id3}/pdf",
-            "json_url": f"http://localhost:8000/api/reports/mock/{id3}/json",
-            "pdf_key": f"mock/reports/{serial}/hyperkalemia.pdf",
-            "json_key": f"mock/reports/{serial}/hyperkalemia.json",
-            "size_bytes": 143100,
-            "status": "Available",
-            "is_preloaded": True
-        })
-
-    all_reports = list(reports_map.values()) + preloaded_reports
-    all_reports = sorted(
-        all_reports,
-        key=lambda r: r["created_at"] or "",
-        reverse=True,
-    )
-
-    return {
-        "serials": serial_list,
-        "days_scanned": days,
-        "total": len(all_reports),
-        "reports": all_reports,
-    }
-
-
-
-# ── Email Route using AWS SES ────────────────────────────────────
-class EmailRequest(BaseModel):
-    to_email: str
-    subject: str
-    html_body: str
-
-@app.post("/api/email/send")
-def send_email(body: EmailRequest):
-    if not BOTO3_AVAILABLE:
-        raise HTTPException(503, "boto3 not installed — email features disabled.")
-    try:
-        ses_client = boto3.client(
-            "ses",
-            region_name=AWS_S3_REGION or "us-east-1",
-            aws_access_key_id=AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-        )
-        sender_email = "noreply@deckmount.in"
-        response = ses_client.send_email(
-            Source=sender_email,
-            Destination={
-                "ToAddresses": [body.to_email]
-            },
-            Message={
-                "Subject": {
-                    "Data": body.subject,
-                    "Charset": "UTF-8"
-                },
-                "Body": {
-                    "Html": {
-                        "Data": body.html_body,
-                        "Charset": "UTF-8"
-                    }
-                }
-            }
-        )
-        return {"success": True, "message_id": response.get("MessageId")}
-    except Exception as e:
-        logger.error(f"AWS SES Send Email Failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Email delivery failed: {str(e)}")
-
-
 # ── WebSocket Route ──────────────────────────────────────────────
 @app.websocket("/ws/device/{serial}")
-async def device_websocket(ws: WebSocket, serial: str):
+async def device_websocket(ws: WebSocket, serial: str, token: Optional[str] = Query(None)):
+    # Device token, or an admin/Cognito token (the admin settings editor listens here too).
+    if not token or not (_device_token_ok(serial, token) or hmac.compare_digest(token, ADMIN_TOKEN) or _verify_cognito(token)):
+        await ws.close(code=1008)
+        return
     await manager.connect(serial, ws)
     try:
         # Push initial settings immediately on connect
@@ -1272,7 +684,7 @@ async def device_websocket(ws: WebSocket, serial: str):
 
                 if data.get("type") == "ack":
                     ack_data = data.get("data", {})
-                    await ack_settings(SettingsAck(
+                    _apply_ack(SettingsAck(
                         serial=serial,
                         timestamp=ack_data.get("timestamp", 0),
                         applied=ack_data.get("applied", False)
@@ -1285,10 +697,10 @@ async def device_websocket(ws: WebSocket, serial: str):
                     await ws.send_text(json.dumps({"type": "ping"}))
                 except Exception:
                     break
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, ValueError):
         pass
     finally:
         manager.disconnect(serial, ws)
 
 # Run: uvicorn server.main:app --reload --port 8000
-# Install deps: pip install fastapi uvicorn websockets boto3 httpx
+# Install deps: pip install fastapi uvicorn websockets

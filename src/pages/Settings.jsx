@@ -21,27 +21,40 @@
 // the server reports the device ACKed it; the BLE wire protocol is the
 // server's side of that conversation, not the browser's.
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTherapy } from '../context/TherapyContext';
 import {
-  MaskIcon, BreezeIcon, GaugeIcon, ShieldIcon, BluetoothIcon, CheckIcon,
+  MaskIcon, BreezeIcon, GaugeIcon, ShieldIcon, CheckIcon,
 } from '../components/Icons';
 import { devicesAPI } from '../services/respireeApi';
 import { describeCommandStatus, describeError } from '../services/apiError';
 import { useNotify } from '../context/NotifyContext';
+import fullFaceImg from '../assets/masks/full-face.svg';
+import nasalImg from '../assets/masks/nasal.svg';
+import pillowImg from '../assets/masks/pillow.svg';
+import standardTubeImg from '../assets/tubes/standard.jpg';
+import slimlineTubeImg from '../assets/tubes/slimline.jpg';
 
-// A pull older than this means we can no longer claim the device is reachable.
-const STALE_AFTER_MS = 90_000;
+// Draft fields each wire group carries, so a partly applied send keeps what the device confirmed.
+const GROUP_FIELDS = {
+  COMFORT: ['comfortRamp', 'humidifier', 'tubeType', 'maskType'],
+  OPTIONS: ['iMode', 'leakAlert', 'sleepMode'],
+  CPAP: ['ramp'],
+  AUTO: ['ramp', 'aflex'],
+};
+const pick = (obj, keys) => Object.fromEntries(keys.map((k) => [k, obj[k]]));
 
+
+// Ids follow the hardware spec (1 = Nasal, 2 = Full Face, 3 = Nasal Pillow).
 const MASK_TYPES = [
-  { id: 1, label: 'Full Face' },
-  { id: 2, label: 'Nasal' },
-  { id: 3, label: 'Pillow' },
+  { id: 1, label: 'Nasal', img: nasalImg },
+  { id: 2, label: 'Full Face', img: fullFaceImg },
+  { id: 3, label: 'Pillow', img: pillowImg },
 ];
 
 const TUBE_TYPES = [
-  { id: 1, title: 'Standard', sub: '22 mm bore' },
-  { id: 2, title: 'SlimLine', sub: '15 mm bore' },
+  { id: 1, title: 'Standard', sub: '22 mm bore', img: standardTubeImg },
+  { id: 2, title: 'SlimLine', sub: '15 mm bore', img: slimlineTubeImg },
 ];
 
 const HUMIDIFIER_NOTES = [
@@ -70,52 +83,6 @@ const OPTION_ROWS = [
 // ── mask artwork ──────────────────────────────────────────────────────────────
 // Drawn inline rather than imported: the Android screen ships ic_full_face /
 // ic_nasal / ic_pillow as drawables, and the web app has no equivalent assets.
-
-function MaskArt({ type }) {
-  const common = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' };
-  if (type === 1) {
-    return (
-      <svg viewBox="0 0 32 32" className="opt-icon" aria-hidden="true">
-        <path d="M16 4c5.5 0 9 2.5 9 7 0 5-1.5 9-3.5 12.5C20 26 18 27.5 16 27.5S12 26 10.5 23.5C8.5 20 7 16 7 11c0-4.5 3.5-7 9-7Z" {...common} />
-        <path d="M12 13c2.5-1 5.5-1 8 0M13 18h6" {...common} />
-      </svg>
-    );
-  }
-  if (type === 2) {
-    return (
-      <svg viewBox="0 0 32 32" className="opt-icon" aria-hidden="true">
-        <path d="M16 6c4 0 7 2 7 5.5 0 3-1.2 5-3 6.4-1 .8-1.4 1.6-1.6 2.8-.2 1.4-1 2.3-2.4 2.3s-2.2-.9-2.4-2.3c-.2-1.2-.6-2-1.6-2.8-1.8-1.4-3-3.4-3-6.4C9 8 12 6 16 6Z" {...common} />
-        <path d="M13.5 12.5h1.2M17.3 12.5h1.2" {...common} />
-      </svg>
-    );
-  }
-  return (
-    <svg viewBox="0 0 32 32" className="opt-icon" aria-hidden="true">
-      <path d="M9 14c0-2.2 1.6-3.8 3.6-3.8 1.3 0 2.5.6 3.4 1.6.9-1 2.1-1.6 3.4-1.6C21.4 10.2 23 11.8 23 14c0 2.6-2.2 4.4-4.6 4.4-1 0-1.8-.2-2.4-.6-.6.4-1.4.6-2.4.6C11.2 18.4 9 16.6 9 14Z" {...common} />
-      <path d="M16 18.4v4.4" {...common} />
-    </svg>
-  );
-}
-
-function TubeArt({ type }) {
-  // Standard is a 22 mm bore, SlimLine 15 mm — the stroke carries that difference.
-  const bore = type === 1 ? 7 : 4.4;
-  const stroke = { fill: 'none', stroke: 'currentColor', strokeLinecap: 'round', strokeLinejoin: 'round' };
-  return (
-    <svg viewBox="0 0 32 32" className="opt-icon" aria-hidden="true">
-      <path d="M5 22c0-7.5 4.9-12 11-12 4.4 0 8 2.4 9.9 6" {...stroke} strokeWidth={bore} opacity="0.28" />
-      <path d="M5 22c0-7.5 4.9-12 11-12 4.4 0 8 2.4 9.9 6" {...stroke} strokeWidth="1.5" />
-      {[0.18, 0.38, 0.58, 0.78].map((t, i) => (
-        <line
-          key={i}
-          x1={5 + t * 20} y1={22 - t * 11 - bore / 2}
-          x2={5 + t * 20} y2={22 - t * 11 + bore / 2}
-          {...stroke} strokeWidth="1.2" opacity="0.55"
-        />
-      ))}
-    </svg>
-  );
-}
 
 /** Droplet — the humidifier section header, distinct from the tube icon. */
 function DropletIcon() {
@@ -182,35 +149,45 @@ function PremiumToggle({ checked, onChange, disabled, label }) {
 // ── screen ────────────────────────────────────────────────────────────────────
 
 /** Everything the user can edit here, in one object so drafts diff cleanly. */
+const num = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+const bool = (v) => (v == null ? null : Boolean(Number(v)));
+
+/** What the device reported, or null when it sent nothing — never a stand-in value. */
 function committedFrom(deviceData, ctx) {
   const s = deviceData?.settings || {};
   return {
-    maskType: Number(s.mask_type) || 2,
-    tubeType: Number(s.tube_type) || 1,
-    humidifier: Number.isFinite(Number(s.humidifier)) ? Number(s.humidifier) : 3,
-    comfortRamp: Number.isFinite(Number(s.ramp_time)) ? Number(s.ramp_time) : 20,
-    ramp: Number.isFinite(Number(ctx.ramp)) ? Number(ctx.ramp) : 20,
-    aflex: Number.isFinite(Number(ctx.aflex)) ? Number(ctx.aflex) : 0,
-    iMode: Boolean(s.i_mode),
-    leakAlert: s.leak_alert !== undefined ? Boolean(s.leak_alert) : true,
-    sleepMode: Boolean(s.sleep_mode),
+    maskType: num(s.mask_type),
+    tubeType: num(s.tube_type),
+    humidifier: num(s.humidifier),
+    comfortRamp: num(s.ramp_time),
+    ramp: num(ctx.ramp),
+    aflex: num(ctx.aflex),
+    iMode: bool(s.i_mode),
+    leakAlert: bool(s.leak_alert),
+    sleepMode: bool(s.sleep_mode),
   };
 }
+
+/** Drop the fields the device never reported so they are not sent as 0. */
+const known = (obj) => Object.fromEntries(Object.entries(obj).filter(([, v]) => v != null));
 
 export default function Settings() {
   const ctx = useTherapy();
   const notify = useNotify();
   const {
-    deviceData, adminActiveSerial, lastServerPull,
+    deviceData, adminActiveSerial,
     setRamp, setAflex, setShowToast, setToastMessage,
   } = ctx;
 
-  const isConnected = Boolean(
-    lastServerPull && Date.now() - new Date(lastServerPull).getTime() < STALE_AFTER_MS
-  );
+  const deviceOnline = Boolean(deviceData?.device_online);
+  const isAutoMode = /auto/i.test(String(deviceData?.settings?.therapy_mode || ''));
   // The device reports no therapy-running flag over this transport yet; when it
   // does, swap this for that signal and the whole locked state comes alive.
   const isTherapyRunning = Boolean(deviceData?.therapy_running);
+  // While a phone is paired over BLE the device drops Wi-Fi, so remote changes cannot reach it.
+  const phoneConnected = /app connected/i.test(String(
+    deviceData?.raw?.remarks ?? deviceData?.raw?.Remarks ?? deviceData?.raw?.offline_reason ?? ''
+  ));
 
 
   const [committed, setCommitted] = useState(() => committedFrom(deviceData, ctx));
@@ -235,6 +212,17 @@ export default function Settings() {
   }), [draft, committed]);
 
   const isDirty = dirtyGroups.comfort || dirtyGroups.options || dirtyGroups.rampAflex;
+
+  // Device data often arrives after this screen mounts. Follow it while the user
+  // has nothing pending, so the screen never sits on stale or empty values.
+  const dirtyRef = useRef(isDirty);
+  dirtyRef.current = isDirty;
+  useEffect(() => {
+    if (dirtyRef.current) return;
+    const next = committedFrom(deviceData, ctx);
+    setCommitted(next);
+    setDraft(next);
+  }, [deviceData, ctx.ramp, ctx.aflex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const changeList = useMemo(() => {
     const rows = [];
@@ -269,87 +257,95 @@ export default function Settings() {
     // with them.
     const groups = {};
     if (dirtyGroups.comfort) {
-      groups.COMFORT = {
+      groups.COMFORT = known({
         rampTime: draft.comfortRamp,
-        humidifier: draft.humidifier,
+        humidifierLevel: draft.humidifier,
         tubeType: draft.tubeType,
         maskType: draft.maskType,
-      };
+      });
     }
     if (dirtyGroups.options) {
-      groups.OPTIONS = {
-        iMode: draft.iMode,
-        leakAlert: draft.leakAlert,
-        sleepMode: draft.sleepMode,
-      };
+      groups.OPTIONS = known({
+        iModeEnabled: draft.iMode == null ? null : Number(draft.iMode),
+        leakAlertEnabled: draft.leakAlert == null ? null : Number(draft.leakAlert),
+        sleepModeEnabled: draft.sleepMode == null ? null : Number(draft.sleepMode),
+      });
     }
     if (dirtyGroups.rampAflex) {
-      groups[isAuto ? 'AUTO' : 'CPAP'] = isAuto
-        ? {
-          minPressure: Number(ctx.minPressure),
-          maxPressure: Number(ctx.maxPressure),
-          aflex: draft.aflex,
-          ramp: draft.ramp,
-        }
-        : { pressure: Number(ctx.pressure), ramp: draft.ramp };
+      // A partial PATCH: pressures are untouched here, so they are not sent.
+      groups[isAuto ? 'AUTO' : 'CPAP'] = known(isAuto
+        ? { aflex: draft.aflex, ramp: draft.ramp }
+        : { ramp: draft.ramp });
     }
 
     setPendingGroups(Object.keys(groups));
 
     // The dialog explains it in place; the frame keeps it on screen after the
     // dialog is dismissed, and carries the retry.
+    // The API takes one mode per request, so groups go one at a time and each
+    // must be ACKed before the next is sent. On failure the screen keeps every
+    // group the device did confirm and rolls back only the rest.
+    let confirmedState = committed;
+    const confirmedGroups = [];
+    const settle = () => { setCommitted(confirmedState); setDraft(confirmedState); };
+    const partNote = () => (confirmedGroups.length
+      ? ` ${confirmedGroups.join(', ')} ${confirmedGroups.length === 1 ? 'was' : 'were'} applied before this.`
+      : '');
+
+    // The dialog explains it in place; the frame keeps it on screen after the
+    // dialog is dismissed, and carries the retry.
     const fail = (reason, described) => {
-      revertDraft();
-      setFlow({ state: 'failed', reason });
-      if (described) notify.fromDescription(described, { onRetry: sendChangesRef.current });
-      else notify.error("Couldn't apply settings", { message: reason });
+      settle();
+      setFlow({ state: 'failed', reason: reason + partNote() });
+      if (described) notify.fromDescription({ ...described, message: described.message + partNote() }, { onRetry: sendChangesRef.current });
+      else notify.error("Couldn't apply settings", { message: reason + partNote() });
     };
 
-    let res;
-    try {
-      res = await devicesAPI.updateDeviceGroups(serial, groups);
-    } catch (err) {
-      // A transport failure is the one case where we cannot know what the
-      // device holds, so the draft goes back to the last confirmed values.
-      revertDraft();
-      const described = describeError(err, { action: 'save these settings', subject: serial });
-      setFlow({ state: 'failed', reason: described.message });
-      notify.fromError(err, {
-        action: 'save these settings', subject: serial,
-        onRetry: sendChangesRef.current,
-      });
-      return;
-    }
-
-    if (res?.success === false) {
-      fail(res.error || 'Server rejected the change.', {
-        title: 'The server rejected those values',
-        message: res.error || 'Server rejected the change.',
-        detail: serial,
-        retryable: false,
-      });
-      return;
-    }
-
-    // The server accepted it, but the device has not necessarily applied it —
-    // that is what the command status reports.
-    if (res?.commandId) {
+    for (const [group, values] of Object.entries(groups)) {
+      let res;
       try {
-        const status = await devicesAPI.pollCommandStatus(serial, res.commandId, {
-          timeoutMs: COMMAND_TIMEOUT_MS,
+        res = await devicesAPI.updateDeviceGroups(serial, { [group]: values });
+      } catch (err) {
+        // A transport failure is the one case where we cannot know what the
+        // device holds, so this group goes back to the last confirmed values.
+        settle();
+        const described = describeError(err, { action: 'save these settings', subject: serial });
+        setFlow({ state: 'failed', reason: described.message + partNote() });
+        notify.fromError(err, {
+          action: 'save these settings', subject: serial,
+          onRetry: sendChangesRef.current,
         });
-        const bad = describeCommandStatus(status.status, { subject: serial });
-        if (bad) { fail(bad.message, bad); return; }
-      } catch {
-        const described = describeCommandStatus('TIMEOUT', { subject: serial });
-        fail(described.message, described);
         return;
       }
-    } else if (res?.status === 'NO_CHANGE') {
-      // Server saw nothing to write; the draft already matches the device.
-      setCommitted(draft);
-      setFlow({ state: 'idle' });
-      return;
+
+      if (res?.success === false) {
+        fail(res.error || 'Server rejected the change.', {
+          title: 'The server rejected those values',
+          message: res.error || 'Server rejected the change.',
+          detail: serial,
+          retryable: false,
+        });
+        return;
+      }
+
+      // The server accepted it, but the device has not necessarily applied it —
+      // that is what the command status reports.
+      if (res?.commandId) {
+        try {
+          const status = await devicesAPI.pollCommandStatus(serial, res.commandId, {
+            timeoutMs: COMMAND_TIMEOUT_MS,
+          });
+          const bad = describeCommandStatus(status.status, { subject: serial });
+          if (bad) { fail(bad.message, bad); return; }
+        } catch {
+          const described = describeCommandStatus('TIMEOUT', { subject: serial });
+          fail(described.message, described);
+          return;
+        }
+      }
+      // ACKED, or NO_CHANGE (the device already held these values).
+      confirmedState = { ...confirmedState, ...pick(draft, GROUP_FIELDS[group]) };
+      confirmedGroups.push(group);
     }
 
     // Only now is the draft the truth.
@@ -362,7 +358,7 @@ export default function Settings() {
     notify.success('Settings applied', {
       message: `The device confirmed ${changeList.length} change${changeList.length === 1 ? '' : 's'}.`,
     });
-  }, [draft, dirtyGroups, deviceData, adminActiveSerial, ctx, revertDraft, setRamp, setAflex, notify, changeList]);
+  }, [draft, committed, dirtyGroups, deviceData, adminActiveSerial, ctx, setRamp, setAflex, notify, changeList]);
 
   // Retry from a notification must call the *current* sendChanges, not the one
   // captured when the failure happened.
@@ -379,9 +375,9 @@ export default function Settings() {
           <h1>Settings</h1>
           <p>Comfort &amp; device configuration</p>
         </div>
-        <span className={`ble-pill${isConnected ? ' connected' : ''}`}>
-          <BluetoothIcon />
-          {isConnected ? 'Connected' : 'Disconnected'}
+        <span className={`ble-pill${deviceOnline ? ' connected' : ''}`}>
+          <span className="dot" aria-hidden="true" />
+          {deviceOnline ? 'Device online' : 'Device offline'}
         </span>
       </header>
 
@@ -392,6 +388,15 @@ export default function Settings() {
           <div>
             <strong>Therapy is running</strong>
             <span>Stop therapy on the dashboard before changing device settings.</span>
+          </div>
+        </div>
+      )}
+
+      {phoneConnected && (
+        <div className="therapy-locked" role="status">
+          <div>
+            <strong>Connected to a phone</strong>
+            <span>The device is paired with the mobile app over Bluetooth, so remote changes can't reach it right now.</span>
           </div>
         </div>
       )}
@@ -408,7 +413,7 @@ export default function Settings() {
               className={`option-card${draft.maskType === m.id ? ' selected' : ''}`}
               onClick={() => set('maskType', m.id)}
             >
-              <MaskArt type={m.id} />
+              <img src={m.img} alt="" className="mask-img" />
               <span className="opt-title">{m.label}</span>
             </button>
           ))}
@@ -427,7 +432,7 @@ export default function Settings() {
               className={`option-card${draft.tubeType === t.id ? ' selected' : ''}`}
               onClick={() => set('tubeType', t.id)}
             >
-              <TubeArt type={t.id} />
+              <img src={t.img} alt="" className="mask-img" />
               <span className="opt-title">{t.title}</span>
               <span className="opt-sub">{t.sub}</span>
             </button>
@@ -443,7 +448,7 @@ export default function Settings() {
           onChange={(v) => set('humidifier', v)}
           options={[0, 1, 2, 3, 4, 5].map((n) => ({ value: n, label: n === 0 ? 'Off' : String(n) }))}
         />
-        <p className="level-note">{HUMIDIFIER_NOTES[draft.humidifier]}</p>
+        <p className="level-note">{draft.humidifier == null ? 'Not reported by the device' : HUMIDIFIER_NOTES[draft.humidifier]}</p>
         {draft.humidifier > 0 && (
           <div className="level-bar"><span style={{ width: `${(draft.humidifier / 5) * 100}%` }} /></div>
         )}
@@ -453,24 +458,27 @@ export default function Settings() {
       <SectionCard icon={<GaugeIcon />} title="Ramp &amp; A-Flex" subtitle="Shared by CPAP and Auto-CPAP modes" locked={locked}>
         <div className="stepper">
           <button
-            type="button" aria-label="Decrease ramp" disabled={locked || draft.ramp <= 0}
+            type="button" aria-label="Decrease ramp" disabled={locked || draft.ramp == null || draft.ramp <= 0}
             onClick={() => set('ramp', Math.max(0, draft.ramp - RAMP_STEP))}
           >−</button>
           <div className="value">
-            <strong>{draft.ramp === 0 ? 'Off' : draft.ramp}</strong>
-            <span>{draft.ramp === 0 ? 'no ramp' : 'minutes'}</span>
+            <strong>{draft.ramp == null ? '—' : draft.ramp === 0 ? 'Off' : draft.ramp}</strong>
+            <span>{draft.ramp == null ? 'not reported' : draft.ramp === 0 ? 'no ramp' : 'minutes'}</span>
           </div>
           <button
             type="button" aria-label="Increase ramp" disabled={locked || draft.ramp >= RAMP_MAX}
-            onClick={() => set('ramp', Math.min(RAMP_MAX, draft.ramp + RAMP_STEP))}
+            onClick={() => set('ramp', Math.min(RAMP_MAX, (draft.ramp ?? 0) + RAMP_STEP))}
           >+</button>
         </div>
 
         <p className="level-note" style={{ marginTop: 18, marginBottom: 8, fontWeight: 700, color: 'var(--s-text)' }}>
           A-Flex
         </p>
+        {!isAutoMode && (
+          <p className="level-note">A-Flex applies to Auto CPAP only, so it can't be changed while the device is in CPAP mode.</p>
+        )}
         <Segmented
-          disabled={locked}
+          disabled={locked || !isAutoMode}
           value={draft.aflex}
           onChange={(v) => set('aflex', v)}
           options={[0, 1, 2, 3].map((n) => ({ value: n, label: n === 0 ? 'Off' : String(n) }))}
@@ -481,16 +489,16 @@ export default function Settings() {
       <SectionCard icon={<GaugeIcon />} title="Comfort Ramp Time" subtitle="Comfort block ramp (independent of the shared ramp)" locked={locked}>
         <div className="stepper">
           <button
-            type="button" aria-label="Decrease comfort ramp" disabled={locked || draft.comfortRamp <= 0}
+            type="button" aria-label="Decrease comfort ramp" disabled={locked || draft.comfortRamp == null || draft.comfortRamp <= 0}
             onClick={() => set('comfortRamp', Math.max(0, draft.comfortRamp - RAMP_STEP))}
           >−</button>
           <div className="value">
-            <strong>{draft.comfortRamp === 0 ? 'Off' : draft.comfortRamp}</strong>
-            <span>{draft.comfortRamp === 0 ? 'no ramp' : 'minutes'}</span>
+            <strong>{draft.comfortRamp == null ? '—' : draft.comfortRamp === 0 ? 'Off' : draft.comfortRamp}</strong>
+            <span>{draft.comfortRamp == null ? 'not reported' : draft.comfortRamp === 0 ? 'no ramp' : 'minutes'}</span>
           </div>
           <button
             type="button" aria-label="Increase comfort ramp" disabled={locked || draft.comfortRamp >= RAMP_MAX}
-            onClick={() => set('comfortRamp', Math.min(RAMP_MAX, draft.comfortRamp + RAMP_STEP))}
+            onClick={() => set('comfortRamp', Math.min(RAMP_MAX, (draft.comfortRamp ?? 0) + RAMP_STEP))}
           >+</button>
         </div>
       </SectionCard>
@@ -502,12 +510,12 @@ export default function Settings() {
             <div className="opt-row" key={row.key}>
               <div>
                 <strong>{row.label}</strong>
-                <span>{row.sub}</span>
+                <span>{draft[row.key] == null ? 'Not reported by the device' : row.sub}</span>
               </div>
               <PremiumToggle
                 label={row.label}
                 disabled={locked}
-                checked={draft[row.key]}
+                checked={Boolean(draft[row.key])}
                 onChange={(v) => set(row.key, v)}
               />
             </div>
@@ -520,7 +528,7 @@ export default function Settings() {
         <div className="apply-bar" role="region" aria-label="Unsaved changes">
           <div className="msg">
             {changeList.length} change{changeList.length === 1 ? '' : 's'} pending
-            <span>{isConnected ? 'Ready to send to device' : 'Device not connected'}</span>
+            <span>{deviceOnline ? 'Ready to send to device' : 'Device is offline'}</span>
           </div>
           <button type="button" className="reset" onClick={revertDraft}>Reset</button>
           <button type="button" className="apply" onClick={() => setFlow({ state: 'confirming' })}>

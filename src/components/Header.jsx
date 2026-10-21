@@ -4,12 +4,16 @@ import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../hooks/useNotifications';
 import NotificationsPanel from './NotificationsPanel';
 import { MenuIcon, ServerIcon, BellIcon, UserIcon } from './Icons';
+import { useOnline } from './ConnectionBanner';
 
 const STALE_AFTER_MS = 10 * 60 * 1000;
 
 // The pill reports the state of the connection to the server, so it is driven
 // by whether a pull has actually succeeded — not hard-coded to "Connected".
-function serverStatus(lastServerPull, deviceData) {
+function serverStatus(lastServerPull, deviceData, online = true) {
+  if (!online) {
+    return { label: 'Offline', detail: 'No internet connection', tone: '#dc2626' };
+  }
   if (!lastServerPull) {
     return { label: 'Not connected', detail: 'Awaiting first sync', tone: '#94a3b8' };
   }
@@ -22,7 +26,9 @@ function serverStatus(lastServerPull, deviceData) {
   }
   return {
     label: 'Server Connected',
-    detail: deviceData ? `${deviceData.model || 'Device'} · ${deviceData.serial}` : 'No device selected',
+    detail: deviceData
+      ? (deviceData.model && deviceData.model !== deviceData.serial && deviceData.model !== 'Device' ? `${deviceData.model} · ${deviceData.serial}` : deviceData.serial)
+      : 'No device selected',
     tone: '#27b5c7',
   };
 }
@@ -44,8 +50,12 @@ function formatLastPulled(date) {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+// Greet with the signed-in account's own name: the part of the email before "@".
+// Greet by first name only: "kanishka.sharma@deckmount.in" → "Kanishka".
 function formatAdminLabel(username) {
-  return 'Admin';
+  const id = localStorage.getItem('adminEmail') || username || '';
+  const first = id.split('@')[0].split(/[._\-\s]+/)[0] || '';
+  return first ? first.charAt(0).toUpperCase() + first.slice(1).toLowerCase() : 'there';
 }
 
 export default function Header() {
@@ -68,7 +78,8 @@ export default function Header() {
   }, [lastServerPull]);
 
   const adminLabel = formatAdminLabel(username);
-  const status = serverStatus(lastServerPull, deviceData);
+  const online = useOnline();
+  const status = serverStatus(lastServerPull, deviceData, online);
 
   const toggleNotifications = () => {
     setNotifOpen((open) => {

@@ -4,54 +4,37 @@ import { clearCognitoSession, getCognitoSession, loginWithCognito } from '../ser
 
 const AuthContext = createContext(null);
 
-const DEMO_USERNAME = import.meta.env.VITE_MOCK_USERNAME || 'admin';
-const DEMO_PASSWORD = import.meta.env.VITE_MOCK_PASSWORD || 'admin123';
-const DEMO_TOKEN = import.meta.env.VITE_MOCK_TOKEN || 'admin-secret-token-change-me';
-const DEV_ALIAS_USERNAME = import.meta.env.VITE_DEV_ALIAS_USERNAME || 'admin';
-const DEV_ALIAS_PASSWORD = import.meta.env.VITE_DEV_ALIAS_PASSWORD || '2026';
-const DEV_ALIAS_EMAIL = import.meta.env.VITE_DEV_ALIAS_EMAIL || 'kanishka.sharma@deckmount.in';
-const DEV_ALIAS_EMAIL_PASSWORD = import.meta.env.VITE_DEV_ALIAS_EMAIL_PASSWORD || 'KanishkaDeck@20';
-
 export function AuthProvider({ children }) {
   const initialSession = getCognitoSession();
   const [token, setToken] = useState(initialSession.idToken || null);
   const [username, setUsername] = useState(initialSession.username || localStorage.getItem('adminUsername') || null);
-  const [isAuthenticated, setIsAuthenticated] = useState(!!(initialSession.idToken || localStorage.getItem('adminToken')));
+  const skipLogin = import.meta.env.DEV && import.meta.env.VITE_SKIP_LOGIN === 'true';
+  const [isAuthenticated, setIsAuthenticated] = useState(skipLogin || !!(initialSession.idToken || localStorage.getItem('adminToken')));
 
   const login = async (user, pass) => {
+    // Local-development shortcut: a short alias (e.g. admin / 2026) signs in with the
+    // real Cognito account named in .env.local. Only in `npm run dev`; a production
+    // build drops this branch, so the credentials never reach a deployed bundle.
+    if (import.meta.env.DEV) {
+      const env = import.meta.env;
+      if (env.VITE_DEV_ALIAS_USER && user === env.VITE_DEV_ALIAS_USER && pass === env.VITE_DEV_ALIAS_PASS
+        && env.VITE_DEV_LOGIN_EMAIL && env.VITE_DEV_LOGIN_PASSWORD) {
+        user = env.VITE_DEV_LOGIN_EMAIL;
+        pass = env.VITE_DEV_LOGIN_PASSWORD;
+      }
+    }
     try {
-      const authUser = user === DEV_ALIAS_USERNAME && pass === DEV_ALIAS_PASSWORD
-        ? DEV_ALIAS_EMAIL
-        : user;
-      const authPass = user === DEV_ALIAS_USERNAME && pass === DEV_ALIAS_PASSWORD
-        ? DEV_ALIAS_EMAIL_PASSWORD
-        : pass;
-
-      const res = await loginWithCognito(authUser, authPass);
+      const res = await loginWithCognito(user, pass);
       localStorage.setItem('adminToken', res.idToken);
-      localStorage.setItem('adminUsername', user === DEV_ALIAS_USERNAME && pass === DEV_ALIAS_PASSWORD ? DEV_ALIAS_USERNAME : res.username);
-      localStorage.setItem('adminEmail', authUser);
+      localStorage.setItem('adminUsername', res.username);
+      localStorage.setItem('adminEmail', user);
       setToken(res.idToken);
-      setUsername(user === DEV_ALIAS_USERNAME && pass === DEV_ALIAS_PASSWORD ? DEV_ALIAS_USERNAME : res.username);
+      setUsername(res.username);
       setIsAuthenticated(true);
       return true;
     } catch (error) {
-      const isDemoLogin = user === DEMO_USERNAME && pass === DEMO_PASSWORD;
-      if (!isDemoLogin) {
-        throw error;
-      }
+      throw error;
     }
-
-    if (user === DEMO_USERNAME && pass === DEMO_PASSWORD) {
-      localStorage.setItem('adminToken', DEMO_TOKEN);
-      localStorage.setItem('adminUsername', DEMO_USERNAME);
-      setToken(DEMO_TOKEN);
-      setUsername(DEMO_USERNAME);
-      setIsAuthenticated(true);
-      return true;
-    }
-
-    return false;
   };
 
   const logout = () => {

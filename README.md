@@ -1,6 +1,6 @@
-# RESPROX & DeckLink — Clinical CPAP & ECG Telemetry Portal
+# RESPROX — Clinical CPAP Telemetry Portal
 
-An end-to-end clinical monitoring and therapy management platform for **RESPROX CPAP devices** and **DeckLink Clinical ECG Waveform Analysis**. Built with a **Vite + React** Single Page Application (SPA), **AWS Cognito Authentication**, **AWS IoT Core / REST API Gateway integration**, and a **FastAPI** backend service.
+An end-to-end clinical monitoring and therapy management platform for **RESPROX CPAP devices**. Built with a **Vite + React** Single Page Application (SPA), **AWS Cognito Authentication**, **AWS IoT Core / REST API Gateway integration**, and a **FastAPI** backend service.
 
 ---
 
@@ -12,7 +12,6 @@ An end-to-end clinical monitoring and therapy management platform for **RESPROX 
 - [70-Byte CPAP Telemetry Binary Protocol](#-70-byte-cpap-telemetry-binary-protocol)
 - [Backend Settings Push Contract (`PATCH /devices/{serial}/settings`)](#-backend-settings-push-contract-patch-devicesserialsettings)
 - [Terminal Utilities & Diagnostics](#-terminal-utilities--diagnostics)
-- [ECG Waveform Analysis Guide](#-ecg-waveform-analysis-guide)
 
 ---
 
@@ -178,14 +177,3 @@ python3 /Users/deckmount/.gemini/antigravity-ide/brain/c773c69a-1580-4c23-91f3-3
 ```
 
 This utility authenticates against Cognito, fetches all registered devices, decodes the latest raw 70-byte packets, and outputs record-wise telemetry metrics directly to the command line.
-
----
-
-## 🩺 ECG Waveform Analysis Guide
-
-The platform includes the **DeckLink Clinical ECG Waveform Analysis (Clinical Pro)** suite for inspecting 12-lead ECG signals:
-
-1. Navigate to **Clinician Portal** at `http://localhost:5173/hcp`.
-2. Login with pre-seeded OTP clinical numbers (`9810000001`, `9810000002`, `9810000003`) and code `1234`.
-3. Open **ECG Reports** and click **Waveform** to view interactive 12-lead graphs.
-4. Tools available: **Measurement Ruler** ($\Delta t$, $\Delta V$), **Dual Calipers** (R-R interval, HR BPM), **Magnifier Lens** ($3.5\times$), and **Arrhythmia Annotations**.

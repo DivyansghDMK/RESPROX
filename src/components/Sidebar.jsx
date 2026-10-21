@@ -17,7 +17,7 @@ import {
 
 function Sidebar() {
   const { sidebarOpen, setSidebarOpen, adminActiveSerial } = useTherapy();
-  const activeSerial = adminActiveSerial || localStorage.getItem('adminActiveSerial') || 'CVT3000001';
+  const activeSerial = adminActiveSerial || localStorage.getItem('adminActiveSerial') || '';
 
   // Start fetching a route's chunk as soon as the pointer lands on its link.
   // The ~200 ms between hover and click is normally enough to have it parsed
@@ -28,7 +28,7 @@ function Sidebar() {
   }, []);
 
   const sidebarItems = [
-    { label: 'Dashboard', path: `/device/${activeSerial}`, icon: HomeIcon },
+    { label: 'Dashboard', path: activeSerial ? `/device/${activeSerial}` : '/devices', icon: HomeIcon },
     { label: 'Devices', path: '/devices', icon: DeviceIcon },
     { label: 'Therapy', path: '/therapy', icon: PulseIcon },
     { label: 'Reports', path: '/reports', icon: FileIcon },
@@ -60,7 +60,7 @@ function Sidebar() {
 
         <div className="brand" style={{ marginBottom: '16px' }}>
           <div className="brand-mark">
-            <img src="/resprox-logo.png" alt="Resprox Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            <img src="/resprox-logo-transparent.png" alt="Resprox Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
         </div>
 
