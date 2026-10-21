@@ -361,8 +361,8 @@ export default function Settings() {
       setAflex?.(draft.aflex);
     }
     setFlow({ state: 'idle' });
-    notify.success('Settings applied', {
-      message: `The device confirmed ${changeList.length} change${changeList.length === 1 ? '' : 's'}.`,
+    notify.success('Settings acknowledged', {
+      message: `The device confirmed ${changeList.length} change${changeList.length === 1 ? '' : 's'} through the server.`,
     });
   }, [draft, committed, dirtyGroups, deviceData, adminActiveSerial, deviceOnline, phoneConnected, ctx, setRamp, setAflex, notify, changeList]);
 

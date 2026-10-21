@@ -448,6 +448,9 @@ export default function DeviceDashboard() {
         const pollRes = await devicesAPI.pollCommandStatus(serial, res.commandId, { timeoutMs: 20000 });
         if (pollRes.status === 'ACKED') {
           confirmed();
+          notify.success('Settings acknowledged', {
+            message: 'The device confirmed the new settings through the server.',
+          });
           showToast('Settings applied — the device confirmed them ✓', 'success');
         } else {
           const described = describeCommandStatus(pollRes.status, { subject: serial })
