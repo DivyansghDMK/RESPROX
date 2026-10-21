@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useTherapy } from '../../context/TherapyContext';
 import { useAuth } from '../../context/AuthContext';
@@ -51,8 +51,13 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   
   const { setShowToast, setSaveState, setToastMessage } = useTherapy();
-  const { login } = useAuth();
+  const { login, isAuthenticated, teamSigningIn } = useAuth();
   const navigate = useNavigate();
+
+  // Already signed in (including a team browser that just signed itself in): go straight in.
+  useEffect(() => {
+    if (isAuthenticated) navigate('/devices', { replace: true });
+  }, [isAuthenticated, navigate]);
   const sessionExpired = useLocation().state?.reason === 'expired';
 
   const handleLoginSubmit = async (e) => {
@@ -94,6 +99,17 @@ export default function Login() {
       }, 5000);
     }
   };
+
+  if (teamSigningIn || isAuthenticated) {
+    return (
+      <div className="auth-container">
+        <div className="auth-glass-panel" role="status" aria-live="polite" style={{ textAlign: 'center' }}>
+          <div className="admin-spinner" style={{ margin: '8px auto 16px' }} />
+          <p className="auth-subtitle" style={{ margin: 0 }}>Opening Resprox…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="auth-container">

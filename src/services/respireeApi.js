@@ -1,4 +1,4 @@
-import { clearCognitoSession, getCognitoSession, refreshCognitoSession } from './respireeAuth';
+import { clearCognitoSession, getCognitoSession, refreshCognitoSession, loginWithTeamKey, TEAM_KEY_STORAGE } from './respireeAuth';
 import { parseReportRows } from './reportFileParser';
 
 const BASE_URL = import.meta.env.VITE_RESPIREE_API_BASE_URL
@@ -424,6 +424,16 @@ function recoverSession() {
           return true;
         } catch (refreshErr) {
           console.warn('[respireeApi] Refresh token failed:', refreshErr);
+        }
+      }
+      // A team browser signs itself back in with its stored key.
+      const teamKey = localStorage.getItem(TEAM_KEY_STORAGE);
+      if (teamKey) {
+        try {
+          await loginWithTeamKey(teamKey);
+          return true;
+        } catch (teamErr) {
+          if (teamErr?.status === 401 || teamErr?.status === 404) localStorage.removeItem(TEAM_KEY_STORAGE);
         }
       }
       // The refresh token is gone or rejected: the user must sign in again.

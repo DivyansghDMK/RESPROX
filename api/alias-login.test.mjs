@@ -45,3 +45,11 @@ test('right alias returns tokens and never the stored password', async () => {
 test('only POST is accepted', async () => {
   assert.equal((await call({}, 'GET')).statusCode, 405);
 });
+
+test('the team key signs in; a wrong or short key does not', async () => {
+  Object.assign(process.env, env, { ALIAS_TEAM_KEY: 'k'.repeat(32) });
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ AuthenticationResult: { IdToken: 'id' } }) });
+  assert.equal((await call({ teamKey: 'k'.repeat(32) })).statusCode, 200);
+  assert.equal((await call({ teamKey: 'x'.repeat(32) })).statusCode, 401);
+  assert.equal((await call({ teamKey: 'k' })).statusCode, 401);
+});
