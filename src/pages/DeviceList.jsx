@@ -1,5 +1,6 @@
 // src/pages/DeviceList.jsx
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { DeviceListSkeleton, Skel } from '../components/Skeleton';
 import { useNavigate } from 'react-router-dom';
 import { devicesAPI } from '../services/respireeApi';
 import { useTherapy } from '../context/TherapyContext';
@@ -255,7 +256,7 @@ export default function DeviceList() {
         ].map(s => (
           <div key={s.label} className={`admin-stat-card ${s.danger ? 'danger' : ''}`}>
             <span className="admin-stat-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{s.icon}</span>
-            <span className="admin-stat-value">{s.value}</span>
+            <span className="admin-stat-value">{loading ? <Skel w={48} h={26} /> : s.value}</span>
             <span className="admin-stat-label">{s.label}</span>
           </div>
         ))}
@@ -350,10 +351,7 @@ export default function DeviceList() {
 
       {/* ── Grid/Table Content ── */}
       {loading ? (
-        <div className="admin-loading" style={{ background: 'var(--panel-strong)', borderRadius: 16, padding: 32, border: '1px solid var(--line)', textAlign: 'center' }}>
-          <div className="admin-spinner" style={{ margin: '0 auto 12px' }} />
-          <span style={{ color: 'var(--muted)', fontWeight: 600 }}>Loading devices registry…</span>
-        </div>
+        <DeviceListSkeleton rows={5} />
       ) : loadError ? (
         <div className="admin-empty" style={{ background: '#fff5f5', borderRadius: 16, padding: 32, border: '1px solid #fecaca', textAlign: 'center' }}>
           <p style={{ margin: 0, color: '#b91c1c', fontWeight: 700 }}>The device registry could not be loaded.</p>

@@ -1,4 +1,5 @@
 import { useNotify } from '../context/NotifyContext';
+import DeviceDataState from '../components/DeviceDataState';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import GlassCard from '../components/GlassCard';
 import TrendChart from '../components/TrendChart';
@@ -91,16 +92,8 @@ export default function Trends() {
     };
   }, [displaySessions]);
 
-  if (!deviceData) {
-    return (
-      <div className="trends-page" style={{ padding: '40px 20px', textAlign: 'center' }}>
-        <GlassCard>
-          <h2 style={{ color: 'var(--accent)', fontWeight: 800 }}>No Device Selected</h2>
-          <p style={{ color: 'var(--muted)', marginTop: 8 }}>Please select a device from the Devices registry to view therapy trends.</p>
-        </GlassCard>
-      </div>
-    );
-  }
+  if (!deviceData) return <DeviceDataState what="therapy trends" />;
+
 
   // Exactly the nights on screen, as the device reported them; blanks stay blank.
   const handleExportCSV = () => {

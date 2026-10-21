@@ -1,5 +1,6 @@
 // src/pages/DeviceDashboard.jsx — Admin Device Dashboard (no inline tabs)
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { DeviceDashboardSkeleton } from '../components/Skeleton';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { devicesAPI } from '../services/respireeApi';
@@ -484,11 +485,8 @@ export default function DeviceDashboard() {
 
   // ── Loading / error states ────────────────────────────────────────────────
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
-      <div className="admin-loading">
-        <div className="admin-spinner"/>
-        <span style={{ color: 'var(--muted)', fontWeight: 600 }}>Loading device <code>{serial}</code>…</span>
-      </div>
+    <div className="dashboard-main-content" style={{ width: '100%', padding: '20px 24px' }}>
+      <DeviceDashboardSkeleton serial={serial} />
     </div>
   );
   if (!device) {

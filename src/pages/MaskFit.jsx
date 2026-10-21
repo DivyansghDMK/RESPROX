@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import DeviceDataState from '../components/DeviceDataState';
 import GlassCard from '../components/GlassCard';
 import TrendChart from '../components/TrendChart';
 import { InfoIcon } from '../components/Icons';
@@ -31,16 +32,8 @@ export default function MaskFit() {
 
   const leakTrend = useMemo(() => nights.map((s) => ({ day: s.date, leak: Number(s.mask_leak) })), [nights]);
 
-  if (!deviceData) {
-    return (
-      <div className="maskfit-page" style={{ padding: '40px 20px', textAlign: 'center' }}>
-        <GlassCard>
-          <h2 style={{ color: 'var(--accent)', fontWeight: 800 }}>No Device Selected</h2>
-          <p style={{ color: 'var(--muted)', marginTop: 8 }}>Please select a device from the Devices registry to view mask fit telemetry.</p>
-        </GlassCard>
-      </div>
-    );
-  }
+  if (!deviceData) return <DeviceDataState what="mask fit" />;
+
 
   return (
     <div className="maskfit-page">

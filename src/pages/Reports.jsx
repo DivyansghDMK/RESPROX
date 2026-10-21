@@ -1,4 +1,5 @@
 import { useNotify } from '../context/NotifyContext';
+import DeviceDataState from '../components/DeviceDataState';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
@@ -97,42 +98,7 @@ export default function Reports() {
 
   // Every block below is gated on deviceData, so without these two states the
   // page rendered as a completely blank panel with no explanation.
-  if (!deviceData) {
-    // A serial is selected but its data has not arrived yet — this is a load,
-    // not an empty state, and must not be reported as "nothing selected".
-    if (adminActiveSerial) {
-      return (
-        <div className="reports-page" style={{ padding: '40px 20px', textAlign: 'center' }}>
-          <GlassCard>
-            <div className="admin-spinner" style={{ margin: '0 auto 14px' }} />
-            <h2 style={{ color: 'var(--accent)', fontWeight: 800 }}>Loading therapy data…</h2>
-            <p style={{ color: 'var(--muted)', marginTop: 8 }}>
-              Fetching sessions for device <strong>{adminActiveSerial}</strong>.
-            </p>
-          </GlassCard>
-        </div>
-      );
-    }
-
-    return (
-      <div className="reports-page" style={{ padding: '40px 20px', textAlign: 'center' }}>
-        <GlassCard>
-          <h2 style={{ color: 'var(--accent)', fontWeight: 800 }}>No Device Selected</h2>
-          <p style={{ color: 'var(--muted)', marginTop: 8 }}>
-            Please select a device from the Devices registry to generate therapy reports.
-          </p>
-          <button
-            className="icon-text-button"
-            style={{ marginTop: 18 }}
-            onClick={() => navigate('/devices')}
-          >
-            <FileIcon />
-            <span>Go to Devices</span>
-          </button>
-        </GlassCard>
-      </div>
-    );
-  }
+  if (!deviceData) return <DeviceDataState what="therapy reports" />;
 
   return (
     <div className="reports-page">

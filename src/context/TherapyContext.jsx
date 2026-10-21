@@ -25,6 +25,8 @@ export function TherapyProvider({ children }) {
   // Admin selected device states
   const [adminActiveSerial, setAdminActiveSerial] = useState(localStorage.getItem('adminActiveSerial') || null);
   const [deviceData, setDeviceData] = useState(null);
+  // Why the last device load failed, so pages can show it instead of loading forever.
+  const [deviceLoadError, setDeviceLoadError] = useState(null);
 
   // Track last time data was fetched from server
   const [lastServerPull, setLastServerPull] = useState(null);
@@ -42,6 +44,7 @@ export function TherapyProvider({ children }) {
     if (!serial) return;
     console.log("[TherapyContext] fetchDeviceData called for serial:", serial);
     try {
+      setDeviceLoadError(null);
       const data = await devicesAPI.getDeviceDetail(serial);
       setDeviceData(data);
       setLastServerPull(new Date());
@@ -62,6 +65,7 @@ export function TherapyProvider({ children }) {
         ramp: settings.ramp ?? null
       };
     } catch (e) {
+      setDeviceLoadError(e);
       // Every screen renders off deviceData, so a silent failure here left the
       // whole app sitting on a loading state with the reason only in the
       // console. Say what happened and offer the retry.
@@ -208,6 +212,7 @@ export function TherapyProvider({ children }) {
     setAdminActiveSerial,
     deviceData,
     setDeviceData,
+    deviceLoadError,
     fetchDeviceData,
     lastServerPull,
     setLastServerPull
@@ -215,7 +220,7 @@ export function TherapyProvider({ children }) {
     mode, pressure, minPressure, maxPressure, aflex, ramp,
     sidebarOpen, saveState, showToast, toastMessage,
     hasUnsavedChanges, handleSave,
-    adminActiveSerial, deviceData, fetchDeviceData, lastServerPull,
+    adminActiveSerial, deviceData, deviceLoadError, fetchDeviceData, lastServerPull,
   ]);
 
   return (
