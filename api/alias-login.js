@@ -9,7 +9,16 @@
 // 4-digit alias is easy to guess; replace with per-user Cognito accounts before
 // real patients use this deployment.
 
+import { timingSafeEqual } from 'node:crypto';
+
 const COGNITO_URL = `https://cognito-idp.${process.env.COGNITO_REGION || 'us-east-1'}.amazonaws.com/`;
+
+function sameSecret(given, expected) {
+  if (typeof given !== 'string' || typeof expected !== 'string' || expected.length < 24) return false;
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -20,8 +29,11 @@ export default async function handler(req, res) {
     return res.status(404).json({ error: 'Alias sign-in is turned off.' });
   }
 
-  const { username, password } = (typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body) || {};
-  if (!process.env.ALIAS_USER || username !== process.env.ALIAS_USER || password !== process.env.ALIAS_PASS) {
+  const { username, password, teamKey } = (typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body) || {};
+  // Either the alias, or the team link's key (long and random, so it can't be guessed).
+  const aliasOk = Boolean(process.env.ALIAS_USER) && username === process.env.ALIAS_USER && password === process.env.ALIAS_PASS;
+  const keyOk = sameSecret(teamKey, process.env.ALIAS_TEAM_KEY);
+  if (!aliasOk && !keyOk) {
     return res.status(401).json({ error: 'Incorrect username or password.' });
   }
 

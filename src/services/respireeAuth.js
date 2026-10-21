@@ -105,11 +105,11 @@ export async function loginWithCognito(username, password) {
  * Team alias sign-in (e.g. admin / 2026) through the server function
  * /api/alias-login, which holds the shared account's real password.
  */
-export async function loginWithAlias(username, password) {
+async function aliasRequest(body) {
   const res = await fetch('/api/alias-login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify(body),
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -127,6 +127,16 @@ export async function loginWithAlias(username, password) {
   };
   storeSession(session);
   return session;
+}
+
+export function loginWithAlias(username, password) {
+  return aliasRequest({ username, password });
+}
+
+/** Team link sign-in: the key from ?team= is remembered on this browser. */
+export const TEAM_KEY_STORAGE = 'resproxTeamKey';
+export function loginWithTeamKey(teamKey) {
+  return aliasRequest({ teamKey });
 }
 
 export async function refreshCognitoSession(refreshTokenInput) {
