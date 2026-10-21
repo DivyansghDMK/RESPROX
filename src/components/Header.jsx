@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useTherapy } from '../context/TherapyContext';
-import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../hooks/useNotifications';
 import NotificationsPanel from './NotificationsPanel';
 import { MenuIcon, ServerIcon, BellIcon, UserIcon } from './Icons';
@@ -50,17 +49,12 @@ function formatLastPulled(date) {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-// Greet with the signed-in account's own name: the part of the email before "@".
-// Greet by first name only: "kanishka.sharma@deckmount.in" → "Kanishka".
-function formatAdminLabel(username) {
-  const id = localStorage.getItem('adminEmail') || username || '';
-  const first = id.split('@')[0].split(/[._\-\s]+/)[0] || '';
-  return first ? first.charAt(0).toUpperCase() + first.slice(1).toLowerCase() : 'there';
+function formatAdminLabel() {
+  return 'Divyansh';
 }
 
 export default function Header() {
   const { setSidebarOpen, lastServerPull, deviceData } = useTherapy();
-  const { username } = useAuth();
   const [displayTime, setDisplayTime] = useState(() => formatLastPulled(lastServerPull));
   const [, setTick] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -77,7 +71,7 @@ export default function Header() {
     return () => clearInterval(timer);
   }, [lastServerPull]);
 
-  const adminLabel = formatAdminLabel(username);
+  const adminLabel = formatAdminLabel();
   const online = useOnline();
   const status = serverStatus(lastServerPull, deviceData, online);
 

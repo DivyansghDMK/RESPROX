@@ -5888,7 +5888,7 @@ textarea:focus-visible,
 }
 .setting-card-icon svg { width: 19px; height: 19px; }
 .setting-card-head h2 { margin: 0; font-size: 15.5px; font-weight: 800; color: var(--s-text); }
-.setting-card-head p { margin: 2px 0 0; font-size: 12.5px; color: var(--s-text-2); }
+.setting-card-head p { margin: 3px 0 0; max-width: 680px; font-size: 12.5px; line-height: 1.45; color: var(--s-text-2); }
 
 .setting-card.is-locked { opacity: 0.5; pointer-events: none; }
 
@@ -6039,7 +6039,23 @@ textarea:focus-visible,
 }
 
 @media (max-width: 720px) {
+  .setting-topbar { align-items: stretch; gap: 12px; }
+  .setting-topbar > div { min-width: 0; }
+  .setting-topbar h1 { font-size: 23px; }
+  .ble-pill { align-self: flex-start; }
+  .setting-card { padding: 16px; border-radius: 15px; }
+  .setting-card-head { align-items: flex-start; gap: 10px; }
+  .setting-card-head h2 { font-size: 15px; }
+  .setting-card-head p { font-size: 12px; }
   .option-grid.cols-3 { grid-template-columns: 1fr; }
+  .option-grid.cols-2 { grid-template-columns: 1fr; }
+  .segmented { grid-template-columns: repeat(3, 1fr) !important; }
+  .stepper { gap: 14px; }
+  .stepper .value { min-width: 84px; }
+  .stepper .value strong { font-size: 23px; }
+  .opt-row { align-items: flex-start; }
+  .opt-row > div:first-child { min-width: 0; }
+  .opt-row span { display: block; line-height: 1.4; }
   .apply-bar { left: 16px; right: 16px; transform: none; max-width: none; }
   @keyframes s-slide-up { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: none; } }
 }

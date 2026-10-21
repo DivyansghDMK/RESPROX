@@ -458,7 +458,12 @@ export default function Settings() {
       </SectionCard>
 
       {/* 6 — Ramp & A-Flex (shared #1_CPAP + #2_AUTO, bytes 7-8) */}
-      <SectionCard icon={<GaugeIcon />} title="Ramp &amp; A-Flex" subtitle="Shared by CPAP and Auto-CPAP modes" locked={locked}>
+      <SectionCard
+        icon={<GaugeIcon />}
+        title="Ramp Time &amp; A-Flex"
+        subtitle="Gradually increase pressure to the set level; A-Flex is available in Auto-CPAP mode."
+        locked={locked}
+      >
         <div className="stepper">
           <button
             type="button" aria-label="Decrease ramp" disabled={locked || draft.ramp == null || draft.ramp <= 0}
