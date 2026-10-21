@@ -12,10 +12,12 @@ export function AuthProvider({ children }) {
   const [isAuthenticated, setIsAuthenticated] = useState(skipLogin || !!(initialSession.idToken || localStorage.getItem('adminToken')));
 
   const login = async (user, pass) => {
-    // Local-development shortcut: a short alias (e.g. admin / 2026) signs in with the
-    // real Cognito account named in .env.local. Only in `npm run dev`; a production
-    // build drops this branch, so the credentials never reach a deployed bundle.
-    if (import.meta.env.DEV) {
+    // Team shortcut: a short alias (e.g. admin / 2026) signs in with the real Cognito
+    // account named in env vars. On by default only in `npm run dev`. A deployed build
+    // includes it only when VITE_ENABLE_LOGIN_ALIAS=true is set for that deployment —
+    // meant for the internal team deployment, which must sit behind Vercel Deployment
+    // Protection, because these values are readable in the built JavaScript.
+    if (import.meta.env.DEV || import.meta.env.VITE_ENABLE_LOGIN_ALIAS === 'true') {
       const env = import.meta.env;
       if (env.VITE_DEV_ALIAS_USER && user === env.VITE_DEV_ALIAS_USER && pass === env.VITE_DEV_ALIAS_PASS
         && env.VITE_DEV_LOGIN_EMAIL && env.VITE_DEV_LOGIN_PASSWORD) {
