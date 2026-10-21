@@ -1,115 +1,80 @@
-import { useNotify } from '../context/NotifyContext';
 import React, { useState } from 'react';
+import { useTherapy } from '../context/TherapyContext';
 import GlassCard from '../components/GlassCard';
-import { DeviceIcon, SyncIcon, TrashIcon, InfoIcon } from '../components/Icons';
+import { DeviceIcon, SyncIcon } from '../components/Icons';
 
 export default function Devices() {
-  const notify = useNotify();
-  const [deviceName, setDeviceName] = useState('Dream Station Auto');
-  const [isSyncing, setIsSyncing] = useState(false);
+  const { deviceData, adminActiveSerial, fetchDeviceData } = useTherapy();
+  const [refreshing, setRefreshing] = useState(false);
+  const device = deviceData;
 
-  const handleSync = () => {
-    setIsSyncing(true);
-    setTimeout(() => {
-      setIsSyncing(false);
-      notify.success('Sync complete', { message: 'Fetching the latest telemetry.' });
-    }, 2000);
+  const refresh = async () => {
+    if (!adminActiveSerial) return;
+    setRefreshing(true);
+    try { await fetchDeviceData(adminActiveSerial); } finally { setRefreshing(false); }
   };
 
-  const handleRename = () => {
-    const newName = prompt('Enter new device name:', deviceName);
-    if (newName) setDeviceName(newName);
-  };
+  if (!device) {
+    return (
+      <div className="devices-page" style={{ padding: 40, textAlign: 'center' }}>
+        <GlassCard>
+          <h2 style={{ color: 'var(--accent)' }}>No device selected</h2>
+          <p style={{ color: 'var(--muted)' }}>Select a device from the Devices registry to view live device information.</p>
+        </GlassCard>
+      </div>
+    );
+  }
 
-  const handleRemove = () => {
-    if (window.confirm('Are you sure you want to disconnect this device?')) {
-      notify.warning('Device disconnected', { message: 'It will reconnect on the next sync.' });
-    }
-  };
-
-  const deviceHistory = [
-    { id: 1, type: 'Sync', event: 'Compliance data uploaded successfully.', date: '2026-06-08 09:12 AM' },
-    { id: 2, type: 'Calibration', event: 'Pressure levels calibrated by provider.', date: '2026-05-15 02:30 PM' },
-    { id: 3, type: 'System Update', event: 'Firmware updated to v1.2.4.', date: '2026-04-10 11:00 AM' },
-    { id: 4, type: 'Connection', event: 'Initial Bluetooth pairing completed.', date: '2026-03-01 10:15 AM' }
+  const rows = [
+    ['Device Name', device.model || '—'],
+    ['Serial Number', device.serial || '—'],
+    ['Firmware Version', device.firmware || '—'],
+    ['Therapy Status', device.therapy_status || '—'],
+    ['Connection', device.device_online ? 'Online' : 'Offline'],
+    ['Last Sync', device.sync_state?.lastSynced || '—'],
   ];
 
   return (
     <div className="devices-page">
       <div className="section-grid-2">
-        {/* Connected Device Card */}
         <GlassCard>
-          <div className="section-title">
-            <h2>Connected Device</h2>
-          </div>
+          <div className="section-title"><h2>Connected Device</h2></div>
           <div className="device-info-wrapper">
-            <div className="device-icon-large">
-              <DeviceIcon />
-            </div>
+            <div className="device-icon-large"><DeviceIcon /></div>
             <div className="device-details-list">
-              <div className="device-detail-row">
-                <span>Device Name</span>
-                <strong>{deviceName}</strong>
-              </div>
-              <div className="device-detail-row">
-                <span>Serial Number</span>
-                <strong className="mono">DS-9281-AX</strong>
-              </div>
-              <div className="device-detail-row">
-                <span>Firmware Version</span>
-                <strong>v1.2.4</strong>
-              </div>
-              <div className="device-detail-row">
-                <span>Battery Status</span>
-                <strong className="green-text">95%</strong>
-              </div>
-              <div className="device-detail-row">
-                <span>Signal Strength</span>
-                <strong className="green-text">Excellent (4/4)</strong>
-              </div>
-              <div className="device-detail-row">
-                <span>Last Sync</span>
-                <strong style={{ color: 'var(--muted)' }}>2 minutes ago</strong>
-              </div>
+              {rows.map(([label, value]) => (
+                <div className="device-detail-row" key={label}>
+                  <span>{label}</span>
+                  <strong className={label === 'Serial Number' ? 'mono' : ''}>{value}</strong>
+                </div>
+              ))}
             </div>
           </div>
-
           <div className="device-actions-bar">
-            <button className="icon-text-button" onClick={handleSync} disabled={isSyncing}>
-              <SyncIcon className={isSyncing ? 'spin-animation' : ''} />
-              <span>{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
-            </button>
-            <button className="icon-text-button outline" onClick={handleRename}>
-              Rename
-            </button>
-            <button className="icon-text-button remove" onClick={handleRemove}>
-              <TrashIcon />
-              <span>Remove</span>
+            <button className="icon-text-button" onClick={refresh} disabled={refreshing}>
+              <SyncIcon className={refreshing ? 'spin-animation' : ''} />
+              <span>{refreshing ? 'Refreshing…' : 'Refresh live data'}</span>
             </button>
           </div>
         </GlassCard>
 
-        {/* Device History timeline */}
         <GlassCard>
-          <div className="section-title">
-            <h2>Device History</h2>
-          </div>
-          <div className="device-timeline">
-            {deviceHistory.map((item) => (
-              <div key={item.id} className="timeline-item">
-                <div className="timeline-badge">
-                  <InfoIcon />
-                </div>
-                <div className="timeline-content">
-                  <div className="timeline-meta">
-                    <span className="timeline-type">{item.type}</span>
-                    <span className="timeline-date">{item.date}</span>
+          <div className="section-title"><h2>Device History</h2></div>
+          {device.sessions?.length ? (
+            <div className="timeline-list">
+              {device.sessions.slice(0, 10).map((session, index) => (
+                <div className="timeline-item" key={`${session.timestamp || session.date}-${index}`}>
+                  <div className="timeline-dot" />
+                  <div className="timeline-content">
+                    <strong>{session.date || session.display_date || '—'}</strong>
+                    <span>{session.type === 'SETTINGS_UPDATE' ? 'Settings update received' : 'Therapy session received'}</span>
                   </div>
-                  <p className="timeline-text">{item.event}</p>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <p style={{ color: 'var(--muted)' }}>No device history has been returned by the database.</p>
+          )}
         </GlassCard>
       </div>
     </div>

@@ -1,15 +1,16 @@
 // src/pages/DeviceDashboard.jsx — Admin Device Dashboard (no inline tabs)
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { devicesAPI } from '../services/respireeApi';
 import { useTherapy } from '../context/TherapyContext';
 import { useNotify } from '../context/NotifyContext';
-import { describeCommandStatus } from '../services/apiError';
+import { describeCommandStatus, describeError } from '../services/apiError';
 import SendIcon from '@mui/icons-material/Send';
 import SaveIcon from '@mui/icons-material/Save';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import {
-  MinusIcon, PlusIcon, MaskIcon, DotsIcon, PulseIcon, DeviceIcon,
+  MinusIcon, PlusIcon,
 } from '../components/Icons';
 
 // ── Icon helpers ──────────────────────────────────────────────────────────────
@@ -36,7 +37,7 @@ const RingProgress = React.memo(function RingProgress({ pct, size = 72, stroke =
   const dash = (Math.min(pct, 100) / 100) * circ;
   return (
     <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
-      <svg width={size} height={size}>
+      <svg width={size} height={size} style={{ width: size, height: size }}>
         <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#e2e8f0" strokeWidth={stroke}
           transform={`rotate(-90 ${size/2} ${size/2})`}/>
         <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke}
@@ -78,12 +79,12 @@ const MiniBarChart = React.memo(function MiniBarChart({ sessions = [], valueKey,
             style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
             <span className="bar-chart-val" style={{ fontSize: 9, color: '#64748b', fontWeight: 700 }}>{val}</span>
             <div style={{
-              width: '100%', height: `${Math.max(pct, 8)}%`,
+              width: '100%', height: `${Math.max(pct * 0.44, 6)}px`,
               background: `linear-gradient(180deg, ${clr}dd, ${clr})`,
               borderRadius: '4px 4px 2px 2px', minHeight: 6,
               boxShadow: `0 2px 8px ${clr}44`, transition: 'height 0.5s ease'
             }}/>
-            <span className="bar-chart-date" style={{ fontSize: 9, color: '#94a3b8' }}>{s.date?.split(' ')[0]}</span>
+            <span className="bar-chart-date" style={{ fontSize: 9, color: '#94a3b8' }}>{s.date}</span>
           </div>
         );
       })}
@@ -111,6 +112,97 @@ const StyledSlider = React.memo(function StyledSlider({ value, min, max, step, o
   );
 });
 
+// The backend's last_synced is a 10-digit YYMMDDHHMM string (e.g. 2608151430).
+function formatSyncStamp(value) {
+  const m = /^(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(String(value));
+  if (!m) return String(value);
+  const [, yy, mo, dd, hh, mi] = m;
+  const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(mo) - 1];
+  return month ? `${dd} ${month} 20${yy}, ${hh}:${mi}` : String(value);
+}
+
+// ── Therapy control ────────────────────────────────────────────────────────────
+// Start/stop changes what the patient is breathing, so it is always a two-step
+// action: press the button, then confirm in a dialog that names the device.
+function TherapyControl({ status, applying, online, onRequest }) {
+  const running = status === 'RUNNING';
+  const stopped = status === 'STOPPED';
+  const known = running || stopped;
+  const busy = Boolean(applying);
+  const headline = busy
+    ? `${applying === 'start' ? 'Starting' : 'Stopping'} therapy…`
+    : running ? 'Therapy is running' : stopped ? 'Therapy is stopped' : 'Therapy status unknown';
+  const detail = busy
+    ? 'Waiting for the device to confirm. Do not close this page.'
+    : running ? 'Settings are locked while therapy is running.'
+    : stopped ? 'Settings can be changed. Starting therapy locks them.'
+    : 'Refresh to read the current state before sending a command.';
+  const btn = (action, label) => (
+    <button type="button" className={`therapy-btn ${action}`} onClick={() => onRequest(action)} disabled={busy}>
+      {busy && applying === action ? <span className="therapy-spinner" aria-hidden="true" /> : <span aria-hidden="true">{action === 'start' ? '▶' : '■'}</span>}
+      {label}
+    </button>
+  );
+  return (
+    <section className={`therapy-control${running ? ' running' : ''}${known ? '' : ' unknown'}`} aria-busy={busy} aria-label="Therapy control">
+      <div className="therapy-control-info">
+        <div className="therapy-eyebrow">Therapy Control</div>
+        <div className="therapy-headline" role="status" aria-live="polite">
+          {running && !busy && <span className="therapy-live-dot" aria-hidden="true" />}
+          {headline}
+        </div>
+        <div className="therapy-detail">{detail}</div>
+      </div>
+      <div className="therapy-actions">
+        {!online ? (
+          <div className="therapy-offline" role="status">Device offline. Commands cannot reach it.</div>
+        ) : (
+          <>
+            {(stopped || !known) && btn('start', busy && applying === 'start' ? 'Starting…' : 'Start therapy')}
+            {(running || !known) && btn('stop', busy && applying === 'stop' ? 'Stopping…' : 'Stop therapy')}
+          </>
+        )}
+      </div>
+      {busy && <div className="therapy-progress" aria-hidden="true"><span /></div>}
+    </section>
+  );
+}
+
+function TherapyConfirmDialog({ action, serial, onCancel, onConfirm }) {
+  const cancelRef = useRef(null);
+  const start = action === 'start';
+  useEffect(() => {
+    cancelRef.current?.focus();
+    const onKey = (e) => { if (e.key === 'Escape') onCancel(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+  // Portalled: the dashboard's entrance animation puts a transform on its children,
+  // which would otherwise turn this fixed overlay into a box inside the page.
+  return createPortal(
+    <div className="therapy-dialog-backdrop" role="presentation" onClick={onCancel}>
+      <div className="therapy-dialog" role="alertdialog" aria-modal="true" aria-labelledby="therapy-dialog-title" aria-describedby="therapy-dialog-body" onClick={(e) => e.stopPropagation()}>
+        <div className={`therapy-dialog-icon ${start ? 'start' : 'stop'}`} aria-hidden="true">{start ? '▶' : '■'}</div>
+        <h2 id="therapy-dialog-title">{start ? 'Start therapy?' : 'Stop therapy?'}</h2>
+        <p className="therapy-dialog-device">Device <strong>{serial}</strong></p>
+        <p id="therapy-dialog-body">
+          {start
+            ? 'The device will begin delivering pressure right away. Confirm the patient is wearing the mask and the circuit is connected.'
+            : 'The patient will stop receiving therapy. Only stop if the session should end now.'}
+        </p>
+        <div className="therapy-dialog-actions">
+          <button type="button" ref={cancelRef} className="ghost" onClick={onCancel}>Cancel</button>
+          <button type="button" className={start ? 'start' : 'stop'} onClick={onConfirm}>{start ? 'Start therapy' : 'Stop therapy'}</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// Missing values read as "—", never as a 0 that looks like a measurement.
+const dash = (v, unit = '') => (v == null || Number.isNaN(Number(v)) ? '—' : `${v}${unit}`);
+
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 export default function DeviceDashboard() {
   const notify = useNotify();
@@ -125,12 +217,17 @@ export default function DeviceDashboard() {
   const [device, setDevice]           = useState(null);
   const [loading, setLoading]         = useState(true);
   const [refreshing, setRefreshing]   = useState(false);
-  const [mode, setMode]               = useState('AUTO CPAP');
-  const [pressure, setPressure]       = useState(12.0);
-  const [minPressure, setMinPressure] = useState(8.0);
-  const [maxPressure, setMaxPressure] = useState(18.0);
-  const [aflex, setAflex]             = useState(2);
-  const [ramp, setRamp]               = useState(15);
+  const [reportSyncing, setReportSyncing] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  const [therapyAction, setTherapyAction] = useState(null);
+  const [confirmTherapyAction, setConfirmTherapyAction] = useState(null);
+  const [offlineNoticeClosedFor, setOfflineNoticeClosedFor] = useState(null);
+  const [mode, setMode]               = useState(null);
+  const [pressure, setPressure]       = useState(null);
+  const [minPressure, setMinPressure] = useState(null);
+  const [maxPressure, setMaxPressure] = useState(null);
+  const [aflex, setAflex]             = useState(null);
+  const [ramp, setRamp]               = useState(null);
   const [saving, setSaving]           = useState(false);
   const [toast, setToast]             = useState(null);
   const [lastPull, setLastPull]       = useState(null);
@@ -162,6 +259,7 @@ export default function DeviceDashboard() {
     try {
       const data = await devicesAPI.getDeviceDetail(serial, { force });
       if (id !== requestId.current) return; // stale response, ignore
+      setLoadError(null);
       setDevice(data);
       // Sync to TherapyContext so Therapy/Trends/Reports/MaskFit pages auto-read live data
       setDeviceData(data);
@@ -169,14 +267,84 @@ export default function DeviceDashboard() {
       setLastPull(now);
       setLastServerPull(now);
       if (!silent) applyDeviceState(data);
-    } catch (e) { console.error(e); }
+      return data;
+    } catch (e) {
+      if (id !== requestId.current) return;
+      // A first load has nothing to show, so the page explains the failure; a
+      // refresh keeps the data already on screen and reports it instead.
+      if (!silent) setLoadError(e);
+      else notify.fromError(e, { action: 'refresh the device data', subject: serial });
+    }
     finally { if (!silent && id === requestId.current) setLoading(false); }
-  }, [serial, setLastServerPull, setDeviceData]);
+  }, [serial, setLastServerPull, setDeviceData, notify]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     await fetchDevice(false, true);
     setRefreshing(false);
+  };
+
+  // Report sync is asynchronous; syncReports waits until the backend says it is done.
+  const handleReportSync = async () => {
+    setReportSyncing(true);
+    try {
+      const reportsBefore = device?.reports?.length ?? 0;
+      const { stillRunning } = await devicesAPI.syncReports(serial);
+
+      const data = await fetchDevice(true, true);
+      const added = Math.max(0, (data?.reports?.length ?? reportsBefore) - reportsBefore);
+      if (stillRunning) {
+        notify.info('Report sync is still running', { message: 'It continues in the background. Refresh later to see new sessions.' });
+      } else {
+        notify.success('Report sync finished', {
+          message: added ? `${added} new session report${added === 1 ? '' : 's'}.` : 'No new sessions. The device was already up to date.',
+        });
+      }
+    } catch (e) {
+      notify.fromError(e, { action: 'sync reports', subject: serial });
+    } finally {
+      setReportSyncing(false);
+    }
+  };
+
+  // Therapy commands are asynchronous: a successful POST only means the
+  // command was queued. Keep the button in an applying state until the device
+  // appears in the expected RUNNING/STOPPED state.
+  const handleTherapyAction = async (action) => {
+    const expected = action === 'start' ? 'RUNNING' : 'STOPPED';
+    setTherapyAction(action);
+    try {
+      await devicesAPI.setTherapy(serial, action);
+      notify.info(`${action === 'start' ? 'Starting' : 'Stopping'} therapy`, {
+        message: 'Waiting for the device to confirm the change…',
+      });
+      await devicesAPI.pollTherapyStatus(serial, expected);
+      await fetchDevice(true, true);
+      notify.success(`Therapy ${action === 'start' ? 'started' : 'stopped'}`);
+    } catch (e) {
+      if (e?.status === 409) {
+        // 409 is an idempotent outcome here: the device is already where the
+        // user asked it to be, so refresh and explain rather than showing an
+        // alarming server error.
+        await fetchDevice(true, true).catch(() => {});
+        notify.warning(`Therapy already ${action === 'start' ? 'running' : 'stopped'}`, {
+          message: 'No change was needed.',
+        });
+      } else if (e?.code === 'THERAPY_STATUS_TIMEOUT') {
+        notify.warning('Therapy command is still applying', {
+          message: 'The device has not confirmed the change yet. Refresh shortly to see its state.',
+        });
+      } else {
+        notify.fromError(e, { action: `${action} therapy`, subject: serial });
+      }
+    } finally {
+      setTherapyAction(null);
+    }
+  };
+
+  const requestTherapyAction = (action) => {
+    if (!isOnline || therapyAction) return;
+    setConfirmTherapyAction(action);
   };
 
   useEffect(() => {
@@ -215,8 +383,8 @@ export default function DeviceDashboard() {
   }, [device, mode, pressure, minPressure, maxPressure, aflex, ramp]);
 
   const sortedSessions = useMemo(() => {
-    if (!device?.sessions) return [];
-    return [...device.sessions].sort((a, b) => {
+    const rows = [...(device?.sessions || []), ...(device?.settings_history || [])];
+    return rows.sort((a, b) => {
       const getMs = (item) => {
         if (item.timestamp) return item.timestamp;
         const rawTs = item.raw?.server_timestamp || item.raw?.serverTimestamp;
@@ -225,7 +393,7 @@ export default function DeviceDashboard() {
       };
       return getMs(b) - getMs(a); // Descending order: Newest dates on top!
     });
-  }, [device?.sessions]);
+  }, [device?.sessions, device?.settings_history]);
 
   const totalPages = useMemo(() => {
     return Math.max(1, Math.ceil(sortedSessions.length / RECORDS_PER_PAGE));
@@ -251,54 +419,51 @@ export default function DeviceDashboard() {
   const resetDraft = () => { if (device) applyDeviceState(device); };
 
   const saveSettings = async () => {
+    if (settingsLocked) return;
     setSaving(true);
     showToast('Pushing settings...', 'info');
     try {
       const payload = {
-        therapy_mode: mode, // Already CPAP or AUTO CPAP
-        pressure: Number(pressure),
-        min_pressure: Number(minPressure),
-        max_pressure: Number(maxPressure),
-        aflex: Number(aflex),
-        ramp: Number(ramp)
+        therapy_mode: mode, // CPAP or AUTO CPAP
+        pressure,
+        min_pressure: minPressure,
+        max_pressure: maxPressure,
+        aflex,
+        ramp,
       };
       
       const res = await devicesAPI.updateDeviceSettings(serial, payload);
-      
-      // Update local baseline settings
-      if (device) {
-        device.settings = {
-          therapy_mode: mode,
-          pressure: Number(pressure),
-          min_pressure: Number(minPressure),
-          max_pressure: Number(maxPressure),
-          aflex: Number(aflex),
-          ramp: Number(ramp)
-        };
-      }
-      
+      // The draft becomes the device's settings only once the device has them.
+      const confirmed = () => setDevice((d) => (d ? {
+        ...d,
+        settings: { ...d.settings, therapy_mode: mode, pressure, min_pressure: minPressure, max_pressure: maxPressure, aflex, ramp },
+      } : d));
+
       if (res && res.status === 'NO_CHANGE') {
-        showToast('No fields differ from current stored values; nothing saved.', 'warning');
+        confirmed();
+        showToast('Nothing to send: the device already has these values.', 'warning');
       } else if (res && res.commandId) {
-        showToast('Database updated. Syncing with device...', 'info');
+        showToast('Sent. Waiting for the device to confirm…', 'info');
         const pollRes = await devicesAPI.pollCommandStatus(serial, res.commandId, { timeoutMs: 20000 });
         if (pollRes.status === 'ACKED') {
-          showToast('Settings successfully applied to device ✓', 'success');
+          confirmed();
+          showToast('Settings applied — the device confirmed them ✓', 'success');
         } else {
           const described = describeCommandStatus(pollRes.status, { subject: serial })
             || { title: 'The device did not apply the settings', message: `Status: ${pollRes.status}`, retryable: true };
           notify.fromDescription(described);
           showToast(described.title, 'error');
+          applyDeviceState(device); // back to what the device actually holds
           return;
         }
       } else {
-        showToast('Settings successfully updated in DB ✓', 'success');
+        showToast('Sent to the server. The device has not confirmed it yet.', 'info');
       }
     } catch (e) {
       // The inline toast is easy to miss and disappears; the frame keeps the
       // reason on screen until the user has dealt with it.
       notify.fromError(e, { action: 'save these settings', subject: serial });
-      showToast(e.message || 'Failed to push settings', 'error');
+      showToast(describeError(e, { action: 'save these settings' }).title, 'error');
     } finally {
       setSaving(false);
     }
@@ -326,14 +491,24 @@ export default function DeviceDashboard() {
       </div>
     </div>
   );
-  if (!device) return (
-    <div className="admin-detail-page">
-      <div className="admin-empty">
-        <p>Device <strong>{serial}</strong> not found.</p>
-        <button className="admin-page-btn" onClick={() => navigate('/devices')}>← Back to Devices</button>
+  if (!device) {
+    const problem = loadError
+      ? describeError(loadError, { action: 'load this device', subject: serial })
+      : { title: 'Device not found', message: `The server has no record of ${serial}.`, retryable: false };
+    return (
+      <div className="admin-detail-page">
+        <div className="load-error" role="alert">
+          <strong>{problem.title}</strong>
+          <p>{problem.message}</p>
+          {problem.detail && <code>{problem.detail}</code>}
+          <div className="load-error-actions">
+            {problem.retryable && <button className="admin-page-btn primary" onClick={() => fetchDevice(false, true)}>Try again</button>}
+            <button className="admin-page-btn" onClick={() => navigate('/devices')}>← Back to Devices</button>
+          </div>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   // ── Computed values ───────────────────────────────────────────────────────
   const ld          = device.live_data;
@@ -342,13 +517,12 @@ export default function DeviceDashboard() {
   const usagePct    = Math.min(Math.round((ld.usage_hours / 8) * 100), 100);
   const isOnline    = device.device_online;
   const isReadOnly  = device.readOnly !== false;
+  const therapyStatus = String(device.therapy_status || '').toUpperCase();
+  const isTherapyRunning = therapyStatus === 'RUNNING';
+  // The device refuses setting changes mid-therapy (409), so the UI does not offer them.
+  const settingsLocked = isTherapyRunning || Boolean(therapyAction);
 
-  const maintenanceItems = [
-    { label: 'Mask',       value: '28 Days', pct: 70, icon: MaskIcon,   color: '#1d9e75' },
-    { label: 'Filter',     value: '56%',     pct: 56, icon: DotsIcon,   color: 'var(--accent)' },
-    { label: 'Humidifier', value: '75%',     pct: 75, icon: PulseIcon,  color: '#06b6d4' },
-    { label: 'Tubing',     value: '4 Days',  pct: 40, icon: DeviceIcon, color: '#ef9f27' },
-  ];
+
   return (
     <div className="dashboard-layout-container" style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
 
@@ -359,12 +533,12 @@ export default function DeviceDashboard() {
         {toast && (
           <div style={{
             position: 'fixed', top: 16, right: 24, zIndex: 9999,
-            background: toast.type === 'success' ? '#0f766e' : toast.type === 'warning' ? '#b45309' : '#9f1239',
+            background: toast.type === 'success' ? '#0f766e' : toast.type === 'warning' ? '#b45309' : toast.type === 'info' ? '#1d4ed8' : '#9f1239',
             color: '#fff', padding: '12px 20px', borderRadius: 12, fontWeight: 700,
             fontSize: 13, boxShadow: '0 8px 24px rgba(0,0,0,0.2)', animation: 'slideDown 0.3s ease',
             display: 'flex', alignItems: 'center', gap: 10, maxWidth: 340,
           }}>
-            <span>{toast.type === 'success' ? '✓' : '⚠'}</span> {toast.msg}
+            <span>{toast.type === 'success' ? '✓' : toast.type === 'info' ? 'i' : '⚠'}</span> {toast.msg}
           </div>
         )}
 
@@ -383,25 +557,38 @@ export default function DeviceDashboard() {
                 <h1 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 900, fontFamily: 'monospace', color: 'var(--accent)', letterSpacing: '-0.5px' }}>
                   {device.serial}
                 </h1>
-                <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 600 }}>{device.model}</span>
+                {device.model && device.model !== device.serial && (
+                  <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 600 }}>{device.model}</span>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 5, marginTop: 3 }}>
-                <span style={{ fontSize: 10, background: '#e8f4fd', color: 'var(--accent)', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>CPAP C-Series</span>
+                {device.device_type && <span style={{ fontSize: 10, background: '#e8f4fd', color: 'var(--accent)', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>{device.device_type}</span>}
                 <span style={{ fontSize: 10, background: '#f0f4ff', color: '#6366f1', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>FW: {device.firmware}</span>
               </div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="dashboard-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ textAlign: 'right', fontSize: 10, color: 'var(--muted)' }}>
-              <div style={{ fontWeight: 600 }}>Last synced</div>
+              <div style={{ fontWeight: 600 }}>Page refreshed</div>
               <div style={{ color: 'var(--accent)', fontWeight: 700, fontSize: 12 }}>{formatPull(lastPull)}</div>
+              {device.sync_state?.lastSynced && (
+                <div style={{ marginTop: 2 }}>Reports to {formatSyncStamp(device.sync_state.lastSynced)}</div>
+              )}
             </div>
+            <button onClick={handleReportSync} disabled={reportSyncing || !isOnline}
+              title={isOnline ? 'Pull new therapy reports from the device' : 'Device is offline'}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 9, fontSize: 12, fontWeight: 700, color: 'var(--muted)', cursor: 'pointer', opacity: reportSyncing || !isOnline ? 0.6 : 1 }}>
+              {reportSyncing ? 'Syncing…' : 'Sync reports'}
+            </button>
             <button onClick={handleRefresh} disabled={refreshing}
               style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 9, fontSize: 12, fontWeight: 700, color: 'var(--muted)', cursor: 'pointer', opacity: refreshing ? 0.6 : 1 }}>
               <RefreshIcon fontSize="small" style={{ animation: refreshing ? 'spin 0.8s linear infinite' : 'none' }}/>
               Refresh
             </button>
+            <span style={{ padding: '7px 12px', borderRadius: 20, background: isTherapyRunning ? '#dcfce7' : '#f1f5f9', color: isTherapyRunning ? '#15803d' : '#64748b', fontSize: 12, fontWeight: 800 }}>
+              Therapy: {therapyStatus || 'UNKNOWN'}
+            </span>
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
               background: isOnline ? '#dcfce7' : '#f1f5f9',
@@ -420,7 +607,37 @@ export default function DeviceDashboard() {
           </div>
         </div>
 
+        {/* ── Therapy control ─────────────────────────────────────────────────── */}
+        <TherapyControl status={therapyStatus} applying={therapyAction} online={isOnline} onRequest={requestTherapyAction} />
+
+        {confirmTherapyAction && (
+          <TherapyConfirmDialog
+            action={confirmTherapyAction}
+            serial={serial}
+            onCancel={() => setConfirmTherapyAction(null)}
+            onConfirm={() => { const action = confirmTherapyAction; setConfirmTherapyAction(null); handleTherapyAction(action); }}
+          />
+        )}
+
+        {!loading && device && !isOnline && therapyStatus !== 'RUNNING' && offlineNoticeClosedFor !== serial && createPortal((
+          <div role="presentation" onClick={() => setOfflineNoticeClosedFor(serial)} style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'grid', placeItems: 'center', padding: 20, background: 'rgba(15, 23, 42, 0.48)' }}>
+            <div role="dialog" aria-modal="true" aria-labelledby="offline-therapy-title" onClick={(event) => event.stopPropagation()} style={{ width: 'min(460px, 100%)', padding: 28, borderRadius: 18, background: '#fff', boxShadow: '0 24px 70px rgba(15,23,42,0.28)' }}>
+              <div style={{ width: 52, height: 52, display: 'grid', placeItems: 'center', borderRadius: 16, background: '#fff7ed', color: '#c2410c', fontSize: 27, marginBottom: 14 }}>!</div>
+              <h2 id="offline-therapy-title" style={{ margin: 0, color: '#163257', fontSize: 21, fontWeight: 900 }}>Device is offline</h2>
+              <p style={{ margin: '10px 0 22px', color: '#64748b', fontSize: 14, lineHeight: 1.55 }}>
+                This device is not connected to the server, so therapy and settings commands cannot reach it. They become available again when the device reconnects.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button type="button" onClick={() => setOfflineNoticeClosedFor(serial)} style={{ padding: '10px 18px', borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 800, cursor: 'pointer' }}>Close</button>
+                <button type="button" onClick={() => { setOfflineNoticeClosedFor(serial); handleRefresh(); }} style={{ padding: '10px 18px', borderRadius: 10, border: 0, background: '#2563eb', color: '#fff', fontWeight: 900, cursor: 'pointer' }}>Refresh device</button>
+              </div>
+            </div>
+          </div>
+        ), document.body)}
+
         {/* ── 4 Metric Cards ─────────────────────────────────────────────────── */}
+        {device.has_session_data ? (
+          <>
         <div className="dashboard-metrics-grid" style={{ marginBottom: 18 }}>
 
           {/* Usage */}
@@ -428,11 +645,11 @@ export default function DeviceDashboard() {
             <div style={cardEyebrow}>Usage</div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
               <div>
-                <div style={{ fontSize: 30, fontWeight: 900, color: '#163257', lineHeight: 1 }}>{hoursInt}h {minsInt}m</div>
+                <div style={{ fontSize: 30, fontWeight: 900, color: '#163257', lineHeight: 1 }}>{ld.usage_hours == null ? '—' : `${hoursInt}h ${minsInt}m`}</div>
                 <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, fontWeight: 600 }}>Last night usage</div>
-                <div style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 700, marginTop: 2 }}>{usagePct}% of goal</div>
+                <div style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 700, marginTop: 2 }}>{ld.usage_hours == null ? 'Not reported' : `${usagePct}% of goal`}</div>
               </div>
-              <RingProgress pct={usagePct} size={68} stroke={6} color="var(--accent)"/>
+              {ld.usage_hours != null && <RingProgress pct={usagePct} size={68} stroke={6} color="var(--accent)"/>}
             </div>
           </div>
 
@@ -440,11 +657,11 @@ export default function DeviceDashboard() {
           <div style={card}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={cardEyebrow}>AHI</div>
-              <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: ld.ahi <= 5 ? '#dcfce7' : '#fef3c7', color: ld.ahi <= 5 ? '#15803d' : '#92400e' }}>
-                {ld.ahi <= 5 ? 'Normal' : 'Elevated'}
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: ld.ahi == null ? '#f1f5f9' : ld.ahi <= 5 ? '#dcfce7' : '#fef3c7', color: ld.ahi == null ? '#64748b' : ld.ahi <= 5 ? '#15803d' : '#92400e' }}>
+                {ld.ahi == null ? 'No data' : ld.ahi <= 5 ? 'Normal' : 'Elevated'}
               </span>
             </div>
-            <div style={{ fontSize: 36, fontWeight: 900, color: ld.ahi <= 5 ? '#15803d' : '#b45309', lineHeight: 1, marginTop: 8 }}>{ld.ahi}</div>
+            <div style={{ fontSize: 36, fontWeight: 900, color: ld.ahi == null ? '#94a3b8' : ld.ahi <= 5 ? '#15803d' : '#b45309', lineHeight: 1, marginTop: 8 }}>{dash(ld.ahi)}</div>
             <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, fontWeight: 600 }}>Events per hour · Target ≤ 5.0</div>
           </div>
 
@@ -452,28 +669,35 @@ export default function DeviceDashboard() {
           <div style={card}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={cardEyebrow}>Mask Seal</div>
-              <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: ld.mask_leak <= 24 ? '#dcfce7' : '#fee2e2', color: ld.mask_leak <= 24 ? '#15803d' : '#b91c1c' }}>
-                {ld.mask_leak <= 24 ? 'Good' : 'High Leak'}
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: ld.mask_leak == null ? '#f1f5f9' : ld.mask_leak <= 24 ? '#dcfce7' : '#fee2e2', color: ld.mask_leak == null ? '#64748b' : ld.mask_leak <= 24 ? '#15803d' : '#b91c1c' }}>
+                {ld.mask_leak == null ? 'No data' : ld.mask_leak <= 24 ? 'Good' : 'High Leak'}
               </span>
             </div>
             <div style={{ fontSize: 36, fontWeight: 900, color: '#163257', lineHeight: 1, marginTop: 8 }}>
-              {ld.mask_leak} <span style={{ fontSize: 16, color: '#64748b' }}>L/min</span>
+              {dash(ld.mask_leak)} {ld.mask_leak != null && <span style={{ fontSize: 16, color: '#64748b' }}>L/min</span>}
             </div>
             <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, fontWeight: 600 }}>Leak Rate · Target ≤ 24 L/min</div>
           </div>
 
           {/* Pressure */}
           <div style={card}>
-            <div style={cardEyebrow}>95th Percentile Pressure</div>
+            <div style={cardEyebrow}>Pressure · latest session</div>
             <div style={{ fontSize: 36, fontWeight: 900, color: '#163257', lineHeight: 1, marginTop: 8 }}>
-              {ld.pressure_95} <span style={{ fontSize: 16, color: '#64748b' }}>cmH₂O</span>
+              {dash(ld.pressure_95)} {ld.pressure_95 != null && <span style={{ fontSize: 16, color: '#64748b' }}>cmH₂O</span>}
             </div>
-            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, fontWeight: 600 }}>Max set: {device.settings.max_pressure} cmH₂O</div>
+            {device.settings.max_pressure != null && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, fontWeight: 600 }}>Max set: {device.settings.max_pressure} cmH₂O</div>}
             <div style={{ height: 4, background: '#e2e8f0', borderRadius: 2, marginTop: 10, overflow: 'hidden' }}>
-              <div style={{ height: '100%', borderRadius: 2, transition: 'width 0.5s', width: `${Math.min((ld.pressure_95 / device.settings.max_pressure) * 100, 100)}%`, background: 'var(--brand-gradient)' }}/>
+              <div style={{ height: '100%', borderRadius: 2, transition: 'width 0.5s', width: `${device.settings.max_pressure && ld.pressure_95 != null ? Math.min((ld.pressure_95 / device.settings.max_pressure) * 100, 100) : 0}%`, background: 'var(--brand-gradient)' }}/>
             </div>
           </div>
         </div>
+          </>
+        ) : (
+          <div className="no-session-data" role="status">
+            <strong>No therapy sessions on the server yet.</strong>
+            <span>Usage, AHI, leak and pressure appear here once the device's session reports are synced. Use <b>Sync reports</b> above to pull them.</span>
+          </div>
+        )}
 
         {/* ── Therapy Settings Panel ──────────────────────────────────────────── */}
         <div style={{ ...sectionCard, marginBottom: 16 }}>
@@ -493,9 +717,16 @@ export default function DeviceDashboard() {
             </div>
           )}
 
+          {settingsLocked && (
+            <div className="therapy-lock-note" role="status">
+              <strong>Settings are locked.</strong> {therapyAction ? 'A therapy command is being applied.' : 'Stop therapy to change pressure, ramp or mode.'}
+            </div>
+          )}
+
+          <fieldset className="settings-fieldset" disabled={settingsLocked}>
           {/* Mode Toggle */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 22, background: 'var(--panel-strong)', borderRadius: 12, padding: 6, border: '1px solid var(--line)' }}>
-            {['CPAP', 'AUTO CPAP', 'BiPAP'].map(m => (
+            {['CPAP', 'AUTO CPAP'].map(m => (
               <button key={m} onClick={() => setMode(m)}
                 style={{
                   flex: 1, padding: '10px', borderRadius: 8, fontWeight: 700, fontSize: 13,
@@ -511,7 +742,7 @@ export default function DeviceDashboard() {
           </div>
 
           {(() => {
-            const maxLimit = mode === 'BiPAP' ? 30 : 20;
+            const maxLimit = 20;
             const RAMP_STEPS = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45];
             const stepRampDown = (val) => {
               const idx = RAMP_STEPS.indexOf(val);
@@ -529,6 +760,20 @@ export default function DeviceDashboard() {
               return `${val} min`;
             };
 
+            const s0 = device.settings;
+            const reported = mode === 'CPAP'
+              ? s0.pressure != null && s0.ramp != null
+              : mode === 'AUTO CPAP' && s0.min_pressure != null && s0.max_pressure != null && s0.aflex != null && s0.ramp != null;
+            if (!reported) {
+              return (
+                <div className="therapy-lock-note" role="status">
+                  {mode
+                    ? <><strong>Not reported by the device.</strong> It has not sent its {mode} settings, so they can't be shown or changed here.</>
+                    : <><strong>Mode not reported.</strong> The device has not said which therapy mode it is in. Choose a mode above to see its settings.</>}
+                </div>
+              );
+            }
+
             return mode === 'CPAP' ? (
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -537,13 +782,13 @@ export default function DeviceDashboard() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12, flexWrap: 'wrap' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <button onClick={() => setPressure(v => Math.max(4, +(v - 0.1).toFixed(1)))} style={stepBtn}><MinusIcon/></button>
+                    <button aria-label="Decrease pressure" onClick={() => setPressure(v => Math.max(4, +(v - 0.1).toFixed(1)))} style={stepBtn}><MinusIcon/></button>
                     <div style={{ textAlign: 'center', minWidth: 110 }}>
                       <span style={{ fontSize: 32, fontWeight: 900, color: 'var(--accent)' }}>{pressure.toFixed(1)}</span>
                       <span style={{ fontSize: 14, color: '#64748b', marginLeft: 4 }}>cmH₂O</span>
                       {device.settings.pressure !== pressure && <div style={{ ...changedTag, display: 'block', margin: '2px auto 0' }}>was {device.settings.pressure.toFixed(1)}</div>}
                     </div>
-                    <button onClick={() => setPressure(v => Math.min(maxLimit, +(v + 0.1).toFixed(1)))} style={stepBtn}><PlusIcon/></button>
+                    <button aria-label="Increase pressure" onClick={() => setPressure(v => Math.min(maxLimit, +(v + 0.1).toFixed(1)))} style={stepBtn}><PlusIcon/></button>
                   </div>
                   <div style={{ flex: '1 1 200px', minWidth: 150 }}>
                     <StyledSlider value={Math.min(pressure, maxLimit)} min={4} max={maxLimit} step={0.1} onChange={setPressure} label="Pressure"/>
@@ -552,9 +797,9 @@ export default function DeviceDashboard() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 14, borderTop: '1px solid var(--line)', flexWrap: 'wrap' }}>
                   <span style={fieldLabel}>Ramp Time</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <button onClick={() => setRamp(v => stepRampDown(v))} style={stepBtn}><MinusIcon/></button>
+                    <button aria-label="Decrease ramp time" onClick={() => setRamp(v => stepRampDown(v))} style={stepBtn}><MinusIcon/></button>
                     <span style={{ fontWeight: 800, fontSize: 16, color: '#163257', minWidth: 110, textAlign: 'center' }}>{formatRampDisplay(ramp)}</span>
-                    <button onClick={() => setRamp(v => stepRampUp(v))} style={stepBtn}><PlusIcon/></button>
+                    <button aria-label="Increase ramp time" onClick={() => setRamp(v => stepRampUp(v))} style={stepBtn}><PlusIcon/></button>
                   </div>
                   <span style={{ fontSize: 12, color: 'var(--muted)' }}>Range: Off (0) to 45 min · Auto (30 min)</span>
                   {device.settings.ramp !== ramp && <span style={changedTag}>was {device.settings.ramp}</span>}
@@ -574,10 +819,10 @@ export default function DeviceDashboard() {
                     <div key={label}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>{label}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                        <button onClick={dec} style={stepBtn}><MinusIcon/></button>
+                        <button aria-label={`Decrease ${label}`} onClick={dec} style={stepBtn}><MinusIcon/></button>
                         <span style={{ fontSize: 26, fontWeight: 900, color: '#163257' }}>{val.toFixed(1)}</span>
                         <span style={{ fontSize: 12, color: '#64748b' }}>cmH₂O</span>
-                        <button onClick={inc} style={stepBtn}><PlusIcon/></button>
+                        <button aria-label={`Increase ${label}`} onClick={inc} style={stepBtn}><PlusIcon/></button>
                         {changed && <span style={changedTag}>was {was.toFixed(1)}</span>}
                       </div>
                       <StyledSlider value={val} min={4} max={sliderMax} step={0.1} onChange={onChange} label={label}/>
@@ -597,9 +842,9 @@ export default function DeviceDashboard() {
                   <div>
                     <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>Ramp Time</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <button onClick={() => setRamp(v => stepRampDown(v))} style={stepBtn}><MinusIcon/></button>
+                      <button aria-label="Decrease ramp time" onClick={() => setRamp(v => stepRampDown(v))} style={stepBtn}><MinusIcon/></button>
                       <span style={{ fontWeight: 800, fontSize: 15, color: '#163257', minWidth: 100, textAlign: 'center' }}>{formatRampDisplay(ramp)}</span>
-                      <button onClick={() => setRamp(v => stepRampUp(v))} style={stepBtn}><PlusIcon/></button>
+                      <button aria-label="Increase ramp time" onClick={() => setRamp(v => stepRampUp(v))} style={stepBtn}><PlusIcon/></button>
                       {device.settings.ramp !== ramp && <span style={changedTag}>was {device.settings.ramp}</span>}
                     </div>
                   </div>
@@ -608,13 +853,15 @@ export default function DeviceDashboard() {
             );
           })()}
 
+          </fieldset>
+
           {/* Save / Discard bar */}
-          <div style={{ display: 'flex', gap: 10, marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
-            <button onClick={resetDraft} disabled={isReadOnly || !dirty || saving}
+          <div className="dashboard-save-bar" style={{ display: 'flex', gap: 10, marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
+            <button onClick={resetDraft} disabled={isReadOnly || settingsLocked || !dirty || saving}
               style={{ padding: '11px 22px', borderRadius: 10, fontWeight: 700, fontSize: 13, background: 'var(--panel)', border: '1px solid var(--line)', color: 'var(--muted)', cursor: dirty ? 'pointer' : 'not-allowed', opacity: dirty ? 1 : 0.5 }}>
               Discard Changes
             </button>
-            <button onClick={saveSettings} disabled={isReadOnly || !dirty || saving}
+            <button onClick={saveSettings} disabled={isReadOnly || settingsLocked || !dirty || saving}
               style={{ flex: 1, padding: '11px 22px', borderRadius: 10, fontWeight: 800, fontSize: 14, background: dirty ? 'var(--brand-gradient)' : '#e2e8f0', color: dirty ? '#fff' : '#94a3b8', border: 'none', cursor: dirty ? 'pointer' : 'not-allowed', boxShadow: dirty ? '0 4px 16px rgba(0,71,204,0.3)' : 'none', transition: 'all 0.25s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               {isReadOnly
                 ? <><SaveIcon fontSize="small"/> Read-only</>
@@ -629,6 +876,7 @@ export default function DeviceDashboard() {
         </div>
 
         {/* ── 7-Day Trend Charts ──────────────────────────────────────────────── */}
+        {device.has_session_data && (
         <div style={{ ...sectionCard, marginBottom: 16 }}>
           <div style={sectionLabel}>7-Day Therapy Trends</div>
           <div className="dashboard-three-col">
@@ -647,17 +895,19 @@ export default function DeviceDashboard() {
             ))}
           </div>
         </div>
+        )}
 
-        {/* ── Device Info + Maintenance ────────────────────────────────────────── */}
-        <div className="dashboard-two-col" style={{ marginBottom: 16 }}>
+        {/* ── Device Info ───────────────────────────────────────────────────────── */}
+        <div style={{ marginBottom: 16 }}>
           <div style={sectionCard}>
             <div style={sectionLabel}>Device Info</div>
             {[
               ['Serial Number', device.serial, true],
-              ['Model', device.model, false],
+              ['Model', device.model || '—', false],
+              ['Device Type', device.device_type || '—', false],
               ['Firmware', device.firmware, false],
               ['Last Session', device.sessions?.slice(-1)[0]?.date ?? '—', false],
-              ['Compliance Rate', `${ld.compliance_pct}%`, false],
+              ['Compliance Rate', device.has_session_data ? `${ld.compliance_pct}%` : '—', false],
             ].map(([k, v, mono]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 10, marginBottom: 10, borderBottom: '1px solid var(--line)', fontSize: 13 }}>
                 <span style={{ color: 'var(--muted)', fontWeight: 600 }}>{k}</span>
@@ -666,30 +916,12 @@ export default function DeviceDashboard() {
             ))}
           </div>
 
-          <div style={sectionCard}>
-            <div style={sectionLabel}>Maintenance Status</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              {maintenanceItems.map(({ label, value, pct, icon: Icon, color }) => (
-                <div key={label} style={{ background: 'var(--panel-strong)', borderRadius: 10, padding: '11px 12px', border: '1px solid var(--line)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 7 }}>
-                    <div style={{ width: 26, height: 26, borderRadius: 7, background: `${color}18`, display: 'grid', placeItems: 'center', color }}><Icon/></div>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)' }}>{label}</span>
-                  </div>
-                  <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--text)', marginBottom: 5 }}>{value}</div>
-                  <div style={{ height: 4, background: 'rgba(0,0,0,0.06)', borderRadius: 2, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 2, transition: 'width 0.4s' }}/>
-                  </div>
-                  <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>{pct}% remaining</div>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* ── Session Log Table ─────────────────────────────────────────────────── */}
         <div style={sectionCard}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={sectionLabel}>Session Log — Past 7 Days</div>
+            <div style={sectionLabel}>Session Log</div>
             <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>
               Page {currentPage} of {totalPages} ({sortedSessions.length} total records)
             </div>
@@ -722,29 +954,29 @@ export default function DeviceDashboard() {
                               ⚙ Settings
                             </span>
                           ) : (
-                            `${s.usage_hours}h`
+                            dash(s.usage_hours, 'h')
                           )}
                         </td>
                         <td>
                           <span className="admin-badge" style={{
-                            background: isSettings ? '#f0f4ff' : (s.ahi <= 5 ? '#dcfce7' : '#fef3c7'),
-                            color: isSettings ? '#4338ca' : (s.ahi <= 5 ? '#15803d' : '#92400e'),
+                            background: isSettings ? '#f0f4ff' : s.ahi == null ? '#f1f5f9' : (s.ahi <= 5 ? '#dcfce7' : '#fef3c7'),
+                            color: isSettings ? '#4338ca' : s.ahi == null ? '#64748b' : (s.ahi <= 5 ? '#15803d' : '#92400e'),
                           }}>
-                            {isSettings ? s.mode : s.ahi}
+                            {isSettings ? (s.mode || '—') : dash(s.ahi)}
                           </span>
                         </td>
                         <td>
                           {isSettings ? (
-                            s.mode === 'CPAP' ? `Set: ${s.pressure} cmH₂O` : `Min: ${s.min_pressure} / Max: ${s.max_pressure}`
+                            s.mode === 'CPAP' ? `Set: ${dash(s.pressure, ' cmH₂O')}` : s.mode ? `Min: ${dash(s.min_pressure)} / Max: ${dash(s.max_pressure)}` : '—'
                           ) : (
-                            `${s.mask_leak} L/min`
+                            dash(s.mask_leak, ' L/min')
                           )}
                         </td>
                         <td>
                           {isSettings ? (
-                            `Ramp: ${s.ramp === 0 ? 'Off' : s.ramp === 30 ? '30m Auto' : `${s.ramp}m`}`
+                            `Ramp: ${s.ramp == null ? '—' : s.ramp === 0 ? 'Off' : s.ramp === 30 ? '30m Auto' : `${s.ramp}m`}`
                           ) : (
-                            `${s.pressure_95} cmH₂O`
+                            dash(s.pressure_95, ' cmH₂O')
                           )}
                         </td>
                         <td>
@@ -752,13 +984,17 @@ export default function DeviceDashboard() {
                             {isSettings ? (
                               <span className="admin-status-pill" style={{ background: '#dbeafe', color: '#1e40af' }}>
                                 <span className="admin-status-dot" style={{ background: '#2563eb' }}/>
-                                Settings Synced
+                                Settings frame
                               </span>
                             ) : (
+                              s.usage_hours == null ? (
+                                <span className="admin-status-pill" style={{ background: '#f1f5f9', color: '#64748b' }}>No usage data</span>
+                              ) : (
                               <span className="admin-status-pill" style={{ background: compliant ? '#dcfce7' : '#fee2e2', color: compliant ? '#15803d' : '#b91c1c' }}>
                                 <span className="admin-status-dot" style={{ background: compliant ? '#16a34a' : '#dc2626' }}/>
                                 {compliant ? 'Compliant' : 'Non-compliant'}
                               </span>
+                              )
                             )}
                             <span style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 8 }}>
                               {isExpanded ? '▲ Hide' : '▼ Inspect'}

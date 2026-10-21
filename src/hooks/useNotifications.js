@@ -61,7 +61,8 @@ function buildNotifications(deviceData, lastServerPull) {
   const serial = deviceData.serial || 'device';
   const ld = deviceData.live_data || {};
   const sessions = (deviceData.sessions || []).filter((s) => s.type !== 'SETTINGS_UPDATE');
-  const latest = sessions[0];
+  // Sessions run oldest → newest; the latest night is the one with the newest timestamp.
+  const latest = sessions.reduce((a, b) => ((b.timestamp || 0) > (a?.timestamp || 0) ? b : a), null);
   // Scope ids to the night being reported so each new session can alert again.
   const stamp = latest?.display_date || latest?.date || 'latest';
 
@@ -70,7 +71,7 @@ function buildNotifications(deviceData, lastServerPull) {
       id: `offline:${serial}`,
       severity: 'critical',
       title: 'Device offline',
-      detail: `${serial} is not reporting to the server. Queued settings will apply on reconnect.`,
+      detail: `${serial} is not connected to the server, so therapy and settings commands can't reach it until it reconnects.`,
       to: `/device/${serial}`,
     });
   }
@@ -105,7 +106,7 @@ function buildNotifications(deviceData, lastServerPull) {
     });
   }
 
-  const recent = sessions.slice(0, 7);
+  const recent = sessions.slice(-7).filter((s) => Number.isFinite(s.usage_hours));
   if (recent.length >= 3) {
     const rate = Math.round(
       (recent.filter((s) => s.usage_hours >= COMPLIANCE_HOURS).length / recent.length) * 100
@@ -143,7 +144,9 @@ function buildNotifications(deviceData, lastServerPull) {
 
   // Nothing wrong is itself worth confirming, so the panel is never empty
   // in a way that reads as "notifications are broken".
-  if (!list.length) {
+  // Only claim "all clear" when the latest night actually carries the readings checked above.
+  const checked = Number.isFinite(ld.ahi) && Number.isFinite(ld.mask_leak) && Number.isFinite(ld.usage_hours);
+  if (!list.length && checked) {
     list.push({
       id: `all-clear:${serial}:${stamp}`,
       severity: 'success',

@@ -369,7 +369,7 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
         ['Mode', r.modeLabel],
         ['Min Pressure', num(settings.min_pressure, 0)],
         ['Max Pressure', num(settings.max_pressure, 0)],
-        ['A-Flex', settings.aflex > 0 ? 'ON' : 'OFF'],
+        ['A-Flex', settings.aflex == null ? '—' : settings.aflex > 0 ? 'ON' : 'OFF'],
         settings.aflex > 0 ? ['A-Flex Level', String(settings.aflex)] : null,
       ]
       : [
@@ -377,7 +377,7 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
         ['Device', deviceData?.model || '—'],
         ['Mode', r.modeLabel],
         ['Pressure', num(settings.pressure, 1)],
-        ['Ramp', settings.ramp ? `${settings.ramp} min` : 'Off'],
+        ['Ramp', settings.ramp == null ? '—' : settings.ramp ? `${settings.ramp} min` : 'Off'],
       ];
 
   // Axis ranges default to the reference report's, growing only if data exceeds them.
@@ -412,7 +412,7 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
       ['Mode', r.modeLabel, C.text],
       ['Set Max Pressure', num(settings.max_pressure, 0), C.text],
       ['Set Min Pressure', num(settings.min_pressure, 0), C.text],
-      ['Maximum (avg)', num(therapy.pressureMax), C.text],
+      ['Max nightly 95th', num(therapy.pressureMax), C.text],
       ['95th % (avg)', num(therapy.pressure95), C.pressureAuto],
       ['Median (avg)', num(therapy.pressureMedian), C.text],
     ];
@@ -517,7 +517,7 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
   ${logoMarkup()}
   <div class="patient">
     <div class="name">${esc(patient.name || serial)}</div>
-    <div class="meta">Patient ID: ${esc(patient.id || serial)}</div>
+    <div class="meta">Patient ID: ${esc(patient.id || '—')}</div>
     ${patient.dob ? `<div class="meta">DOB: ${esc(patient.dob)}</div>` : ''}
     ${age != null ? `<div class="meta">Age: ${age} Years</div>` : ''}
     ${patient.gender ? `<div class="meta">Gender: ${esc(patient.gender)}</div>` : ''}
@@ -537,7 +537,7 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
       <span class="metric-name">Pressure-cmH2O</span>
       <span class="pair">Median: <b>${num(therapy.pressureMedian)}</b></span>
       <span class="pair">95th percentile: <b>${num(therapy.pressure95)}</b></span>
-      <span class="pair">Maximum: <b>${num(therapy.pressureMax)}</b></span>
+      <span class="pair">Max nightly 95th: <b>${num(therapy.pressureMax)}</b></span>
     </div>` : ''}
     <div class="metric">
       <span class="metric-name">Events per hour</span>
@@ -591,8 +591,8 @@ ${chartSection('AHI (Events/Hour)', [
 ], barChart({ days, valueKey: 'ahi', yMax: ahiScale.max, yStep: ahiScale.step, color: C.ahiBar }))}
 
 ${chartSection('Leak', [
-  ['Set Threshold', `${therapy.leakThreshold.toFixed(1)} L/min`, C.leak],
-  ['Maximum (avg)', num(therapy.avgLeak), C.leak],
+  ['Reference threshold', `${therapy.leakThreshold.toFixed(1)} L/min`, C.leak],
+  ['Average', num(therapy.avgLeak), C.leak],
 ], barChart({
   days, valueKey: 'mask_leak', yMax: leakScale.max, yStep: leakScale.step,
   color: C.leak, threshold: therapy.leakThreshold,

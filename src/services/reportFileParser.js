@@ -135,24 +135,68 @@ export function parseRecordLine(line, lineNo) {
     return { error: { lineNo, text, reason: `only ${parts.length} fields, expected at least ${MIN_FIELDS}` } };
   }
 
-  const start = makeDate(int(parts[1]), int(parts[2]), int(parts[3]), int(parts[19]), int(parts[20]));
-  const end = makeDate(int(parts[4]), int(parts[5]), int(parts[6]), int(parts[21]), int(parts[22]));
+  return buildRecord({
+    startDay: int(parts[1]), startMonth: int(parts[2]), startYear: int(parts[3]),
+    endDay: int(parts[4]), endMonth: int(parts[5]), endYear: int(parts[6]),
+    modeCode: int(parts[7]), volumeTransfer: int(parts[8]),
+    maxPressure: int(parts[9]), minPressure: int(parts[10]), ipap: int(parts[11]), epap: int(parts[12]),
+    pressureChangeCount: int(parts[13]), modeCounter: int(parts[14]), airFlow: int(parts[15]),
+    tidalVolume: int(parts[16]), respRate: int(parts[17]), startEpap: int(parts[18]),
+    startHour: int(parts[19]), startMinute: int(parts[20]), endHour: int(parts[21]), endMinute: int(parts[22]),
+    humidifier: int(parts[23]), rampTime: int(parts[24]), autoOnOff: int(parts[25]),
+    titrationChangeFactor: int(parts[26]), rateChangeFactor: int(parts[27]),
+    csa: int(parts[28]), osa: int(parts[29]), hsa: int(parts[30]),
+    aflexFlag: int(parts[33]), aflexLevel: int(parts[34]), maskCode: int(parts[36]), leakRaw: int(parts[38]),
+    terminatorOk: parts[39] === 'A', serial: parts[40],
+  }, lineNo, text);
+}
+
+/** Numeric read for API rows: missing or non-numeric becomes NaN rather than 0. */
+function num(value) {
+  if (value === null || value === undefined || value === '') return NaN;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+/**
+ * The same session record from a `device_reports` row (GET /devices/{id}/reports).
+ * It is the record the device writes to REPORTFL.TXT, so it goes through the same
+ * rules: usage from start/end, AHI from CSA+OSA+HSA over usage, leak sentinel.
+ */
+function rowToRecord(row, index) {
+  return buildRecord({
+    startDay: num(row.start_day), startMonth: num(row.start_month), startYear: num(row.start_year),
+    endDay: num(row.end_day), endMonth: num(row.end_month), endYear: num(row.end_year),
+    modeCode: num(row.mode), volumeTransfer: num(row.volume_transfer),
+    maxPressure: num(row.max_pressure), minPressure: num(row.min_pressure), ipap: num(row.ipap), epap: num(row.epap),
+    pressureChangeCount: num(row.pressure_change_count), modeCounter: num(row.session_counter), airFlow: num(row.air_flow),
+    tidalVolume: num(row.tidal_volume), respRate: num(row.resp_rate), startEpap: num(row.start_epap),
+    startHour: num(row.start_hour), startMinute: num(row.start_minute), endHour: num(row.end_hour), endMinute: num(row.end_minute),
+    humidifier: num(row.humidifier), rampTime: num(row.ramp_time), autoOnOff: num(row.auto_on_off),
+    titrationChangeFactor: num(row.titration_factor), rateChangeFactor: num(row.rate_change_factor),
+    csa: num(row.csa_count), osa: num(row.osa_count), hsa: num(row.hsa_count),
+    aflexFlag: num(row.a_flex), aflexLevel: num(row.a_flex_level), maskCode: num(row.mask_type), leakRaw: num(row.leak),
+    terminatorOk: true, serial: row.device_id,
+  }, index + 1, row);
+}
+
+/** Shared by file lines and API rows. Returns a record, or `{ error }`. */
+function buildRecord(f, lineNo, raw) {
+  const text = raw;
+  const start = makeDate(f.startDay, f.startMonth, f.startYear, f.startHour, f.startMinute);
+  const end = makeDate(f.endDay, f.endMonth, f.endYear, f.endHour, f.endMinute);
   if (!start) return { error: { lineNo, text, reason: 'unreadable start date/time' } };
   if (!end) return { error: { lineNo, text, reason: 'unreadable end date/time' } };
 
-  const maxPressure = int(parts[9]);
-  const minPressure = int(parts[10]);
-  const ipap = int(parts[11]);
-  const epap = int(parts[12]);
+  const { maxPressure, minPressure, ipap, epap, modeCode } = f;
 
-  const modeCode = int(parts[7]);
   const mode = classifyMode(modeCode, { ipap, epap, minPressure, maxPressure });
 
-  const csa = int(parts[28]) || 0;
-  const osa = int(parts[29]) || 0;
-  const hsa = int(parts[30]) || 0;
+  const csa = f.csa || 0;
+  const osa = f.osa || 0;
+  const hsa = f.hsa || 0;
 
-  const leakRaw = int(parts[38]);
+  const { leakRaw } = f;
   const leakValid = Number.isFinite(leakRaw) && leakRaw < LEAK_SENTINEL;
 
   const durationHours = (end - start) / 3600000;
@@ -164,16 +208,16 @@ export function parseRecordLine(line, lineNo) {
   if (durationHours < 0) suspect = 'ends before it starts';
   else if (durationHours > MAX_SESSION_HOURS) suspect = `spans ${durationHours.toFixed(1)} h, longer than a ${MAX_SESSION_HOURS} h session`;
 
-  const maskCode = int(parts[36]);
+  const { maskCode } = f;
 
   return {
     record: {
       lineNo,
-      raw: text,
+      raw,
       start,
       end,
-      startClock: clock(int(parts[19]), int(parts[20])),
-      endClock: clock(int(parts[21]), int(parts[22])),
+      startClock: clock(f.startHour, f.startMinute),
+      endClock: clock(f.endHour, f.endMinute),
       dayKey: dayKey(start),
       dateLabel: dayLabel(start),
       durationHours,
@@ -183,7 +227,7 @@ export function parseRecordLine(line, lineNo) {
       mode,
       modeLabel: MODE_LABELS[mode],
 
-      volumeTransfer: int(parts[8]),
+      volumeTransfer: f.volumeTransfer,
       maxPressure,
       minPressure,
       ipap,
@@ -192,26 +236,26 @@ export function parseRecordLine(line, lineNo) {
       // deliver. It carries no measured pressure trace.
       setPressure: mode === 'bipap' ? ipap : maxPressure,
 
-      pressureChangeCount: int(parts[13]),
-      modeCounter: int(parts[14]),
-      airFlow: int(parts[15]),
-      tidalVolume: int(parts[16]),
-      respRate: int(parts[17]),
-      startEpap: int(parts[18]),
+      pressureChangeCount: f.pressureChangeCount,
+      modeCounter: f.modeCounter,
+      airFlow: f.airFlow,
+      tidalVolume: f.tidalVolume,
+      respRate: f.respRate,
+      startEpap: f.startEpap,
 
-      humidifier: int(parts[23]),
-      rampTime: int(parts[24]),
-      autoOnOff: int(parts[25]),
-      titrationChangeFactor: int(parts[26]),
-      rateChangeFactor: int(parts[27]),
+      humidifier: f.humidifier,
+      rampTime: f.rampTime,
+      autoOnOff: f.autoOnOff,
+      titrationChangeFactor: f.titrationChangeFactor,
+      rateChangeFactor: f.rateChangeFactor,
 
       csa,
       osa,
       hsa,
       events: csa + osa + hsa,
 
-      aflexOn: int(parts[33]) === 2,
-      aflexLevel: int(parts[34]),
+      aflexOn: f.aflexFlag === 2,
+      aflexLevel: f.aflexLevel,
       maskTypeCode: maskCode,
       maskType: MASK_TYPES[maskCode] || null,
 
@@ -219,8 +263,8 @@ export function parseRecordLine(line, lineNo) {
       leakValid,
       leak: leakValid ? leakRaw : null,
 
-      terminatorOk: parts[39] === 'A',
-      serial: parts[40] || null,
+      terminatorOk: f.terminatorOk,
+      serial: f.serial || null,
       suspect,
     },
   };
@@ -304,6 +348,22 @@ export function parseReportFile(text) {
     else records.push(record);
   });
 
+  return summarize(records, errors, lines.filter((l) => l.trim()).length);
+}
+
+/** Same output as parseReportFile, from GET /devices/{id}/reports rows. */
+export function parseReportRows(rows = []) {
+  const records = [];
+  const errors = [];
+  rows.forEach((row, index) => {
+    const { record, error } = rowToRecord(row, index);
+    if (error) errors.push(error);
+    else records.push(record);
+  });
+  return summarize(records, errors, rows.length);
+}
+
+function summarize(records, errors, lineCount) {
   records.sort((a, b) => a.start - b.start);
 
   const days = aggregateDays(records);
@@ -341,7 +401,7 @@ export function parseReportFile(text) {
     mode: latest?.mode || 'cpap',
     modeLabel: latest?.modeLabel || null,
     summary: {
-      lines: lines.filter((l) => l.trim()).length,
+      lines: lineCount,
       records: records.length,
       dropped: errors.length,
       suspect: records.length - counted.length,

@@ -69,22 +69,25 @@ export default function Trends() {
         maxPressure: '—'
       };
     }
-    const avgUsage = displaySessions.reduce((acc, s) => acc + s.usage_hours, 0) / displaySessions.length;
-    const complianceCount = displaySessions.filter(s => s.usage_hours >= 4.0).length;
-    const avgAhi = displaySessions.reduce((acc, s) => acc + s.ahi, 0) / displaySessions.length;
-    const avgLeak = displaySessions.reduce((acc, s) => acc + s.mask_leak, 0) / displaySessions.length;
-    const avgPressure = displaySessions.reduce((acc, s) => acc + s.pressure_95, 0) / displaySessions.length;
-    const maxPressure = Math.max(...displaySessions.map(s => s.pressure_95));
+    // Average only nights that actually carry the value; a missing reading is not a 0.
+    const values = (key) => displaySessions.map((s) => s[key]).filter((v) => v != null && Number.isFinite(Number(v))).map(Number);
+    const mean = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
+    const usage = values('usage_hours');
+    const avgUsage = mean(usage);
+    const avgAhi = mean(values('ahi'));
+    const avgLeak = mean(values('mask_leak'));
+    const pressures = values('pressure_95');
+    const avgPressure = mean(pressures);
 
     return {
-      avgUsage: `${avgUsage.toFixed(1)} hrs`,
-      compliance: `${Math.round((complianceCount / displaySessions.length) * 100)}% Compliance`,
-      avgAhi: `${avgAhi.toFixed(1)} / hr`,
-      ahiStatus: avgAhi <= 5.0 ? 'Optimal' : 'Elevated',
-      avgLeak: `${avgLeak.toFixed(1)} L/m`,
-      leakStatus: avgLeak <= 24 ? 'Excellent Seal' : 'High Leak',
-      pressure95: `${avgPressure.toFixed(1)} cm H2O`,
-      maxPressure: maxPressure.toFixed(1)
+      avgUsage: avgUsage == null ? '— hrs' : `${avgUsage.toFixed(1)} hrs`,
+      compliance: usage.length ? `${Math.round((usage.filter((h) => h >= 4).length / usage.length) * 100)}% Compliance` : '— Compliance',
+      avgAhi: avgAhi == null ? '— / hr' : `${avgAhi.toFixed(1)} / hr`,
+      ahiStatus: avgAhi == null ? '—' : avgAhi <= 5.0 ? 'Within target' : 'Elevated',
+      avgLeak: avgLeak == null ? '— L/m' : `${avgLeak.toFixed(1)} L/m`,
+      leakStatus: avgLeak == null ? '—' : avgLeak <= 24 ? 'Within target' : 'High Leak',
+      pressure95: avgPressure == null ? '— cm H2O' : `${avgPressure.toFixed(1)} cm H2O`,
+      maxPressure: pressures.length ? Math.max(...pressures).toFixed(1) : '—'
     };
   }, [displaySessions]);
 
@@ -99,8 +102,24 @@ export default function Trends() {
     );
   }
 
+  // Exactly the nights on screen, as the device reported them; blanks stay blank.
   const handleExportCSV = () => {
-    notify.info('Preparing export', { message: 'Compliance and metrics trends are being exported as CSV.' });
+    if (!displaySessions.length) {
+      notify.info('Nothing to export', { message: 'There are no therapy sessions in this range yet.' });
+      return;
+    }
+    const cell = (v) => (v == null || Number.isNaN(Number(v)) ? '' : String(v));
+    const rows = [
+      ['Date', 'Usage hours', 'AHI', 'Leak L/min', 'Pressure cmH2O'],
+      ...displaySessions.map((s) => [s.display_date || s.date || '', cell(s.usage_hours), cell(s.ahi), cell(s.mask_leak), cell(s.pressure_95)]),
+    ];
+    const csv = rows.map((r) => r.map((c) => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `resprox-trends-${deviceData.serial || 'device'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -154,17 +173,17 @@ export default function Trends() {
         <article className="kpi-card">
           <span>Average AHI</span>
           <strong>{stats.avgAhi}</strong>
-          <small className={`compliance-tag ${stats.ahiStatus === 'Optimal' ? 'pass' : 'fail'}`} style={{ border: 'none', background: 'none', padding: 0 }}>
+          <small className={`compliance-tag ${stats.ahiStatus === 'Within target' ? 'pass' : stats.ahiStatus === '—' ? '' : 'fail'}`} style={{ border: 'none', background: 'none', padding: 0 }}>
             {stats.ahiStatus}
           </small>
         </article>
         <article className="kpi-card">
           <span>Average Leak</span>
           <strong>{stats.avgLeak}</strong>
-          <small className="green-text">{stats.leakStatus}</small>
+          <small className={stats.leakStatus === 'High Leak' ? 'amber-text' : stats.leakStatus === '—' ? '' : 'green-text'}>{stats.leakStatus}</small>
         </article>
         <article className="kpi-card">
-          <span>95th Percentile Pressure</span>
+          <span>Average Pressure</span>
           <strong>{stats.pressure95}</strong>
           <small style={{ color: 'var(--muted)' }}>Max: {stats.maxPressure} cmH2O</small>
         </article>

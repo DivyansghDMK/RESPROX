@@ -2,8 +2,9 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { devicesAPI } from '../services/respireeApi';
-import { useAuth } from '../context/AuthContext';
 import { useTherapy } from '../context/TherapyContext';
+import { useNotify } from '../context/NotifyContext';
+import { describeError } from '../services/apiError';
 
 // Material UI Icons
 import DevicesIcon from '@mui/icons-material/Devices';
@@ -46,15 +47,17 @@ const STATUS_COLOR = {
   offline: { bg: '#f1efe8', text: '#5f5e5a', dot: '#888780' }
 };
 
-function formatAdminLabel(username) {
-  return 'Admin';
-}
+// The live API has no clinical numbers until a device's reports are synced; show
+// "—" for a missing value instead of a 0 that reads as a measurement.
+const hasValue = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
+const fmt = (v, suffix = '') => (hasValue(v) ? `${v}${suffix}` : '—');
+const complianceColor = (v) => (!hasValue(v) ? 'transparent' : v >= 70 ? '#1d9e75' : v >= 50 ? '#ef9f27' : '#e24b4a');
 
 // ── Main DeviceList Component ──────────────────────────────────────────────────
 export default function DeviceList() {
   const navigate = useNavigate();
-  const { username } = useAuth();
   const { lastServerPull, setLastServerPull } = useTherapy();
+  const notify = useNotify();
   const [devices, setDevices] = useState([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -62,6 +65,7 @@ export default function DeviceList() {
 
   const [quickSerial, setQuickSerial] = useState('');
   const [page, setPage] = useState(1);
+  const [loadError, setLoadError] = useState(null);
 
   // The persisted serial is deliberately left intact. Nothing on this page
   // auto-navigates any more, but Reports/Trends/Therapy/Settings and the
@@ -74,16 +78,29 @@ export default function DeviceList() {
   // which froze the page while typing.
   const fetchDevices = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const data = await devicesAPI.getDevices();
       setDevices(data);
       setLastServerPull(new Date());
     } catch (e) {
-      console.error("Error loading devices list:", e);
+      // A failed load used to reach only the console, so the page fell through
+      // to "No devices found matching current filters" — which blames the
+      // filters for a server outage.
+      setLoadError(e);
+      notify.fromError(e, {
+        action: 'load the device registry',
+        onRetry: () => fetchDevicesRef.current(),
+      });
     } finally {
       setLoading(false);
     }
-  }, [setLastServerPull]);
+  }, [setLastServerPull, notify]);
+
+  // Retry from a notification must call the current fetch, not the one
+  // captured when it failed.
+  const fetchDevicesRef = useRef(fetchDevices);
+  fetchDevicesRef.current = fetchDevices;
 
   useEffect(() => {
     fetchDevices();
@@ -92,7 +109,8 @@ export default function DeviceList() {
   const hasAnimated = useRef(false);
   useEffect(() => {
     // Entrance animation runs once, after the first successful load.
-    if (loading || hasAnimated.current) return undefined;
+    // Nothing rendered means nothing to animate; GSAP warns loudly otherwise.
+    if (loading || hasAnimated.current || !devices.length) return undefined;
     hasAnimated.current = true;
     let cancelled = false;
     // gsap is loaded on demand so it stays out of this route's chunk.
@@ -108,7 +126,7 @@ export default function DeviceList() {
       );
     });
     return () => { cancelled = true; };
-  }, [loading]);
+  }, [loading, devices.length]);
 
   // Handle instant lookup — navigate directly to the device dashboard page
   const handleQuickSubmit = (e) => {
@@ -138,7 +156,10 @@ export default function DeviceList() {
       totalCount: total,
       onlineCount: devices.filter(d => d.status === 'online').length,
       criticalCount: devices.filter(d => d.ahi > 5.0).length,
-      complianceAvg: total ? Math.round(devices.reduce((acc, d) => acc + d.compliance_pct, 0) / total) : 0,
+      complianceAvg: (() => {
+        const known = devices.filter((d) => hasValue(d.compliance_pct));
+        return known.length ? Math.round(known.reduce((acc, d) => acc + Number(d.compliance_pct), 0) / known.length) : null;
+      })(),
     };
   }, [devices]);
 
@@ -170,7 +191,6 @@ export default function DeviceList() {
   const firstShown = filteredDevices.length ? (page - 1) * PAGE_SIZE + 1 : 0;
   const lastShown = Math.min(page * PAGE_SIZE, filteredDevices.length);
 
-  const adminLabel = formatAdminLabel(username);
   function formatLastPulled(date) {
     if (!date) return 'Never';
     const now = new Date();
@@ -204,12 +224,12 @@ export default function DeviceList() {
         boxShadow: '0 2px 12px rgba(13,125,230,0.06)'
       }}>
         <div>
-          <div style={{ fontSize: 13, color: '#6366f1', fontWeight: 700, letterSpacing: '0.5px', marginBottom: 4 }}>ADMIN PORTAL · DeckLink</div>
+          <div style={{ fontSize: 13, color: '#6366f1', fontWeight: 700, letterSpacing: '0.5px', marginBottom: 4 }}>ADMIN PORTAL · Resprox</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: '#163257', lineHeight: 1.2 }}>
-            Hello, {adminLabel}
+            Device Management
           </div>
           <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>
-            Manage and monitor all registered CVT30 CPAP C-Series devices below
+            Manage and monitor the devices registered to your account
           </div>
         </div>
         <div style={{ textAlign: 'right', fontSize: 12, color: 'var(--muted)' }}>
@@ -231,7 +251,7 @@ export default function DeviceList() {
           { label: 'Total Devices', value: totalCount, icon: <DevicesIcon style={{ color: 'var(--accent)', width: 28, height: 28 }} /> },
           { label: 'Devices Online', value: onlineCount, icon: <BoltIcon style={{ color: '#10b981', width: 28, height: 28 }} /> },
           { label: 'Elevated AHI (>5.0)', value: criticalCount, icon: <WarningIcon style={{ color: '#e24b4a', width: 28, height: 28 }} />, danger: criticalCount > 0 },
-          { label: 'Avg Compliance', value: `${complianceAvg}%`, icon: <CheckCircleIcon style={{ color: '#1d9e75', width: 28, height: 28 }} /> }
+          { label: 'Avg Compliance', value: fmt(complianceAvg, '%'), icon: <CheckCircleIcon style={{ color: '#1d9e75', width: 28, height: 28 }} /> }
         ].map(s => (
           <div key={s.label} className={`admin-stat-card ${s.danger ? 'danger' : ''}`}>
             <span className="admin-stat-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{s.icon}</span>
@@ -256,7 +276,7 @@ export default function DeviceList() {
           <form onSubmit={handleQuickSubmit} style={{ display: 'flex', gap: 10 }}>
             <input
               type="text"
-              placeholder="Enter serial number (e.g. CVT30-C-9281)..."
+              placeholder="Enter a device serial number"
               value={quickSerial}
               onChange={e => setQuickSerial(e.target.value)}
               style={{
@@ -334,6 +354,16 @@ export default function DeviceList() {
           <div className="admin-spinner" style={{ margin: '0 auto 12px' }} />
           <span style={{ color: 'var(--muted)', fontWeight: 600 }}>Loading devices registry…</span>
         </div>
+      ) : loadError ? (
+        <div className="admin-empty" style={{ background: '#fff5f5', borderRadius: 16, padding: 32, border: '1px solid #fecaca', textAlign: 'center' }}>
+          <p style={{ margin: 0, color: '#b91c1c', fontWeight: 700 }}>The device registry could not be loaded.</p>
+          <p style={{ margin: '8px 0 0', color: 'var(--muted)', fontSize: 13.5 }}>
+            {describeError(loadError, { action: 'load the device registry' }).message}
+          </p>
+          <button className="icon-text-button" style={{ marginTop: 18 }} onClick={fetchDevices}>
+            <span>Try again</span>
+          </button>
+        </div>
       ) : filteredDevices.length === 0 ? (
         <div className="admin-empty" style={{ background: 'var(--panel-strong)', borderRadius: 16, padding: 32, border: '1px solid var(--line)', textAlign: 'center' }}>
           <p style={{ margin: 0, color: 'var(--muted)', fontWeight: 600 }}>No devices found matching current filters.</p>
@@ -368,27 +398,27 @@ export default function DeviceList() {
                         <strong style={{ color: 'var(--accent)', fontFamily: 'monospace', fontSize: 15 }}>{d.serial}</strong>
                         <div style={{ fontSize: 11, color: 'var(--muted)' }}>FW: {d.firmware}</div>
                       </td>
-                      <td className="admin-td-secondary">{d.model}</td>
+                      <td className="admin-td-secondary">{d.raw?.model || '—'}</td>
                       <td>
                         <div className="admin-compliance-wrap">
                           <div className="admin-compliance-bar">
                             <div className="admin-compliance-fill" style={{
-                              width: `${d.compliance_pct}%`,
-                              background: d.compliance_pct >= 70 ? '#1d9e75' : d.compliance_pct >= 50 ? '#ef9f27' : '#e24b4a'
+                              width: `${hasValue(d.compliance_pct) ? d.compliance_pct : 0}%`,
+                              background: complianceColor(d.compliance_pct)
                             }} />
                           </div>
-                          <span className="admin-compliance-num">{d.compliance_pct}%</span>
+                          <span className="admin-compliance-num">{fmt(d.compliance_pct, '%')}</span>
                         </div>
                       </td>
                       <td>
                         <span className="admin-badge" style={{
-                          background: d.ahi <= 5.0 ? '#e6f9f0' : '#faece7',
-                          color: d.ahi <= 5.0 ? '#0f6e56' : '#993c1d'
+                          background: !hasValue(d.ahi) ? '#f1f5f9' : d.ahi <= 5.0 ? '#e6f9f0' : '#faece7',
+                          color: !hasValue(d.ahi) ? '#64748b' : d.ahi <= 5.0 ? '#0f6e56' : '#993c1d'
                         }}>
-                          {d.ahi}
+                          {fmt(d.ahi)}
                         </span>
                       </td>
-                      <td className="admin-td-secondary">{d.usage_hours}h</td>
+                      <td className="admin-td-secondary">{fmt(d.usage_hours, 'h')}</td>
                       <td>
                         <span className="admin-status-pill" style={{ background: sc.bg, color: sc.text }}>
                           <span className="admin-status-dot" style={{ background: sc.dot }} />
@@ -428,19 +458,19 @@ export default function DeviceList() {
                     </span>
                   </div>
                   <div className="mobile-device-card-info">
-                    {d.model} · FW: {d.firmware}
+                    {d.raw?.model || '—'} · FW: {d.firmware}
                   </div>
 
                   {/* Compliance bar */}
                   <div style={{ marginTop: 8 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
                       <span>Compliance</span>
-                      <span>{d.compliance_pct}%</span>
+                      <span>{fmt(d.compliance_pct, '%')}</span>
                     </div>
                     <div className="admin-compliance-bar" style={{ height: 6, margin: 0 }}>
                       <div className="admin-compliance-fill" style={{
-                        width: `${d.compliance_pct}%`,
-                        background: d.compliance_pct >= 70 ? '#1d9e75' : d.compliance_pct >= 50 ? '#ef9f27' : '#e24b4a'
+                        width: `${hasValue(d.compliance_pct) ? d.compliance_pct : 0}%`,
+                        background: complianceColor(d.compliance_pct)
                       }} />
                     </div>
                   </div>
@@ -449,14 +479,14 @@ export default function DeviceList() {
                   <div className="mobile-device-card-metrics">
                     <div className="mobile-device-metric-pill">
                       <div className="mobile-device-metric-label">AHI</div>
-                      <div className="mobile-device-metric-value" style={{ color: d.ahi <= 5.0 ? '#1d9e75' : '#e24b4a' }}>
-                        {d.ahi}
+                      <div className="mobile-device-metric-value" style={{ color: !hasValue(d.ahi) ? undefined : d.ahi <= 5.0 ? '#1d9e75' : '#e24b4a' }}>
+                        {fmt(d.ahi)}
                       </div>
                     </div>
                     <div className="mobile-device-metric-pill">
                       <div className="mobile-device-metric-label">Usage</div>
                       <div className="mobile-device-metric-value">
-                        {d.usage_hours}h
+                        {fmt(d.usage_hours, 'h')}
                       </div>
                     </div>
                   </div>

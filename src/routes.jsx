@@ -22,12 +22,7 @@ export const loaders = {
   settings:           () => import('./pages/Settings'),
   preferences:        () => import('./pages/AppPreferences'),
   help:               () => import('./pages/HelpSupport'),
-  adminPatients:      () => import('./pages/AdminPatients'),
   adminDataUpload:    () => import('./pages/AdminDataUpload'),
-  adminPatientDetail: () => import('./pages/AdminPatientDetail'),
-  waveform:           () => import('./pages/WaveformAnalysis'),
-  hcpPortal:          () => import('./features/hcp/HCPPortal'),
-  createOrg:          () => import('./pages/CreateOrg'),
   forgotPassword:     () => import('./features/auth/ForgotPasswordPage'),
 };
 
@@ -48,7 +43,6 @@ export function prefetch(key) {
 /** Map a nav destination to the chunk that renders it. */
 export function routeKeyForPath(path = '') {
   if (path.startsWith('/device/')) return 'deviceDashboard';
-  if (path.startsWith('/admin/patient/')) return 'adminPatientDetail';
   return {
     '/dashboard': 'deviceDashboard',
     '/devices': 'deviceList',
@@ -60,10 +54,7 @@ export function routeKeyForPath(path = '') {
     '/settings': 'settings',
     '/preferences': 'preferences',
     '/help': 'help',
-    '/admin': 'adminPatients',
     '/admin/upload': 'adminDataUpload',
-    '/waveform-analysis': 'waveform',
-    '/createorg': 'createOrg',
     '/forgot-password': 'forgotPassword',
   }[path];
 }
@@ -110,10 +101,5 @@ export const MaskFit            = lazy(loaders.maskFit);
 export const Settings           = lazy(loaders.settings);
 export const AppPreferences     = lazy(loaders.preferences);
 export const HelpSupport        = lazy(loaders.help);
-export const AdminPatients      = lazy(loaders.adminPatients);
 export const AdminDataUpload    = lazy(loaders.adminDataUpload);
-export const AdminPatientDetail = lazy(loaders.adminPatientDetail);
-export const WaveformAnalysis   = lazy(loaders.waveform);
-export const HCPPortal          = lazy(loaders.hcpPortal);
-export const CreateOrg          = lazy(loaders.createOrg);
 export const ForgotPassword     = lazy(loaders.forgotPassword);

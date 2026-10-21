@@ -38,21 +38,39 @@ function getStoredSession() {
   };
 }
 
-async function callCognito(payload) {
+async function callCognito(payload, target = 'InitiateAuth') {
   const res = await fetch(COGNITO_ENDPOINT, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-amz-json-1.1',
-      'X-Amz-Target': 'AWSCognitoIdentityProviderService.InitiateAuth',
+      'X-Amz-Target': `AWSCognitoIdentityProviderService.${target}`,
     },
     body: JSON.stringify(payload),
   });
 
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(json?.message || json?.__type || 'Cognito authentication failed');
+    const err = new Error(json?.message || json?.__type || 'Cognito authentication failed');
+    // e.g. "CodeMismatchException" — lets the UI explain the exact problem.
+    err.cognitoType = String(json?.__type || '').split('#').pop();
+    throw err;
   }
   return json;
+}
+
+/** Cognito emails a verification code to the account's verified address. */
+export async function requestPasswordReset(email) {
+  return callCognito({ ClientId: COGNITO_CLIENT_ID, Username: email }, 'ForgotPassword');
+}
+
+/** Sets the new password using the emailed code. */
+export async function confirmPasswordReset(email, code, password) {
+  return callCognito({
+    ClientId: COGNITO_CLIENT_ID,
+    Username: email,
+    ConfirmationCode: code,
+    Password: password,
+  }, 'ConfirmForgotPassword');
 }
 
 export async function loginWithCognito(username, password) {

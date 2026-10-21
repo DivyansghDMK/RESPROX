@@ -8,12 +8,19 @@ import {
   MinusIcon,
   PlusIcon,
   InfoIcon,
-  MaskIcon,
-  DotsIcon,
   BreezeIcon,
-  GrowthIcon,
-  ChevronRightIcon
+  GrowthIcon
 } from '../components/Icons';
+
+function NotReported({ mode }) {
+  return (
+    <div className="therapy-lock-note" role="status">
+      {mode
+        ? <><strong>Not reported by the device.</strong> It has not sent its {mode === 'cpap' ? 'CPAP' : 'Auto CPAP'} settings, so they can't be shown or changed here.</>
+        : <><strong>Mode not reported.</strong> The device has not said which therapy mode it is in. Choose a mode to see its settings.</>}
+    </div>
+  );
+}
 
 export default function Therapy() {
   const {
@@ -34,35 +41,26 @@ export default function Therapy() {
 
   const progress = useMemo(() => ((pressure - 4) / (30 - 4)) * 100, [pressure]);
 
-  // Compute live stats dynamically from active deviceData
+  // Everything here comes from the device's own records; a missing value is "—".
   const stats = useMemo(() => {
-    if (!deviceData || !deviceData.live_data) {
-      return {
-        mode: '—',
-        compliance: '—',
-        usage: '—',
-        ahi: '—',
-        apnea: '—',
-        hypopnea: '—',
-        flowLimitation: '—',
-        clearAirway: '—'
-      };
-    }
-    const ld = deviceData.live_data;
-    const h = Math.floor(ld.usage_hours);
-    const m = Math.round((ld.usage_hours - h) * 60);
-
+    const ld = deviceData?.live_data || {};
+    const usage = ld.usage_hours;
+    const latest = deviceData?.sessions?.[deviceData.sessions.length - 1];
     return {
-      mode: deviceData.settings.therapy_mode,
-      compliance: `${ld.compliance_pct}%`,
-      usage: `${h}h ${m}m`,
-      ahi: `${ld.ahi} / hr`,
-      apnea: `${(ld.ahi * 0.6).toFixed(1)} / hr`,
-      hypopnea: `${(ld.ahi * 0.3).toFixed(1)} / hr`,
-      flowLimitation: ld.ahi > 5.0 ? 'Moderate' : 'Mild',
-      clearAirway: `${(ld.ahi * 0.1).toFixed(1)} / hr`
+      compliance: ld.compliance_pct == null ? '—' : `${ld.compliance_pct}%`,
+      usage: usage == null ? '—' : `${Math.floor(usage)}h ${Math.round((usage - Math.floor(usage)) * 60)}m`,
+      ahi: ld.ahi == null ? '—' : `${ld.ahi} / hr`,
+      // Session reports carry real per-night event counts; telemetry does not.
+      night: latest?.type === 'REPORT_DAY' ? latest.raw : null,
+      nightLabel: latest?.display_date || latest?.date || '',
     };
   }, [deviceData]);
+
+  // Only show and edit a mode whose values the device actually reported.
+  const reported = deviceData?.settings || {};
+  const modeReported = mode === 'cpap'
+    ? reported.pressure != null && reported.ramp != null
+    : mode === 'auto' && [reported.min_pressure, reported.max_pressure, reported.aflex, reported.ramp].every((v) => v != null);
 
   if (!deviceData) {
     return (
@@ -77,6 +75,11 @@ export default function Therapy() {
 
   return (
     <div className="therapy-page-container">
+      {deviceData.therapy_running && (
+        <div className="therapy-lock-note" role="status">
+          <strong>Therapy is running.</strong> Settings are locked until therapy is stopped from the device dashboard.
+        </div>
+      )}
       {/* 1. Therapy Overview & Events */}
       <section className="section-grid-2 desktop-only-header">
         <GlassCard>
@@ -86,53 +89,59 @@ export default function Therapy() {
           <div className="overview-stats-grid">
             <div className="overview-stat">
               <span>Current Mode</span>
-              <strong>{mode === 'cpap' ? 'CPAP' : 'Auto CPAP'}</strong>
+              <strong>{mode === 'cpap' ? 'CPAP' : mode === 'auto' ? 'Auto CPAP' : '—'}</strong>
             </div>
             <div className="overview-stat">
-              <span>Compliance %</span>
-              <strong className="green-text">{stats.compliance}</strong>
+              <span>Compliance (nights ≥ 4 h)</span>
+              <strong>{stats.compliance}</strong>
             </div>
             <div className="overview-stat">
-              <span>Average Usage</span>
+              <span>Last Night Usage</span>
               <strong>{stats.usage}</strong>
             </div>
             <div className="overview-stat">
-              <span>AHI Score</span>
+              <span>AHI (last night)</span>
               <strong>{stats.ahi}</strong>
             </div>
           </div>
         </GlassCard>
 
-        {/* 3. Therapy Events */}
+        {/* 3. Therapy Events — real counts from the latest session report */}
         <GlassCard>
           <div className="section-title">
-            <h2>Therapy Events</h2>
+            <h2>Therapy Events{stats.night && stats.nightLabel ? ` · ${stats.nightLabel}` : ''}</h2>
           </div>
-          <div className="overview-stats-grid">
-            <div className="overview-stat">
-              <span>Apnea Events</span>
-              <strong>{stats.apnea}</strong>
+          {stats.night ? (
+            <div className="overview-stats-grid">
+              <div className="overview-stat">
+                <span>Obstructive Apneas</span>
+                <strong>{stats.night.osa}</strong>
+              </div>
+              <div className="overview-stat">
+                <span>Central Apneas</span>
+                <strong>{stats.night.csa}</strong>
+              </div>
+              <div className="overview-stat">
+                <span>Hypopneas</span>
+                <strong>{stats.night.hsa}</strong>
+              </div>
+              <div className="overview-stat">
+                <span>Total Events</span>
+                <strong>{stats.night.events}</strong>
+              </div>
             </div>
-            <div className="overview-stat">
-              <span>Hypopnea Events</span>
-              <strong>{stats.hypopnea}</strong>
-            </div>
-            <div className="overview-stat">
-              <span>Flow Limitation</span>
-              <strong className={deviceData.live_data.ahi > 5.0 ? 'amber-text' : 'green-text'}>{stats.flowLimitation}</strong>
-            </div>
-            <div className="overview-stat">
-              <span>Clear Airway Events</span>
-              <strong>{stats.clearAirway}</strong>
-            </div>
-          </div>
+          ) : (
+            <p style={{ margin: 0, color: 'var(--muted)', lineHeight: 1.6 }}>
+              No event breakdown yet. It appears once the device's session reports are synced.
+            </p>
+          )}
         </GlassCard>
       </section>
 
       {/* 2. Pressure Configuration - Responsive Wrapper */}
       <div className="therapy-settings-responsive-wrapper">
         {/* Desktop Therapy Settings */}
-        <section className="therapy-card desktop-therapy-settings" style={{ marginTop: '20px' }}>
+        <section className="therapy-card desktop-therapy-settings" style={{ marginTop: '20px' }} inert={deviceData.therapy_running ? '' : undefined}>
           <div className="section-title">
             <h2>Pressure Configuration</h2>
           </div>
@@ -156,19 +165,10 @@ export default function Therapy() {
               <AutoIcon />
               <span>AUTO CPAP</span>
             </button>
-            <button
-              className={`mode-button ${mode === 'bipap' ? 'active' : ''}`}
-              onClick={() => setMode('bipap')}
-              aria-pressed={mode === 'bipap'}
-              aria-label="Set mode to BiPAP"
-            >
-              <BreezeIcon />
-              <span>BiPAP</span>
-            </button>
           </div>
 
           {(() => {
-            const maxLimit = mode === 'bipap' ? 30 : 20;
+            const maxLimit = 20;
             const RAMP_STEPS = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45];
             const stepRampDown = (val) => {
               const idx = RAMP_STEPS.indexOf(val);
@@ -185,6 +185,10 @@ export default function Therapy() {
               if (val === 30) return '30 (Auto)';
               return `${val} min`;
             };
+
+            if (!modeReported) {
+              return <NotReported mode={mode} />;
+            }
 
             const safePressure = Math.min(pressure, maxLimit);
             const safeMaxPressure = Math.min(maxPressure, maxLimit);
@@ -354,7 +358,7 @@ export default function Therapy() {
         </section>
 
         {/* Mobile Therapy Settings */}
-        <div className="mobile-therapy-settings">
+        <div className="mobile-therapy-settings" inert={deviceData.therapy_running ? '' : undefined}>
           {/* Mode Switcher */}
           <div className="mobile-mode-switcher">
             <button 
@@ -375,7 +379,9 @@ export default function Therapy() {
 
           {/* Settings Panel */}
           <div className="mobile-settings-panel">
-            {mode === 'cpap' ? (
+            {!modeReported ? (
+              <NotReported mode={mode} />
+            ) : mode === 'cpap' ? (
               <div className="settings-mode-card">
                 <div className="settings-card-header">
                   <h3>CPAP - Pressure Setting</h3>
@@ -413,6 +419,7 @@ export default function Therapy() {
                     <button 
                       onClick={() => setRamp((v) => Math.max(0, v - 1))}
                       className="stepper-btn"
+                      aria-label="Decrease ramp time"
                     >
                       <MinusIcon />
                     </button>
@@ -423,6 +430,7 @@ export default function Therapy() {
                     <button 
                       onClick={() => setRamp((v) => Math.min(45, v + 1))}
                       className="stepper-btn"
+                      aria-label="Increase ramp time"
                     >
                       <PlusIcon />
                     </button>
@@ -498,6 +506,7 @@ export default function Therapy() {
                     <button 
                       onClick={() => setRamp((v) => Math.max(0, v - 1))}
                       className="stepper-btn"
+                      aria-label="Decrease ramp time"
                     >
                       <MinusIcon />
                     </button>
@@ -508,6 +517,7 @@ export default function Therapy() {
                     <button 
                       onClick={() => setRamp((v) => Math.min(45, v + 1))}
                       className="stepper-btn"
+                      aria-label="Increase ramp time"
                     >
                       <PlusIcon />
                     </button>
@@ -535,33 +545,6 @@ export default function Therapy() {
               </div>
             )}
 
-            {/* Maintenance row */}
-            <div className="mobile-maintenance-row">
-              <div className="maintenance-col-item">
-                <div className="m-icon-wrapper">
-                  <MaskIcon />
-                </div>
-                <div className="m-text-info">
-                  <h5>Next Mask Change</h5>
-                  <span className="m-status-text green-status">28 days left</span>
-                </div>
-              </div>
-              
-              <div className="maintenance-vertical-divider"></div>
-
-              <div className="maintenance-col-item clickable-item">
-                <div className="m-icon-wrapper filter-icon-color">
-                  <DotsIcon />
-                </div>
-                <div className="m-text-info">
-                  <h5>Filter Life</h5>
-                  <span className="m-status-text green-status">56% Remaining</span>
-                </div>
-                <div className="chevron-right-arrow">
-                  <ChevronRightIcon />
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>

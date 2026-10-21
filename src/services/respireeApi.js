@@ -1,4 +1,5 @@
-import { clearCognitoSession, getCognitoSession, refreshCognitoSession, loginWithCognito } from './respireeAuth';
+import { clearCognitoSession, getCognitoSession, refreshCognitoSession } from './respireeAuth';
+import { parseReportRows } from './reportFileParser';
 
 const BASE_URL = import.meta.env.VITE_RESPIREE_API_BASE_URL
   || (import.meta.env.DEV ? '/api-proxy' : 'https://52ct9sbsu3.execute-api.us-east-1.amazonaws.com');
@@ -38,6 +39,17 @@ function extractSerial(item) {
   return firstDefined(item?.serial, item?.deviceId, item?.device_id, item?.id, item?.device_id_serial, item?.deviceSerial) || '';
 }
 
+function extractTherapyStatus(item) {
+  return String(firstDefined(
+    item?.therapy_status,
+    item?.therapyStatus,
+    item?.data?.therapy_status,
+    item?.data?.therapyStatus,
+    item?.state?.therapy_status,
+    item?.state?.therapyStatus,
+  ) || '').toUpperCase();
+}
+
 function extractStatus(item, syncState, latestTelemetry) {
   const explicit = firstDefined(item?.status, syncState?.status, syncState?.direction, latestTelemetry?.status);
   if (!explicit) return 'unknown';
@@ -68,7 +80,7 @@ function normalizeTelemetry(raw = {}) {
     const ahi = Number((bytes[5] / 10).toFixed(1));
     const mask_leak = Number((bytes[6] / 10).toFixed(1));
     const pressure_95 = Number(bytes[7].toFixed(1));
-    const therapy_mode = bytes[8] === 3 ? 'CPAP' : 'AUTO CPAP';
+    const therapy_mode = bytes[8] === 3 ? 'CPAP' : null;
 
     parsed = {
       serial: raw.device_id || '',
@@ -78,22 +90,23 @@ function normalizeTelemetry(raw = {}) {
       pressure_95,
       compliance_pct: usage_hours >= 4.0 ? 100 : 0,
       therapy_mode,
-      pressure: pressure_95,
-      min_pressure: bytes[10] || 4,
-      max_pressure: bytes[9] || 20,
-      aflex: bytes[11] || 2,
-      ramp: bytes[12] || 0,
+      min_pressure: bytes[10],
+      max_pressure: bytes[9],
+      aflex: bytes[11],
+      ramp: bytes[12],
       timestamp: ts,
     };
   }
 
-  const autoObj = raw.AUTO || raw.settings?.AUTO || raw.device_settings?.AUTO || raw.decoded_payload?.AUTO;
-  const cpapObj = raw.CPAP || raw.settings?.CPAP || raw.device_settings?.CPAP || raw.decoded_payload?.CPAP;
+  const autoObj = raw.AUTO || raw.settings?.AUTO || raw.device_settings?.AUTO || raw.decoded_payload?.AUTO || raw.modes?.AUTO;
+  const cpapObj = raw.CPAP || raw.settings?.CPAP || raw.device_settings?.CPAP || raw.decoded_payload?.CPAP || raw.modes?.CPAP;
 
-  const therapyModeRaw = firstDefined(parsed.therapy_mode, raw.therapy_mode, raw.therapyMode, raw.mode);
+  const therapyModeRaw = firstDefined(parsed.therapy_mode, raw.therapy_mode, raw.therapyMode, raw.mode, raw.activeMode);
   const therapyMode = typeof therapyModeRaw === 'string' && therapyModeRaw.toLowerCase().includes('auto')
     ? 'AUTO CPAP'
-    : (therapyModeRaw || 'CPAP');
+    : (therapyModeRaw || null);
+
+  const ts0 = parsed.timestamp || firstDefined(raw.timestamp, raw.time, raw.deviceTimestamp, raw.created_at, raw.recorded_at, raw.synced_at, raw.updated_at);
 
   return {
     raw,
@@ -109,9 +122,9 @@ function normalizeTelemetry(raw = {}) {
     max_pressure: autoObj?.maxPressure ?? parsed.max_pressure ?? toNumber(firstDefined(raw.max_pressure, raw.maxPressure)),
     aflex: autoObj?.aflex ?? parsed.aflex ?? toNumber(firstDefined(raw.aflex, raw.epr, raw.epr_level)),
     ramp: cpapObj?.ramp ?? autoObj?.ramp ?? parsed.ramp ?? toNumber(firstDefined(raw.ramp, raw.ramp_time, raw.rampTime)),
-    timestamp: parsed.timestamp || firstDefined(raw.timestamp, raw.time, raw.created_at, raw.recorded_at, raw.synced_at, raw.updated_at),
-    dateLabel: formatSessionLabel(parsed.timestamp || firstDefined(raw.timestamp, raw.time, raw.created_at, raw.recorded_at, raw.synced_at, raw.updated_at)),
-    displayDate: formatSessionDate(parsed.timestamp || firstDefined(raw.timestamp, raw.time, raw.created_at, raw.recorded_at, raw.synced_at, raw.updated_at)),
+    timestamp: ts0,
+    dateLabel: formatSessionLabel(ts0),
+    displayDate: formatSessionDate(ts0),
   };
 }
 
@@ -124,10 +137,12 @@ function normalizeDeviceSummary(raw = {}) {
   return {
     raw,
     serial,
-    model: firstDefined(raw.model, raw.device_model, raw.deviceModel, raw.product_line, raw.name) || serial || 'Device',
-    firmware: firstDefined(raw.firmware, raw.firmwareVersion, raw.software_version, raw.softwareVersion) || '—',
-    patient_name: firstDefined(raw.patient_name, raw.patientName, raw.owner_name, raw.user_name, raw.name, serial) || serial || 'Device',
+    model: firstDefined(raw.model, raw.device_model, raw.deviceModel, raw.product_line) || null,
+    firmware: firstDefined(raw.firmware, raw.firmware_version, raw.firmwareVersion, raw.software_version, raw.softwareVersion) || '—',
+    patient_name: firstDefined(raw.patient_name, raw.patientName, raw.owner_name, raw.user_name) || null,
     status,
+    device_type: firstDefined(raw.device_type, raw.deviceType) || '',
+    therapy_status: extractTherapyStatus(raw),
     compliance_pct: latest.compliance_pct ?? toNumber(firstDefined(raw.compliance_pct, raw.compliancePct)),
     ahi: latest.ahi ?? toNumber(firstDefined(raw.ahi)),
     usage_hours: latest.usage_hours ?? toNumber(firstDefined(raw.usage_hours)),
@@ -151,27 +166,28 @@ function normalizeSessions(history = []) {
     const cpapObj = entryPayload.CPAP || entry.CPAP || entryPayload.settings?.CPAP;
     const isSettingsFrame = (entryPayload.CONFIG || autoObj || cpapObj) && !hasRawBytes;
 
-    const serverTs = entry?.server_timestamp || entry?.serverTimestamp || entry?.device_timestamp || entry?.timestamp;
+    const serverTs = entry?.server_timestamp || entry?.serverTimestamp || entry?.device_timestamp || entry?.deviceTimestamp
+      || entry?.session_timestamp || entry?.sessionTimestamp || entry?.timestamp || entry?.date;
     const tsMs = serverTs ? new Date(serverTs).getTime() : 0;
 
     if (isSettingsFrame) {
-      const mode = entry.mode || entryPayload.mode || (cpapObj ? 'CPAP' : 'AUTO CPAP');
+      const mode = entry.mode || entryPayload.mode || null;
       return {
         type: 'SETTINGS_UPDATE',
         date: formatSessionLabel(serverTs),
         display_date: formatSessionDate(serverTs),
         timestamp: tsMs,
         mode,
-        pressure: cpapObj?.pressure ?? 10,
-        min_pressure: autoObj?.minPressure ?? 4,
-        max_pressure: autoObj?.maxPressure ?? 20,
-        aflex: autoObj?.aflex ?? 2,
-        ramp: cpapObj?.ramp ?? autoObj?.ramp ?? 20,
-        usage_hours: 0,
-        ahi: 0,
-        mask_leak: 0,
-        pressure_95: 0,
-        compliance_pct: 100,
+        pressure: cpapObj?.pressure ?? null,
+        min_pressure: autoObj?.minPressure ?? null,
+        max_pressure: autoObj?.maxPressure ?? null,
+        aflex: autoObj?.aflex ?? null,
+        ramp: (/auto/i.test(String(mode)) ? autoObj?.ramp : cpapObj?.ramp) ?? null,
+        usage_hours: null,
+        ahi: null,
+        mask_leak: null,
+        pressure_95: null,
+        compliance_pct: null,
         raw: entry,
       };
     }
@@ -186,11 +202,11 @@ function normalizeSessions(history = []) {
       date: telemetry.dateLabel,
       display_date: telemetry.displayDate,
       timestamp: telemetry.timestamp || tsMs,
-      ahi: telemetry.ahi ?? 0,
-      usage_hours: telemetry.usage_hours ?? 0,
-      mask_leak: telemetry.mask_leak ?? 0,
-      pressure_95: telemetry.pressure_95 ?? 0,
-      compliance_pct: telemetry.compliance_pct ?? 0,
+      ahi: telemetry.ahi ?? null,
+      usage_hours: telemetry.usage_hours ?? null,
+      mask_leak: telemetry.mask_leak ?? null,
+      pressure_95: telemetry.pressure_95 ?? null,
+      compliance_pct: telemetry.compliance_pct ?? null,
       mode: telemetry.therapy_mode,
       pressure: telemetry.pressure,
       min_pressure: telemetry.min_pressure,
@@ -202,13 +218,62 @@ function normalizeSessions(history = []) {
   });
 }
 
-function normalizeDeviceDetail(summary, latest, history, syncState) {
+function normalizeReportList(raw = []) {
+  if (Array.isArray(raw)) return raw;
+  return raw?.data?.items || raw?.data?.reports || raw?.items || raw?.reports
+    || (Array.isArray(raw?.data) ? raw.data : []) || raw?.records || [];
+}
+
+/**
+ * GET /devices/{id}/reports rows are the device's session records (the same
+ * record as REPORTFL.TXT), so they share the file parser's rules and come back
+ * as one row per day, oldest first.
+ */
+function reportDaysToSessions(rows) {
+  return parseReportRows(rows).days.map((d) => ({
+    type: 'REPORT_DAY',
+    date: formatSessionLabel(d.timestamp),
+    display_date: formatSessionDate(d.timestamp),
+    timestamp: d.timestamp,
+    usage_hours: d.usage_hours,
+    ahi: d.ahi,
+    mask_leak: d.mask_leak ?? null,
+    pressure_95: d.pressure_95 ?? null,
+    compliance_pct: d.usage_hours >= 4 ? 100 : 0,
+    mode: d.mode,
+    raw: d,
+  }));
+}
+
+/** COMFORT / OPTIONS wire fields → the snake_case keys the Settings screen reads. */
+function comfortOptionSettings(modes = {}) {
+  const comfort = modes.COMFORT || {};
+  const options = modes.OPTIONS || {};
+  const out = {
+    mask_type: comfort.maskType,
+    tube_type: comfort.tubeType,
+    humidifier: firstDefined(comfort.humidifierLevel, comfort.humidifier),
+    ramp_time: comfort.rampTime,
+    i_mode: options.iModeEnabled,
+    leak_alert: options.leakAlertEnabled,
+    sleep_mode: options.sleepModeEnabled,
+  };
+  return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined && v !== null));
+}
+
+function normalizeDeviceDetail(summary, latest, history, syncState, reports = []) {
   const deviceSummary = summary || {};
-  const sessions = normalizeSessions(history);
+  const storedReports = normalizeReportList(reports);
+  const reportSessions = reportDaysToSessions(storedReports);
+  const allSessions = reportSessions.length ? reportSessions : normalizeSessions(history);
+  // Live history is mostly FULL_SYNC settings frames. They are not nights of
+  // therapy, so they must never feed usage, AHI or compliance figures.
+  const sessions = allSessions.filter((s) => s.type !== 'SETTINGS_UPDATE');
+  const settingsHistory = allSessions.filter((s) => s.type === 'SETTINGS_UPDATE');
   const actualSyncState = syncState?.data || syncState || {};
 
-  const latestDataWrapper = latest?.data || latest || {};
-  const latestDataPayload = latestDataWrapper.decoded_payload || {};
+  const latestDataWrapper = latest?.data || latest?.telemetry || latest || {};
+  const latestDataPayload = latestDataWrapper.decoded_payload || latestDataWrapper.modes || {};
   const latestTelemetry = {
     ...latestDataWrapper,
     ...latestDataPayload,
@@ -219,7 +284,8 @@ function normalizeDeviceDetail(summary, latest, history, syncState) {
   // If latest telemetry is a settings configuration frame without clinical session bytes,
   // fallback to the most recent clinical session for top metric cards
   if ((!telemetry.usage_hours && !telemetry.ahi && !telemetry.mask_leak) && sessions.length > 0) {
-    const latestSession = sessions[0];
+    // Sources differ in order; the newest session is the one with the latest timestamp.
+    const latestSession = sessions.reduce((a, b) => ((b.timestamp || 0) > (a.timestamp || 0) ? b : a));
     telemetry = {
       ...telemetry,
       usage_hours: latestSession.usage_hours,
@@ -236,44 +302,42 @@ function normalizeDeviceDetail(summary, latest, history, syncState) {
   const serial = deviceSummary.serial || telemetry.serial || extractSerial(latestTelemetry) || '';
   const settings = {
     therapy_mode: telemetry.therapy_mode,
-    pressure: telemetry.pressure ?? 0,
-    min_pressure: telemetry.min_pressure ?? 4,
-    max_pressure: telemetry.max_pressure ?? 30,
-    aflex: telemetry.aflex ?? 0,
-    ramp: telemetry.ramp ?? 0,
+    pressure: telemetry.pressure ?? null,
+    min_pressure: telemetry.min_pressure ?? null,
+    max_pressure: telemetry.max_pressure ?? null,
+    aflex: telemetry.aflex ?? null,
+    ramp: telemetry.ramp ?? null,
+    ...comfortOptionSettings(latestDataPayload),
   };
 
   return {
     ...deviceSummary,
     serial,
     device_online: extractStatus(deviceSummary.raw || {}, actualSyncState, telemetry.raw) === 'online',
-    model: deviceSummary.model || 'Device',
+    therapy_running: String(deviceSummary.therapy_status || '').toUpperCase() === 'RUNNING',
+    model: deviceSummary.model || null,
     firmware: deviceSummary.firmware || '—',
     patient: {
-      id: deviceSummary.raw?.patient_id || deviceSummary.raw?.patientId || serial,
-      name: deviceSummary.patient_name || serial,
+      id: deviceSummary.raw?.patient_id || deviceSummary.raw?.patientId || null,
+      name: deviceSummary.patient_name || null,
     },
     live_data: {
-      ahi: telemetry.ahi ?? 0,
-      mask_leak: telemetry.mask_leak ?? 0,
-      pressure_95: telemetry.pressure_95 ?? 0,
-      usage_hours: telemetry.usage_hours ?? 0,
-      compliance_pct: telemetry.compliance_pct ?? 0,
+      ahi: telemetry.ahi ?? null,
+      mask_leak: telemetry.mask_leak ?? null,
+      pressure_95: telemetry.pressure_95 ?? null,
+      usage_hours: telemetry.usage_hours ?? null,
+      // Share of recorded nights with at least 4 h of use, not a single night's yes/no.
+      compliance_pct: sessions.length
+        ? Math.round((sessions.filter((x) => x.usage_hours >= 4).length / sessions.length) * 100)
+        : null,
     },
     settings,
-    sessions: sessions.length ? sessions : [{
-      date: telemetry.dateLabel,
-      display_date: telemetry.displayDate,
-      timestamp: telemetry.timestamp,
-      ahi: telemetry.ahi ?? 0,
-      usage_hours: telemetry.usage_hours ?? 0,
-      mask_leak: telemetry.mask_leak ?? 0,
-      pressure_95: telemetry.pressure_95 ?? 0,
-      compliance_pct: telemetry.compliance_pct ?? 0,
-      raw: latestTelemetry,
-    }],
+    sessions,
+    settings_history: settingsHistory,
+    has_session_data: sessions.length > 0,
     sync_state: actualSyncState,
-    latest_telemetry: latest?.data || latest || {},
+    reports: storedReports,
+    latest_telemetry: latest?.data || latest?.telemetry || latest || {},
     readOnly: false,
   };
 }
@@ -329,6 +393,18 @@ async function fetchJson(path, options = {}) {
       headers,
       signal: controller.signal,
     });
+  } catch (err) {
+    // Tag the two failures that never reach the server so the UI can tell
+    // "the server is slow" apart from "we could not connect at all".
+    if (err?.name === 'AbortError') {
+      const timeout = new Error(`The server did not respond within ${REQUEST_TIMEOUT_MS / 1000} seconds.`);
+      timeout.code = 'TIMEOUT';
+      timeout.path = path;
+      throw timeout;
+    }
+    err.code = err.code || 'NETWORK';
+    err.path = path;
+    throw err;
   } finally {
     clearTimeout(timer);
   }
@@ -350,15 +426,10 @@ function recoverSession() {
           console.warn('[respireeApi] Refresh token failed:', refreshErr);
         }
       }
-      try {
-        console.log('[respireeApi] Performing silent re-authentication with Cognito...');
-        await loginWithCognito('kanishka.sharma@deckmount.in', 'KanishkaDeck@20');
-        return true;
-      } catch (loginErr) {
-        console.error('[respireeApi] Auto re-login failed:', loginErr);
-        clearCognitoSession();
-        return false;
-      }
+      // The refresh token is gone or rejected: the user must sign in again.
+      clearCognitoSession();
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('resprox:session-expired'));
+      return false;
     })().finally(() => { sessionRecovery = null; });
   }
   return sessionRecovery;
@@ -369,7 +440,7 @@ async function request(path, options = {}, { retry = true } = {}) {
   try {
     res = await fetchJson(path, options);
   } catch (err) {
-    if (retry) {
+    if (retry && err.code !== 'TIMEOUT') {
       await new Promise(r => setTimeout(r, 1000));
       return request(path, options, { retry: false });
     }
@@ -431,21 +502,32 @@ async function getDeviceDetail(serial, { force = false } = {}) {
     invalidate(`detail:${serial}`);
   }
   return dedupe(`detail:${serial}`, DETAIL_TTL_MS, async () => {
-    const [devices, latest, history, syncState] = await Promise.all([
+    const [devices, latest, history, syncState, reports] = await Promise.all([
       getDevices().catch(() => []),
       request(`/devices/${encodeURIComponent(serial)}/telemetry/latest`),
       request(`/devices/${encodeURIComponent(serial)}/telemetry/history?page=1&limit=20`),
       request(`/devices/${encodeURIComponent(serial)}/sync-state`),
+      // Older deployments may not expose stored reports yet; telemetry history
+      // remains a safe fallback until that endpoint is available.
+      request(`/devices/${encodeURIComponent(serial)}/reports`).catch(() => []),
     ]);
 
-    const summary = devices.find((device) => device.serial === serial) || { serial, model: 'Device', firmware: '—', patient_name: serial, raw: {} };
-    return normalizeDeviceDetail(summary, latest, history, syncState);
+    const summary = devices.find((device) => device.serial === serial) || { serial, model: null, firmware: '—', patient_name: null, raw: {} };
+    return normalizeDeviceDetail(summary, latest, history, syncState, reports);
   });
 }
 
+// The documented shape is { syncing, lastSynced }; the live API (Oct 2026) still returns
+// { sync_status: "SYNCED", last_device_upload, updated_at, ... }. Read both.
 async function getSyncState(serial) {
   const res = await request(`/devices/${encodeURIComponent(serial)}/sync-state`);
-  return res?.data || res || {};
+  const data = res?.data || res || {};
+  return {
+    ...data,
+    syncing: data.syncing ?? /SYNCING|IN_PROGRESS|PENDING|RUNNING|STARTED/i.test(String(data.sync_status || '')),
+    // Anything that moves when new data lands; used only to notice that a sync happened.
+    progressMarker: data.lastSynced ?? data.last_synced ?? data.last_device_upload ?? data.updated_at ?? null,
+  };
 }
 
 async function getTelemetryHistory(serial, page = 1, limit = 20) {
@@ -456,88 +538,44 @@ async function getTelemetryHistory(serial, page = 1, limit = 20) {
 async function updateDeviceSettings(serial, settings) {
   // Fetch latest telemetry for baseline settings comparison
   let baseline = {};
-  let currentMode = 'CPAP';
+  let currentMode = null;
   try {
     const latest = await request(`/devices/${encodeURIComponent(serial)}/telemetry/latest`);
-    const latestData = latest?.data || latest || {};
-    baseline = latestData.decoded_payload || {};
-    currentMode = latestData.mode || 'CPAP';
+    const latestData = latest?.data || latest?.telemetry || latest || {};
+    baseline = latestData.decoded_payload || latestData.modes || {};
+    currentMode = latestData.mode || latestData.activeMode || null;
   } catch (err) {
     console.warn("[respireeApi] Failed to fetch latest telemetry for baseline settings comparison:", err);
   }
 
-  const proposedMode = (settings.therapy_mode === 'AUTO CPAP' || settings.therapy_mode === 'AUTO') ? 'AUTO' : 'CPAP';
+  const proposedMode = /auto/i.test(String(settings.therapy_mode)) ? 'AUTO'
+    : settings.therapy_mode === 'CPAP' ? 'CPAP' : null;
+  const fields = proposedMode === 'CPAP'
+    ? { pressure: settings.pressure, ramp: settings.ramp }
+    : { minPressure: settings.min_pressure, maxPressure: settings.max_pressure, aflex: settings.aflex, ramp: settings.ramp };
 
-  const payload = {
-    CPAP: null,
-    AUTO: null,
-    S: null,
-    ST: null,
-    T: null,
-    VAPS: null,
-    CONFIG: null,
-    COMFORT: null,
-    OPTIONS: null
-  };
+  // Never invent a value for a real device: every field must come from the
+  // device or the user. Refuse rather than fill a gap with a guess.
+  const missing = proposedMode
+    ? Object.entries(fields).filter(([, v]) => v == null || !Number.isFinite(Number(v))).map(([k]) => k)
+    : ['therapy mode'];
+  if (missing.length) {
+    const err = new Error(`${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not set, so nothing was sent to the device.`);
+    err.code = 'INCOMPLETE_SETTINGS';
+    throw err;
+  }
+  const values = Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, Number(v)]));
 
-  if (proposedMode !== currentMode) {
-    // Mode changed, send the entire proposed mode settings
-    if (proposedMode === 'CPAP') {
-      payload.CPAP = {
-        pressure: Number(settings.pressure ?? 10),
-        ramp: Number(settings.ramp ?? 20)
-      };
-    } else if (proposedMode === 'AUTO') {
-      payload.AUTO = {
-        minPressure: Number(settings.min_pressure ?? 4),
-        maxPressure: Number(settings.max_pressure ?? 20),
-        aflex: Number(settings.aflex ?? 2),
-        ramp: Number(settings.ramp ?? 20)
-      };
-    }
-  } else {
-    // Mode is the same, only send changed fields
-    if (proposedMode === 'CPAP') {
-      const baselineCPAP = baseline.CPAP || {};
-      const cpapPatch = {};
-      const proposedPressure = Number(settings.pressure ?? 10);
-      const proposedRamp = Number(settings.ramp ?? 20);
+  // The API takes exactly one mode per request: { "CPAP": {...} } or { "AUTO": {...} }.
+  // A mode switch sends the whole mode; otherwise only the fields that changed.
+  const base = baseline[proposedMode] || {};
+  const patch = proposedMode !== currentMode
+    ? values
+    : Object.fromEntries(Object.entries(values).filter(([k, v]) => v !== base[k]));
+  const payload = Object.keys(patch).length ? { [proposedMode]: patch } : {};
 
-      if (proposedPressure !== baselineCPAP.pressure) {
-        cpapPatch.pressure = proposedPressure;
-      }
-      if (proposedRamp !== baselineCPAP.ramp) {
-        cpapPatch.ramp = proposedRamp;
-      }
-
-      if (Object.keys(cpapPatch).length > 0) {
-        payload.CPAP = cpapPatch;
-      }
-    } else if (proposedMode === 'AUTO') {
-      const baselineAUTO = baseline.AUTO || {};
-      const autoPatch = {};
-      const proposedMin = Number(settings.min_pressure ?? 4);
-      const proposedMax = Number(settings.max_pressure ?? 20);
-      const proposedAflex = Number(settings.aflex ?? 2);
-      const proposedRamp = Number(settings.ramp ?? 20);
-
-      if (proposedMin !== baselineAUTO.minPressure) {
-        autoPatch.minPressure = proposedMin;
-      }
-      if (proposedMax !== baselineAUTO.maxPressure) {
-        autoPatch.maxPressure = proposedMax;
-      }
-      if (proposedAflex !== baselineAUTO.aflex) {
-        autoPatch.aflex = proposedAflex;
-      }
-      if (proposedRamp !== baselineAUTO.ramp) {
-        autoPatch.ramp = proposedRamp;
-      }
-
-      if (Object.keys(autoPatch).length > 0) {
-        payload.AUTO = autoPatch;
-      }
-    }
+  if (!Object.keys(payload).length) {
+    return { success: true, commandId: null, status: 'NO_CHANGE' };
   }
 
   // Cached reads are stale the moment we write, so drop them.
@@ -551,25 +589,22 @@ async function updateDeviceSettings(serial, settings) {
 }
 
 /**
- * PATCH an explicit set of mode groups for one device.
+ * PATCH one mode group for one device.
  *
  * `updateDeviceSettings` above owns the CPAP/AUTO therapy pressures and diffs
  * them against telemetry. This one is for screens that already know exactly
- * which groups changed — the settings screen tracks its own draft, so
+ * which group changed — the settings screen tracks its own draft, so
  * re-deriving the diff here would only risk disagreeing with what the user was
  * shown in the confirm dialog.
  *
- * `groups` is keyed by wire group name, e.g.
- *   { COMFORT: { rampTime, humidifier, tubeType, maskType },
- *     OPTIONS: { iMode, leakAlert, sleepMode } }
- * Anything absent is sent as null, which the server reads as "unchanged".
+ * `groups` holds exactly one wire group, e.g.
+ *   { COMFORT: { rampTime, humidifierLevel, tubeType, maskType } } or
+ *   { OPTIONS: { iModeEnabled, leakAlertEnabled, sleepModeEnabled } }  // 0/1
  */
 async function updateDeviceGroups(serial, groups = {}) {
-  const payload = {
-    CPAP: null, AUTO: null, S: null, ST: null, T: null,
-    VAPS: null, CONFIG: null, COMFORT: null, OPTIONS: null,
-    ...groups,
-  };
+  const entries = Object.entries(groups).filter(([, values]) => values != null);
+  // One mode per request is the API contract; callers send groups one at a time.
+  if (entries.length !== 1) throw new Error(`updateDeviceGroups expects exactly one group, got ${entries.length}`);
 
   // Cached reads are stale the moment we write, so drop them.
   invalidate('devices');
@@ -577,20 +612,96 @@ async function updateDeviceGroups(serial, groups = {}) {
 
   return request(`/devices/${encodeURIComponent(serial)}/settings`, {
     method: 'PATCH',
-    body: JSON.stringify(payload),
+    body: JSON.stringify(Object.fromEntries(entries)),
   });
 }
+
+// The API reports ACKNOWLEDGED / FAILED; older servers said ACKED / NACKED.
+// Everything downstream speaks ACKED / NACKED / TIMEOUT, so translate once here.
+const COMMAND_STATUS = {
+  ACKED: 'ACKED', ACKNOWLEDGED: 'ACKED',
+  NACKED: 'NACKED', FAILED: 'NACKED',
+  TIMEOUT: 'TIMEOUT',
+};
 
 async function pollCommandStatus(deviceId, commandId, { intervalMs = 2000, timeoutMs = 40000 } = {}) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const res = await request(`/devices/${encodeURIComponent(deviceId)}/commands/${encodeURIComponent(commandId)}/status`);
-    if (res && ["ACKED", "NACKED", "TIMEOUT"].includes(res.status)) {
-      return res;
+    const status = COMMAND_STATUS[String(res?.status ?? res?.data?.status ?? '').toUpperCase()];
+    if (status) {
+      return { ...res, status };
     }
     await new Promise(resolve => setTimeout(resolve, intervalMs));
   }
   throw new Error("Polling timed out client-side");
+}
+
+/** POST /devices/{id}/therapy/start|stop. The device confirms asynchronously. */
+async function setTherapy(serial, action) {
+  if (action !== 'start' && action !== 'stop') throw new Error(`Invalid therapy action: ${action}`);
+  invalidate('devices');
+  invalidate(`detail:${serial}`);
+  return request(`/devices/${encodeURIComponent(serial)}/therapy/${action}`, { method: 'POST', body: '{}' });
+}
+
+/**
+ * Start a report sync and wait until the backend says it is finished.
+ * The POST only means "started", and `syncing` can still read false for a
+ * moment afterwards, so a quiet false only counts as done once the sync was
+ * seen running, the sync marker moved, or the device had 15 s to start (an
+ * up-to-date device sends nothing). A 409 means a sync is already running:
+ * follow that one instead of failing.
+ */
+async function syncReports(serial, { timeoutMs = 180_000 } = {}) {
+  const before = await getSyncState(serial).catch(() => ({}));
+  try {
+    await triggerReportSync(serial);
+  } catch (err) {
+    if (err?.status !== 409) throw err;
+  }
+  const started = Date.now();
+  let seenSyncing = false;
+  let state = {};
+  while (Date.now() - started < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 3000));
+    state = await getSyncState(serial);
+    if (state.syncing) { seenSyncing = true; continue; }
+    if (seenSyncing || state.progressMarker !== before.progressMarker || Date.now() - started > 15_000) break;
+  }
+  invalidate('devices');
+  invalidate(`detail:${serial}`);
+  return { stillRunning: Boolean(state.syncing) };
+}
+
+/** POST /devices/{id}/reports/sync. Progress is read from getSyncState(). */
+async function triggerReportSync(serial) {
+  invalidate(`detail:${serial}`);
+  return request(`/devices/${encodeURIComponent(serial)}/reports/sync`, { method: 'POST', body: '{}' });
+}
+
+async function getReports(serial) {
+  return normalizeReportList(await request(`/devices/${encodeURIComponent(serial)}/reports`));
+}
+
+async function pollTherapyStatus(serial, expected, { intervalMs = 2000, timeoutMs = 60000 } = {}) {
+  const target = String(expected).toUpperCase();
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const [devices, syncState] = await Promise.all([
+      getDevices({ force: true }),
+      getSyncState(serial).catch(() => ({})),
+    ]);
+    const device = devices.find((item) => item.serial === serial);
+    const status = extractTherapyStatus(device)
+      || extractTherapyStatus(device?.raw)
+      || extractTherapyStatus(syncState);
+    if (status === target) return device;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  const error = new Error(`Therapy did not reach ${target} within ${timeoutMs / 1000} seconds.`);
+  error.code = 'THERAPY_STATUS_TIMEOUT';
+  throw error;
 }
 
 export const devicesAPI = {
@@ -601,6 +712,11 @@ export const devicesAPI = {
   updateDeviceSettings,
   updateDeviceGroups,
   pollCommandStatus,
+  setTherapy,
+  triggerReportSync,
+  syncReports,
+  getReports,
+  pollTherapyStatus,
 };
 
 export {
