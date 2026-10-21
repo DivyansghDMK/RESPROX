@@ -189,6 +189,7 @@ export default function Settings() {
   const phoneConnected = /app connected/i.test(String(
     deviceData?.raw?.remarks ?? deviceData?.raw?.Remarks ?? deviceData?.raw?.offline_reason ?? ''
   ));
+  const settingsUnavailable = !deviceOnline || phoneConnected;
 
 
   const [committed, setCommitted] = useState(() => committedFrom(deviceData, ctx));
@@ -244,6 +245,10 @@ export default function Settings() {
   /** PATCH only the dirty groups, then wait for the device to confirm. */
   const sendChanges = useCallback(async () => {
     const serial = deviceData?.serial || adminActiveSerial;
+    if (!deviceOnline || phoneConnected) {
+      setFlow({ state: 'failed', reason: 'Settings cannot be applied while the device is offline or connected to a phone.' });
+      return;
+    }
     if (!serial) {
       setFlow({ state: 'failed', reason: 'No device selected.' });
       return;
@@ -359,14 +364,14 @@ export default function Settings() {
     notify.success('Settings applied', {
       message: `The device confirmed ${changeList.length} change${changeList.length === 1 ? '' : 's'}.`,
     });
-  }, [draft, committed, dirtyGroups, deviceData, adminActiveSerial, ctx, setRamp, setAflex, notify, changeList]);
+  }, [draft, committed, dirtyGroups, deviceData, adminActiveSerial, deviceOnline, phoneConnected, ctx, setRamp, setAflex, notify, changeList]);
 
   // Retry from a notification must call the *current* sendChanges, not the one
   // captured when the failure happened.
   const sendChangesRef = useRef(sendChanges);
   sendChangesRef.current = sendChanges;
 
-  const locked = isTherapyRunning;
+  const locked = isTherapyRunning || settingsUnavailable;
 
   if (!deviceData) return <DeviceDataState what="device settings" />;
 
@@ -385,7 +390,7 @@ export default function Settings() {
       </header>
 
       {/* 2 — Therapy locked banner */}
-      {locked && (
+      {isTherapyRunning && (
         <div className="therapy-locked" role="status">
           <span className="live-dot" />
           <div>
@@ -401,6 +406,13 @@ export default function Settings() {
             <strong>Connected to a phone</strong>
             <span>The device is paired with the mobile app over Bluetooth, so remote changes can't reach it right now.</span>
           </div>
+        </div>
+      )}
+
+      {!deviceOnline && (
+        <div className="settings-unavailable" role="status">
+          <strong>Device is offline</strong>
+          <span>Settings are read-only until the device reconnects to the server.</span>
         </div>
       )}
 
@@ -532,7 +544,7 @@ export default function Settings() {
       </SectionCard>
 
       {/* 8 — Floating apply bar */}
-      {isDirty && !locked && (
+      {isDirty && !locked && deviceOnline && !phoneConnected && (
         <div className="apply-bar" role="region" aria-label="Unsaved changes">
           <div className="msg">
             {changeList.length} change{changeList.length === 1 ? '' : 's'} pending
