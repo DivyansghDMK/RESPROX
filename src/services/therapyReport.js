@@ -12,6 +12,8 @@
 // rendered as "—" and their sections are omitted entirely. This is a clinical
 // document: a blank is correct where an estimate would be invented.
 
+import { buildTherapyStatistics, buildComplianceCheck } from './therapyStatistics.js';
+
 const ADDRESS = 'DeckMount - 683, Phase V, Udyog Vihar, Sector 19, Gurugram, Haryana 122016';
 
 const C = {
@@ -132,6 +134,21 @@ export function deriveReport({ deviceData, sessions = [], startDate, endDate, pr
   const leaks = days.map((d) => d.mask_leak).filter(Number.isFinite);
   const ahis = days.map((d) => d.ahi).filter(Number.isFinite);
 
+  // Device report records carry the CSA/OSA/HSA split (under `raw` for synced
+  // reports, top level for an uploaded file). Indices are pooled over hours and
+  // only given when every used night in the range has the split.
+  const splitOf = (d) => {
+    const src = d.raw && typeof d.raw === 'object' ? d.raw : d;
+    const parts = [src.csa, src.osa, src.hsa].map(Number);
+    return parts.every(Number.isFinite) ? parts : null;
+  };
+  const splitNights = used.map((d) => ({ hours: d.usage_hours, split: splitOf(d) }));
+  const splitHours = splitNights.every((n) => n.split) ? splitNights.reduce((a, n) => a + n.hours, 0) : 0;
+  const splitIndex = (i) => (splitHours > 0 ? splitNights.reduce((a, n) => a + n.split[i], 0) / splitHours : NaN);
+  const centralAi = splitIndex(0);
+  const obstructiveAi = splitIndex(1);
+  const hi = splitIndex(2);
+
   const settings = deviceData?.settings || {};
   const rawMode = String(settings.therapy_mode || days[days.length - 1]?.mode || 'CPAP');
   const mode = /bipap/i.test(rawMode) ? 'bipap' : /auto/i.test(rawMode) ? 'auto' : 'cpap';
@@ -168,11 +185,11 @@ export function deriveReport({ deviceData, sessions = [], startDate, endDate, pr
     // The telemetry frame reports a combined AHI only — the apnea/hypopnea
     // split is not transmitted, so it is reported as unavailable.
     therapy: {
-      ahi: mean(ahis),
-      hi: NaN,
-      ai: NaN,
-      centralAi: NaN,
-      obstructiveAi: NaN,
+      ahi: splitHours > 0 ? centralAi + obstructiveAi + hi : mean(ahis),
+      hi,
+      ai: centralAi + obstructiveAi,
+      centralAi,
+      obstructiveAi,
       unknownAi: NaN,
       avgLeak: mean(leaks),
       leakThreshold: 24,
@@ -290,6 +307,68 @@ function chartSection(title, panelRows, chartSvg) {
         <div class="chart-wrap">${chartSvg}</div>
       </div>
     </section>`;
+}
+
+/**
+ * OSCAR-style statistics and the compliance check, over every night up to the
+ * end of the report range — compliance is about the whole course of therapy,
+ * not just the nights a clinician chose to print.
+ */
+function statisticsSection(sessions, endDate) {
+  const end = endDate ? new Date(`${endDate}T23:59:59.999`) : null;
+  const rows = end ? sessions.filter((s) => !(s.timestamp > end.getTime())) : sessions;
+  const stats = buildTherapyStatistics(rows);
+  const check = buildComplianceCheck(rows);
+  if (!stats || !check) return '';
+
+  const date = (d) => new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(d);
+  const hm = (h) => {
+    if (!Number.isFinite(h)) return '—';
+    const whole = Math.floor(h);
+    const m = Math.round((h - whole) * 60);
+    return m === 60 ? `${whole + 1}h 00m` : `${whole}h ${String(m).padStart(2, '0')}m`;
+  };
+  const p100 = (v) => (Number.isFinite(v) ? `${Math.round(v)}%` : '—');
+  const n = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : '—');
+
+  const rowsSpec = [
+    ['Days in period', (p) => String(p.periodDays)],
+    ['Days used', (p) => `${p.usedDays} (${p100(p.usedPct)})`],
+    ['Compliance (>= 4 h)', (p) => p100(p.compliantPct)],
+    ['Average usage (days used)', (p) => hm(p.avgHoursUsed)],
+    ['AHI', (p) => n(p.ahi)],
+    ['Central apnea index (CSA)', (p) => n(p.csaIndex)],
+    ['Obstructive apnea index (OSA)', (p) => n(p.osaIndex)],
+    ['Hypopnea index (HSA)', (p) => n(p.hsaIndex)],
+    ['Average leak (L/min)', (p) => n(p.leak, 1)],
+    ['Average pressure (cmH2O)', (p) => n(p.pressure, 1)],
+  ];
+
+  const { initial, recent, rule } = check;
+  const verdict = { met: 'MET', 'not-met': 'NOT MET', 'in-progress': 'IN PROGRESS' }[initial.status];
+
+  return `
+<section class="chart-section">
+  <h2>Compliance</h2>
+  <div class="rule">
+    ${kvRows([
+      ['Rule', `>= 4 h on ${rule.requiredNights} of ${rule.windowDays} consecutive nights within the first ${rule.initialDays} days`],
+      ['Therapy start', `${date(initial.firstDay)} (day ${initial.daysElapsed} of ${rule.initialDays} recorded)`],
+      [`Best ${rule.windowDays}-night window`, `${initial.bestWindow.compliantNights}/${rule.windowDays} nights, ${date(initial.bestWindow.start)} - ${date(initial.bestWindow.end)}`],
+      ['Initial compliance', verdict],
+      [`Latest ${rule.windowDays} nights`, `${recent.compliantNights}/${rule.windowDays} (${Math.round(recent.pct)}%) - ${recent.met ? 'meets rule' : 'below rule'}`],
+    ])}
+  </div>
+</section>
+
+<section class="chart-section">
+  <h2>Statistics (up to ${esc(date(stats.lastDay))})</h2>
+  <table class="stats">
+    <thead><tr><th>Details</th>${stats.periods.map((p) => `<th>${esc(p.label)}${p.clipped ? '*' : ''}</th>`).join('')}</tr></thead>
+    <tbody>${rowsSpec.map(([label, get]) => `<tr><td>${esc(label)}</td>${stats.periods.map((p) => `<td>${esc(get(p))}</td>`).join('')}</tr>`).join('')}</tbody>
+  </table>
+  <p class="note">Indices are total events divided by total hours. Nights without a record count as not used. * Shorter period: therapy started ${esc(date(stats.firstDay))}.</p>
+</section>`;
 }
 
 // ── Brand mark ────────────────────────────────────────────────────────────────
@@ -487,6 +566,11 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
   .chart-wrap { flex: 1; min-width: 0; }
   .chart { width: 100%; height: auto; display: block; }
 
+  table.stats { width: 100%; border-collapse: collapse; font-size: 10px; }
+  table.stats th, table.stats td { padding: 5px 6px; border-bottom: 1px solid ${C.rule}; text-align: right; }
+  table.stats th:first-child, table.stats td:first-child { text-align: left; }
+  table.stats th { background: ${C.panel}; font-weight: 700; }
+
   .page-break { page-break-before: always; break-before: page; }
 
   .footer {
@@ -546,7 +630,7 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
       <span class="pair">AHI: <b>${num(therapy.ahi, 2)}</b></span>
     </div>
     <div class="metric">
-      <span class="metric-name">Apnea Index - L/Min</span>
+      <span class="metric-name">Apnea Index - Events/hr</span>
       <span class="pair">Central: <b>${num(therapy.centralAi, 2)}</b></span>
       <span class="pair">Obstructive: <b>${num(therapy.obstructiveAi, 2)}</b></span>
       <span class="pair">Unknown: <b>${num(therapy.unknownAi, 2)}</b></span>
@@ -572,6 +656,8 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
     ])}
   </div>
 </section>
+
+${statisticsSection(sessions, endDate)}
 
 <div class="page-break"></div>
 

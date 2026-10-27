@@ -9,6 +9,7 @@
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import GlassCard from '../components/GlassCard';
+import TherapyStatistics from '../components/TherapyStatistics';
 import { FileIcon, DownloadIcon, InfoIcon, CheckIcon, TrashIcon } from '../components/Icons';
 import { parseReportFile, dateRangeOf, daysToCSV, PARSER_CONSTANTS } from '../services/reportFileParser';
 
@@ -373,6 +374,9 @@ export default function AdminDataUpload() {
               </Notice>
             )}
           </GlassCard>
+
+          {/* ── Compliance check + statistics over the whole file ──────────── */}
+          <TherapyStatistics rows={parsed.days} style={{ marginTop: 20 }} />
 
           {/* ── Report details ─────────────────────────────────────────────── */}
           <GlassCard style={{ marginTop: 20 }}>

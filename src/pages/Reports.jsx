@@ -3,6 +3,7 @@ import DeviceDataState from '../components/DeviceDataState';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
+import TherapyStatistics from '../components/TherapyStatistics';
 import { FileIcon, InfoIcon } from '../components/Icons';
 import { useTherapy } from '../context/TherapyContext';
 
@@ -163,6 +164,9 @@ export default function Reports() {
           </div>
         </GlassCard>
       )}
+
+      {/* OSCAR-style compliance check and statistics */}
+      <TherapyStatistics rows={sessions} style={{ marginTop: '20px' }} />
 
       {/* Session compliance table */}
       {deviceData && (
