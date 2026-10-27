@@ -31,6 +31,7 @@ import {
   HelpSupport,
   AdminDataUpload,
   ForgotPassword,
+  DoctorSignup,
 } from './routes';
 
 // Authentication is always required; there is no demo/bypass mode.
@@ -54,7 +55,8 @@ function AppContent() {
 
   const { adminActiveSerial } = useTherapy();
   const activeSerial = adminActiveSerial || localStorage.getItem('adminActiveSerial') || '';
-  const isAuthPage = !SKIP_LOGIN && (location.pathname === '/login' || location.pathname === '/forgot-password' || location.pathname === '/');
+  const isAuthPage = !SKIP_LOGIN && (location.pathname === '/login' || location.pathname === '/forgot-password' || location.pathname === '/'
+  || location.pathname === '/doctor/login' || location.pathname === '/doctor/signup');
 
   useEffect(() => {
     if (isAuthPage) return;
@@ -96,7 +98,9 @@ function AppContent() {
       if (cancelled) return;
       gsap.fromTo('.content',
         { opacity: 0, y: 15 },
-        { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' }
+        // Clear the transform when done: a leftover one turns .content into the
+        // containing block for position: fixed, trapping overlays inside it.
+        { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out', clearProps: 'transform' }
       );
     });
     return () => { cancelled = true; };
@@ -125,6 +129,8 @@ function AppContent() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/doctor/login" element={<Login variant="doctor" />} />
+            <Route path="/doctor/signup" element={<DoctorSignup />} />
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </Suspense>

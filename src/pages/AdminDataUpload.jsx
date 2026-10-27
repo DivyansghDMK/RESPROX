@@ -10,11 +10,13 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import GlassCard from '../components/GlassCard';
 import TherapyStatistics from '../components/TherapyStatistics';
+import { ChartSkeleton } from '../components/Skeleton';
 import { FileIcon, DownloadIcon, InfoIcon, CheckIcon, TrashIcon } from '../components/Icons';
 import { parseReportFile, dateRangeOf, daysToCSV, PARSER_CONSTANTS } from '../services/reportFileParser';
 
 // recharts is ~300 kB; this page is useful before any chart is needed, so the
 // charts arrive on their own chunk once a file has actually been parsed.
+
 const ReportCharts = React.lazy(() => import('../components/ReportCharts'));
 
 const ACCEPT = '.txt,.TXT,.csv,.log,text/plain';
@@ -475,7 +477,7 @@ export default function AdminDataUpload() {
               These are the charts the generated report contains, over the selected date range.
               Hover any bar for that night&apos;s exact values.
             </p>
-            <React.Suspense fallback={<div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)' }}>Loading charts…</div>}>
+            <React.Suspense fallback={<ChartSkeleton height={260} label="Loading charts" />}>
               <ReportCharts days={daysInRange} />
             </React.Suspense>
           </GlassCard>

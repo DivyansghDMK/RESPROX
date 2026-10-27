@@ -1,5 +1,6 @@
 import { useNotify } from '../context/NotifyContext';
 import DeviceDataState from '../components/DeviceDataState';
+import { TrendsSkeleton } from '../components/Skeleton';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import GlassCard from '../components/GlassCard';
 import TrendChart from '../components/TrendChart';
@@ -92,7 +93,7 @@ export default function Trends() {
     };
   }, [displaySessions]);
 
-  if (!deviceData) return <DeviceDataState what="therapy trends" />;
+  if (!deviceData) return <DeviceDataState what="therapy trends" skeleton={TrendsSkeleton} />;
 
 
   // Exactly the nights on screen, as the device reported them; blanks stay blank.

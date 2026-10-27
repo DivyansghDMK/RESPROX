@@ -22,7 +22,9 @@
 // server's side of that conversation, not the browser's.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import DeviceDataState from '../components/DeviceDataState';
+import { SettingsSkeleton } from '../components/Skeleton';
 import { useTherapy } from '../context/TherapyContext';
 import {
   MaskIcon, BreezeIcon, GaugeIcon, ShieldIcon, CheckIcon,
@@ -373,7 +375,7 @@ export default function Settings() {
 
   const locked = isTherapyRunning || settingsUnavailable;
 
-  if (!deviceData) return <DeviceDataState what="device settings" />;
+  if (!deviceData) return <DeviceDataState what="device settings" skeleton={SettingsSkeleton} />;
 
   return (
     <div className="setting-screen">
@@ -557,68 +559,75 @@ export default function Settings() {
         </div>
       )}
 
-      {/* Confirm */}
-      {flow.state === 'confirming' && (
-        <div className="s-dialog-backdrop" onClick={() => setFlow({ state: 'idle' })}>
-          <div className="s-dialog" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-            <h3>Apply these settings?</h3>
-            <p>They are written to the device immediately.</p>
-            <ul className="change-list">
-              {changeList.map(([label, value]) => (
-                <li key={label}><span>{label}</span><b>{value}</b></li>
-              ))}
-            </ul>
-            <div className="actions">
-              <button type="button" className="ghost" onClick={() => setFlow({ state: 'idle' })}>Cancel</button>
-              <button type="button" className="primary" onClick={sendChanges}>Apply</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Sending — not dismissable */}
-      {flow.state === 'sending' && (
-        <div className="s-dialog-backdrop">
-          <div className="s-dialog" role="dialog" aria-modal="true">
-            <div className="spinner" />
-            <h3 style={{ textAlign: 'center' }}>Sending to device…</h3>
-            <p style={{ textAlign: 'center' }}>
-              Sent to the server; waiting for the device to confirm.
-            </p>
-            {pendingGroups.length > 0 && (
-              <div className="frames">
-                {pendingGroups.map((g) => <div key={g}>{g} → queued for {deviceData?.serial || adminActiveSerial}</div>)}
+      {/* Dialogs render on <body>: .content can carry a transform, which would
+          pin a fixed backdrop to the content area instead of the whole window. */}
+      {createPortal(
+        <>
+          {/* Confirm */}
+          {flow.state === 'confirming' && (
+            <div className="s-dialog-backdrop" onClick={() => setFlow({ state: 'idle' })}>
+              <div className="s-dialog" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+                <h3>Apply these settings?</h3>
+                <p>They are written to the device immediately.</p>
+                <ul className="change-list">
+                  {changeList.map(([label, value]) => (
+                    <li key={label}><span>{label}</span><b>{value}</b></li>
+                  ))}
+                </ul>
+                <div className="actions">
+                  <button type="button" className="ghost" onClick={() => setFlow({ state: 'idle' })}>Cancel</button>
+                  <button type="button" className="primary" onClick={sendChanges}>Apply</button>
+                </div>
               </div>
-            )}
-            <div className="actions">
-              <button
-                type="button" className="ghost"
-                onClick={() => {
-                  setFlow({ state: 'idle' });
-                  notify.info('Still sending in the background', {
-                    message: `The server has the change for ${deviceData?.serial || adminActiveSerial}. It will reach the device when it next connects.`,
-                  });
-                }}
-              >
-                Stop waiting
-              </button>
             </div>
-          </div>
-        </div>
-      )}
+          )}
 
-      {/* Failed */}
-      {flow.state === 'failed' && (
-        <div className="s-dialog-backdrop" onClick={() => setFlow({ state: 'idle' })}>
-          <div className="s-dialog" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-            <h3>Couldn&apos;t apply settings</h3>
-            <p>{flow.reason}</p>
-            <p style={{ marginTop: 10 }}>Your changes were rolled back to the values the device last confirmed.</p>
-            <div className="actions">
-              <button type="button" className="primary" onClick={() => setFlow({ state: 'idle' })}>OK</button>
+          {/* Sending — not dismissable */}
+          {flow.state === 'sending' && (
+            <div className="s-dialog-backdrop">
+              <div className="s-dialog" role="dialog" aria-modal="true">
+                <div className="spinner" />
+                <h3 style={{ textAlign: 'center' }}>Sending to device…</h3>
+                <p style={{ textAlign: 'center' }}>
+                  Sent to the server; waiting for the device to confirm.
+                </p>
+                {pendingGroups.length > 0 && (
+                  <div className="frames">
+                    {pendingGroups.map((g) => <div key={g}>{g} → queued for {deviceData?.serial || adminActiveSerial}</div>)}
+                  </div>
+                )}
+                <div className="actions">
+                  <button
+                    type="button" className="ghost"
+                    onClick={() => {
+                      setFlow({ state: 'idle' });
+                      notify.info('Still sending in the background', {
+                        message: `The server has the change for ${deviceData?.serial || adminActiveSerial}. It will reach the device when it next connects.`,
+                      });
+                    }}
+                  >
+                    Stop waiting
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          )}
+
+          {/* Failed */}
+          {flow.state === 'failed' && (
+            <div className="s-dialog-backdrop" onClick={() => setFlow({ state: 'idle' })}>
+              <div className="s-dialog" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+                <h3>Couldn&apos;t apply settings</h3>
+                <p>{flow.reason}</p>
+                <p style={{ marginTop: 10 }}>Your changes were rolled back to the values the device last confirmed.</p>
+                <div className="actions">
+                  <button type="button" className="primary" onClick={() => setFlow({ state: 'idle' })}>OK</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>,
+        document.body,
       )}
 
     </div>

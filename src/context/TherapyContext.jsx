@@ -40,12 +40,18 @@ export function TherapyProvider({ children }) {
     ramp: null
   });
 
+  // The serial whose data the screens should show. A response for any other
+  // serial was superseded by a device switch and must not overwrite it.
+  const latestSerial = useRef(null);
+
   const fetchDeviceData = useCallback(async (serial) => {
     if (!serial) return;
     console.log("[TherapyContext] fetchDeviceData called for serial:", serial);
+    latestSerial.current = serial;
     try {
       setDeviceLoadError(null);
       const data = await devicesAPI.getDeviceDetail(serial);
+      if (latestSerial.current !== serial) return;
       setDeviceData(data);
       setLastServerPull(new Date());
 
@@ -65,6 +71,7 @@ export function TherapyProvider({ children }) {
         ramp: settings.ramp ?? null
       };
     } catch (e) {
+      if (latestSerial.current !== serial) return;
       setDeviceLoadError(e);
       // Every screen renders off deviceData, so a silent failure here left the
       // whole app sitting on a loading state with the reason only in the
@@ -77,10 +84,20 @@ export function TherapyProvider({ children }) {
     }
   }, [notify]);
 
+  // On a device switch, drop the previous device's data so screens show a
+  // loading shimmer — never the old device's readings under the new serial.
+  const shownSerial = useRef(adminActiveSerial);
+  useEffect(() => {
+    if (shownSerial.current === adminActiveSerial) return;
+    shownSerial.current = adminActiveSerial;
+    setDeviceData(null);
+    setDeviceLoadError(null);
+  }, [adminActiveSerial]);
+
   useEffect(() => {
     if (!adminActiveSerial) {
       localStorage.removeItem('adminActiveSerial');
-      setDeviceData(null);
+      latestSerial.current = null;
       return;
     }
 

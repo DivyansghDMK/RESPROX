@@ -73,6 +73,34 @@ export async function confirmPasswordReset(email, code, password) {
   }, 'ConfirmForgotPassword');
 }
 
+/**
+ * Doctor self sign-up. Clinic and licence number are custom attributes, so the
+ * user pool must define custom:clinic and custom:license_no, and allow self
+ * sign-up, or Cognito rejects the request.
+ */
+export async function signUpDoctor({ name, email, password, clinic, licenseNo }) {
+  return callCognito({
+    ClientId: COGNITO_CLIENT_ID,
+    Username: email,
+    Password: password,
+    UserAttributes: [
+      { Name: 'email', Value: email },
+      { Name: 'name', Value: name },
+      { Name: 'custom:clinic', Value: clinic },
+      { Name: 'custom:license_no', Value: licenseNo },
+    ],
+  }, 'SignUp');
+}
+
+/** Confirms a new account with the code Cognito emailed. */
+export async function confirmSignUp(email, code) {
+  return callCognito({ ClientId: COGNITO_CLIENT_ID, Username: email, ConfirmationCode: code }, 'ConfirmSignUp');
+}
+
+export async function resendSignUpCode(email) {
+  return callCognito({ ClientId: COGNITO_CLIENT_ID, Username: email }, 'ResendConfirmationCode');
+}
+
 export async function loginWithCognito(username, password) {
   const json = await callCognito({
     AuthFlow: 'USER_PASSWORD_AUTH',

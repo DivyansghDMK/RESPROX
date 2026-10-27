@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useTherapy } from '../context/TherapyContext';
 import GlassCard from '../components/GlassCard';
+import DeviceDataState from '../components/DeviceDataState';
+import { DeviceInfoSkeleton } from '../components/Skeleton';
 import { DeviceIcon, SyncIcon } from '../components/Icons';
 
 export default function Devices() {
@@ -14,16 +16,7 @@ export default function Devices() {
     try { await fetchDeviceData(adminActiveSerial); } finally { setRefreshing(false); }
   };
 
-  if (!device) {
-    return (
-      <div className="devices-page" style={{ padding: 40, textAlign: 'center' }}>
-        <GlassCard>
-          <h2 style={{ color: 'var(--accent)' }}>No device selected</h2>
-          <p style={{ color: 'var(--muted)' }}>Select a device from the Devices registry to view live device information.</p>
-        </GlassCard>
-      </div>
-    );
-  }
+  if (!device) return <DeviceDataState what="device information" skeleton={DeviceInfoSkeleton} />;
 
   const rows = [
     ['Device Name', device.model || '—'],
