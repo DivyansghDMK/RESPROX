@@ -20,6 +20,17 @@ function captureTeamKey() {
   }
 }
 
+/**
+ * `npm run dev` only: the developer's Cognito account from .env.local, so the
+ * app signs in by itself instead of showing the form on every restart or
+ * expiry. `import.meta.env.DEV` is false in a production build, so this is
+ * dropped from the bundle and the variables never ship.
+ */
+const DEV_CREDENTIALS = import.meta.env.DEV
+  && import.meta.env.VITE_DEV_LOGIN_EMAIL && import.meta.env.VITE_DEV_LOGIN_PASSWORD
+  ? { email: import.meta.env.VITE_DEV_LOGIN_EMAIL, password: import.meta.env.VITE_DEV_LOGIN_PASSWORD }
+  : null;
+
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
@@ -27,10 +38,12 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(initialSession.idToken || null);
   const [username, setUsername] = useState(initialSession.username || localStorage.getItem('adminUsername') || null);
   const skipLogin = import.meta.env.DEV && import.meta.env.VITE_SKIP_LOGIN === 'true';
-  const [isAuthenticated, setIsAuthenticated] = useState(skipLogin || !!(initialSession.idToken || localStorage.getItem('adminToken')));
+  const hasStoredToken = Boolean(initialSession.idToken || localStorage.getItem('adminToken'));
+  const [isAuthenticated, setIsAuthenticated] = useState(skipLogin || hasStoredToken);
   // Team browsers (opened once via the ?team= link) sign in by themselves and never see the form.
   const [teamKey] = useState(captureTeamKey);
-  const [teamSigningIn, setTeamSigningIn] = useState(() => Boolean(teamKey) && !isAuthenticated && !import.meta.env.DEV);
+  const canAutoSignIn = import.meta.env.DEV ? Boolean(DEV_CREDENTIALS) : Boolean(teamKey);
+  const [teamSigningIn, setTeamSigningIn] = useState(() => canAutoSignIn && !hasStoredToken);
 
   const applySession = (res, shown) => {
     localStorage.setItem('adminToken', res.idToken);
@@ -41,15 +54,19 @@ export function AuthProvider({ children }) {
     setIsAuthenticated(true);
   };
 
+  // Silent sign-in: the team key on a deployed build, the .env.local account in dev.
   const teamSignIn = useCallback(async () => {
     const key = localStorage.getItem(TEAM_KEY_STORAGE);
-    if (!key || import.meta.env.DEV) return false;
+    if (import.meta.env.DEV ? !DEV_CREDENTIALS : !key) return false;
     setTeamSigningIn(true);
     try {
-      applySession(await loginWithTeamKey(key));
+      applySession(DEV_CREDENTIALS
+        ? await loginWithCognito(DEV_CREDENTIALS.email, DEV_CREDENTIALS.password)
+        : await loginWithTeamKey(key));
       return true;
     } catch (err) {
-      if (err?.status === 401 || err?.status === 404) localStorage.removeItem(TEAM_KEY_STORAGE);
+      if (DEV_CREDENTIALS) console.warn('[auth] Dev auto sign-in failed — check VITE_DEV_LOGIN_EMAIL / VITE_DEV_LOGIN_PASSWORD in .env.local', err);
+      else if (err?.status === 401 || err?.status === 404) localStorage.removeItem(TEAM_KEY_STORAGE);
       return false;
     } finally {
       setTeamSigningIn(false);
@@ -57,7 +74,8 @@ export function AuthProvider({ children }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (teamKey && !isAuthenticated) teamSignIn();
+    // Keyed on the token, not isAuthenticated: VITE_SKIP_LOGIN marks the app signed in without one.
+    if (canAutoSignIn && !hasStoredToken) teamSignIn();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const login = async (user, pass) => {
