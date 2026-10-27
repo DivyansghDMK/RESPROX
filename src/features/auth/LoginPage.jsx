@@ -19,14 +19,16 @@ const EyeOffIcon = () => (
 );
 
 /** The real reason a sign-in failed, in words the user can act on. */
-function loginErrorMessage(err) {
+function loginErrorMessage(err, doctor) {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return "You're offline. Check your internet connection and try again.";
   }
   switch (err?.cognitoType) {
     case 'NotAuthorizedException': return 'Incorrect email or password.';
     case 'UserNotFoundException': return 'Incorrect email or password.';
-    case 'UserNotConfirmedException': return 'This account has not been confirmed yet. Contact your administrator.';
+    case 'UserNotConfirmedException': return doctor
+      ? 'This account has not been verified yet. Finish signup with the code we emailed you.'
+      : 'This account has not been confirmed yet. Contact your administrator.';
     case 'PasswordResetRequiredException': return 'A password reset is required. Use "Forgot password?" to set a new one.';
     case 'AliasDisabled': return 'Sign-in with a username is turned off. Use your email address.';
     case 'AliasServerError': return err.message;
@@ -43,8 +45,11 @@ function loginErrorMessage(err) {
   return 'Sign-in failed. Try again, and contact support if it keeps happening.';
 }
 
-export default function Login() {
-  const [email, setEmail] = useState('');
+/** `variant="doctor"` is the doctors' entry point; after sign-in the app is the same. */
+export default function Login({ variant = 'admin' }) {
+  const doctor = variant === 'doctor';
+  const location = useLocation();
+  const [email, setEmail] = useState(location.state?.email || '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
@@ -58,7 +63,8 @@ export default function Login() {
   useEffect(() => {
     if (isAuthenticated) navigate('/devices', { replace: true });
   }, [isAuthenticated, navigate]);
-  const sessionExpired = useLocation().state?.reason === 'expired';
+  const sessionExpired = location.state?.reason === 'expired';
+  const justSignedUp = location.state?.reason === 'signed-up';
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
@@ -89,7 +95,7 @@ export default function Login() {
       }
     } catch (err) {
       setLoading(false);
-      setToastMessage(loginErrorMessage(err));
+      setToastMessage(loginErrorMessage(err, doctor));
       setSaveState('error');
       setShowToast(true);
       setTimeout(() => {
@@ -128,8 +134,13 @@ export default function Login() {
               <span className="logo-link">prox</span>
             </div>
           </div>
-          <h2 className="auth-title">Resprox Access</h2>
-          <p className="auth-subtitle">Sign in with your Cognito email and password</p>
+          <h2 className="auth-title">{doctor ? 'Doctor Sign In' : 'Resprox Access'}</h2>
+          <p className="auth-subtitle">
+            {doctor ? 'Sign in to review your patients\' therapy data' : 'Sign in with your Cognito email and password'}
+          </p>
+          {justSignedUp && (
+            <p className="auth-notice auth-notice-success" role="status">Email verified. Sign in with your new account.</p>
+          )}
           {sessionExpired && (
             <p className="auth-notice" role="status">Your session expired. Please sign in again.</p>
           )}
@@ -137,12 +148,13 @@ export default function Login() {
 
         <form onSubmit={handleLoginSubmit} className="auth-form">
           <div className="auth-input-group">
-            <label htmlFor="username">Email / Admin</label>
+            <label htmlFor="username">{doctor ? 'Email' : 'Email / Admin'}</label>
             <div className="input-with-icon">
               <span className="input-icon"><UserIcon /></span>
               <input
-                type="text"
+                type={doctor ? 'email' : 'text'}
                 id="username"
+                autoComplete={doctor ? 'email' : 'username'}
                 placeholder="name@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -207,6 +219,17 @@ export default function Login() {
             )}
           </button>
         </form>
+
+        <div className="auth-switch">
+          {doctor ? (
+            <>
+              <p>New to Resprox? <Link to="/doctor/signup">Create a doctor account</Link></p>
+              <p><Link to="/login">Admin sign in</Link></p>
+            </>
+          ) : (
+            <p>Are you a doctor? <Link to="/doctor/login">Doctor sign in</Link></p>
+          )}
+        </div>
       </div>
     </div>
   );

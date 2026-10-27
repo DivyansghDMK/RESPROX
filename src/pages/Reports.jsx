@@ -1,8 +1,10 @@
 import { useNotify } from '../context/NotifyContext';
 import DeviceDataState from '../components/DeviceDataState';
+import { ReportsSkeleton } from '../components/Skeleton';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
+import TherapyStatistics from '../components/TherapyStatistics';
 import { FileIcon, InfoIcon } from '../components/Icons';
 import { useTherapy } from '../context/TherapyContext';
 
@@ -98,7 +100,7 @@ export default function Reports() {
 
   // Every block below is gated on deviceData, so without these two states the
   // page rendered as a completely blank panel with no explanation.
-  if (!deviceData) return <DeviceDataState what="therapy reports" />;
+  if (!deviceData) return <DeviceDataState what="therapy reports" skeleton={ReportsSkeleton} />;
 
   return (
     <div className="reports-page">
@@ -163,6 +165,9 @@ export default function Reports() {
           </div>
         </GlassCard>
       )}
+
+      {/* OSCAR-style compliance check and statistics */}
+      <TherapyStatistics rows={sessions} style={{ marginTop: '20px' }} />
 
       {/* Session compliance table */}
       {deviceData && (

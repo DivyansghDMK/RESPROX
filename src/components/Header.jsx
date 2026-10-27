@@ -4,6 +4,7 @@ import { useNotifications } from '../hooks/useNotifications';
 import NotificationsPanel from './NotificationsPanel';
 import { MenuIcon, ServerIcon, BellIcon, UserIcon } from './Icons';
 import { useOnline } from './ConnectionBanner';
+import { Skel } from './Skeleton';
 
 const STALE_AFTER_MS = 10 * 60 * 1000;
 
@@ -54,7 +55,8 @@ function formatAdminLabel() {
 }
 
 export default function Header() {
-  const { setSidebarOpen, lastServerPull, deviceData } = useTherapy();
+  const { setSidebarOpen, lastServerPull, deviceData, adminActiveSerial, deviceLoadError } = useTherapy();
+  const deviceLoading = Boolean(adminActiveSerial) && !deviceData && !deviceLoadError;
   const [displayTime, setDisplayTime] = useState(() => formatLastPulled(lastServerPull));
   const [, setTick] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -122,7 +124,9 @@ export default function Header() {
             </span>
             <div>
               <strong>{status.label}</strong>
-              <span>{status.detail}</span>
+              {deviceLoading
+                ? <span aria-label={`Loading ${adminActiveSerial}`}><Skel w={120} h={10} style={{ marginTop: 4 }} /></span>
+                : <span>{status.detail}</span>}
             </div>
           </div>
           {notificationsButton('icon-button')}

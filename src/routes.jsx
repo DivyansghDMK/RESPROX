@@ -24,6 +24,7 @@ export const loaders = {
   help:               () => import('./pages/HelpSupport'),
   adminDataUpload:    () => import('./pages/AdminDataUpload'),
   forgotPassword:     () => import('./features/auth/ForgotPasswordPage'),
+  doctorSignup:       () => import('./features/auth/DoctorSignupPage'),
 };
 
 // ── Prefetching ───────────────────────────────────────────────────────────────
@@ -56,6 +57,8 @@ export function routeKeyForPath(path = '') {
     '/help': 'help',
     '/admin/upload': 'adminDataUpload',
     '/forgot-password': 'forgotPassword',
+    '/doctor/login': 'doctorSignup',
+    '/doctor/signup': 'doctorSignup',
   }[path];
 }
 
@@ -103,3 +106,4 @@ export const AppPreferences     = lazy(loaders.preferences);
 export const HelpSupport        = lazy(loaders.help);
 export const AdminDataUpload    = lazy(loaders.adminDataUpload);
 export const ForgotPassword     = lazy(loaders.forgotPassword);
+export const DoctorSignup       = lazy(loaders.doctorSignup);

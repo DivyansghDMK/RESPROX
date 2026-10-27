@@ -9,12 +9,12 @@ import { describeError } from '../services/apiError';
  * What a device page shows before it has data: a shimmer while the selected
  * device loads, the real reason if that load failed, or a prompt to pick one.
  */
-export default function DeviceDataState({ what = 'this page' }) {
+export default function DeviceDataState({ what = 'this page', skeleton: Shape = PageSkeleton }) {
   const { adminActiveSerial, deviceLoadError, fetchDeviceData } = useTherapy();
   const navigate = useNavigate();
 
   if (adminActiveSerial && !deviceLoadError) {
-    return <PageSkeleton label={`Loading device ${adminActiveSerial}`} />;
+    return <Shape label={`Loading ${what} for ${adminActiveSerial}`} />;
   }
 
   if (adminActiveSerial && deviceLoadError) {
