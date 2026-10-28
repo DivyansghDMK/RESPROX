@@ -52,7 +52,7 @@ export default function Login({ variant = 'admin' }) {
   const [email, setEmail] = useState(location.state?.email || '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   
   const { setShowToast, setSaveState, setToastMessage } = useTherapy();
@@ -78,21 +78,9 @@ export default function Login({ variant = 'admin' }) {
 
     setLoading(true);
     try {
-      const success = await login(email, password);
+      await login(email, password, { remember: rememberMe, doctor });
       setLoading(false);
-      if (success) {
-        setToastMessage('Authorization successful! Redirecting...');
-        setSaveState('success');
-        setShowToast(true);
-        setTimeout(() => {
-          setShowToast(false);
-          setSaveState('idle');
-          setToastMessage('');
-          navigate('/devices');
-        }, 1500);
-      } else {
-        throw new Error("Login failed");
-      }
+      navigate('/devices', { replace: true });
     } catch (err) {
       setLoading(false);
       setToastMessage(loginErrorMessage(err, doctor));

@@ -11,13 +11,14 @@ import GlassCard from '../components/GlassCard';
 import { useAuth } from '../context/AuthContext';
 
 export default function AppPreferences() {
-  const { username, logout } = useAuth();
+  const { username, logout, loginPath } = useAuth();
   const navigate = useNavigate();
   const email = localStorage.getItem('adminEmail') || '';
 
   const signOut = () => {
+    const path = loginPath();
     logout();
-    navigate('/login', { replace: true });
+    navigate(path, { replace: true });
   };
 
   return (

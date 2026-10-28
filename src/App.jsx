@@ -40,18 +40,19 @@ const SKIP_LOGIN = false;
 function AppContent() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout, teamSignIn } = useAuth();
+  const { logout, teamSignIn, loginPath } = useAuth();
 
   // The API layer raises this when the session can no longer be refreshed.
   useEffect(() => {
     const onExpired = async () => {
       if (await teamSignIn()) return; // team browsers renew silently
+      const path = loginPath();
       logout();
-      navigate('/login', { replace: true, state: { reason: 'expired' } });
+      navigate(path, { replace: true, state: { reason: 'expired' } });
     };
     window.addEventListener('resprox:session-expired', onExpired);
     return () => window.removeEventListener('resprox:session-expired', onExpired);
-  }, [logout, navigate, teamSignIn]);
+  }, [logout, navigate, teamSignIn, loginPath]);
 
   const { adminActiveSerial } = useTherapy();
   const activeSerial = adminActiveSerial || localStorage.getItem('adminActiveSerial') || '';

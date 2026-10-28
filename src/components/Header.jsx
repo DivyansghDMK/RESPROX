@@ -5,6 +5,7 @@ import NotificationsPanel from './NotificationsPanel';
 import { MenuIcon, ServerIcon, BellIcon, UserIcon } from './Icons';
 import { useOnline } from './ConnectionBanner';
 import { Skel } from './Skeleton';
+import { useAuth } from '../context/AuthContext';
 
 const STALE_AFTER_MS = 10 * 60 * 1000;
 
@@ -50,8 +51,10 @@ function formatLastPulled(date) {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function formatAdminLabel() {
-  return 'Divyansh';
+/** "Dr. Asha Mehta" for a doctor; the account's own name otherwise. */
+function displayName({ name, isDoctor }) {
+  if (!name) return 'Divyansh'; // the shared admin account carries no name
+  return isDoctor && !/^dr\b/i.test(name) ? `Dr. ${name}` : name;
 }
 
 export default function Header() {
@@ -73,7 +76,8 @@ export default function Header() {
     return () => clearInterval(timer);
   }, [lastServerPull]);
 
-  const adminLabel = formatAdminLabel();
+  const { profile } = useAuth();
+  const adminLabel = displayName(profile);
   const online = useOnline();
   const status = serverStatus(lastServerPull, deviceData, online);
 

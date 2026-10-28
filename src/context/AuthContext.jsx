@@ -1,8 +1,12 @@
 // src/context/AuthContext.jsx
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
-  clearCognitoSession, getCognitoSession, loginWithAlias, loginWithCognito, loginWithTeamKey, TEAM_KEY_STORAGE,
+  clearCognitoSession, forgetRefreshToken, getCognitoSession, loginWithAlias, loginWithCognito, loginWithTeamKey,
+  readTokenClaims, TEAM_KEY_STORAGE,
 } from '../services/respireeAuth';
+
+// Which sign-in page the user came through, so sign-out and expiry return there.
+const LOGIN_PATH_KEY = 'resproxLoginPath';
 
 /** Takes ?team=<key> off the URL once and remembers it on this browser. */
 function captureTeamKey() {
@@ -78,7 +82,7 @@ export function AuthProvider({ children }) {
     if (canAutoSignIn && !hasStoredToken) teamSignIn();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const login = async (user, pass) => {
+  const login = async (user, pass, { remember = true, doctor = false } = {}) => {
     // Team shortcut: a short alias (e.g. admin / 2026) signs in with one shared Cognito
     // account. In `npm run dev` it comes from .env.local; on Vercel a name without "@"
     // goes to /api/alias-login, which keeps the real password server-side.
@@ -94,6 +98,8 @@ export function AuthProvider({ children }) {
       const res = !import.meta.env.DEV && !user.includes('@')
         ? await loginWithAlias(user, pass)
         : await loginWithCognito(user, pass);
+      if (!remember) forgetRefreshToken();
+      localStorage.setItem(LOGIN_PATH_KEY, doctor ? '/doctor/login' : '/login');
       applySession(res, user);
       return true;
     } catch (error) {
@@ -110,9 +116,20 @@ export function AuthProvider({ children }) {
     setIsAuthenticated(false);
   };
 
+  // Name for the header. Doctors registered with a licence number, so its
+  // claim marks a doctor's account.
+  const profile = useMemo(() => {
+    const claims = token ? readTokenClaims(token) : {};
+    return { name: claims.name || '', isDoctor: Boolean(claims['custom:license_no']) };
+  }, [token]);
+
+  const loginPath = () => localStorage.getItem(LOGIN_PATH_KEY) || '/login';
+
   const value = {
     token,
     username,
+    profile,
+    loginPath,
     isAuthenticated,
     teamSigningIn,
     teamSignIn,
