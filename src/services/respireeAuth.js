@@ -200,6 +200,25 @@ export async function refreshCognitoSession(refreshTokenInput) {
   return session;
 }
 
+/**
+ * "Keep me signed in" off: drop the refresh token, so the session ends when
+ * the ID token expires (about an hour) instead of renewing itself.
+ */
+export function forgetRefreshToken() {
+  localStorage.removeItem(STORAGE_KEYS.refreshToken);
+}
+
+/** The ID token's claims (name, email, custom:*), or {} if it can't be read. */
+export function readTokenClaims(idToken) {
+  try {
+    const part = idToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const bytes = Uint8Array.from(atob(part), (c) => c.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return {};
+  }
+}
+
 export function getCognitoSession() {
   return getStoredSession();
 }

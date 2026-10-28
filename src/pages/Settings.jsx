@@ -49,9 +49,11 @@ const pick = (obj, keys) => Object.fromEntries(keys.map((k) => [k, obj[k]]));
 
 
 // Ids follow the hardware spec (1 = Nasal, 2 = Full Face, 3 = Nasal Pillow).
+// Wire values the device firmware uses for MASK_TYPE (COMFORT block, FULL_SYNC
+// byte 56): 1 = Full Face, 2 = Nasal, 3 = Pillow.
 const MASK_TYPES = [
-  { id: 1, label: 'Nasal', img: nasalImg },
-  { id: 2, label: 'Full Face', img: fullFaceImg },
+  { id: 1, label: 'Full Face', img: fullFaceImg },
+  { id: 2, label: 'Nasal', img: nasalImg },
   { id: 3, label: 'Pillow', img: pillowImg },
 ];
 
@@ -188,7 +190,7 @@ export default function Settings() {
   // does, swap this for that signal and the whole locked state comes alive.
   const isTherapyRunning = Boolean(deviceData?.therapy_running);
   // While a phone is paired over BLE the device drops Wi-Fi, so remote changes cannot reach it.
-  const phoneConnected = /app connected/i.test(String(
+  const phoneConnected = Boolean(deviceData?.phone_connected) || /app connected/i.test(String(
     deviceData?.raw?.remarks ?? deviceData?.raw?.Remarks ?? deviceData?.raw?.offline_reason ?? ''
   ));
   const settingsUnavailable = !deviceOnline || phoneConnected;
@@ -197,6 +199,14 @@ export default function Settings() {
   const [committed, setCommitted] = useState(() => committedFrom(deviceData, ctx));
   const [draft, setDraft] = useState(() => committedFrom(deviceData, ctx));
   const [flow, setFlow] = useState({ state: 'idle' });
+
+  // Escape closes the dialogs that can be dismissed; "Sending" cannot be.
+  useEffect(() => {
+    if (flow.state !== 'confirming' && flow.state !== 'failed') return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setFlow({ state: 'idle' }); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [flow.state]);
   const [pendingGroups, setPendingGroups] = useState([]);
 
   const set = useCallback((key, value) => setDraft((d) => ({ ...d, [key]: value })), []);
@@ -575,7 +585,7 @@ export default function Settings() {
                   ))}
                 </ul>
                 <div className="actions">
-                  <button type="button" className="ghost" onClick={() => setFlow({ state: 'idle' })}>Cancel</button>
+                  <button type="button" className="ghost" autoFocus onClick={() => setFlow({ state: 'idle' })}>Cancel</button>
                   <button type="button" className="primary" onClick={sendChanges}>Apply</button>
                 </div>
               </div>
@@ -621,7 +631,7 @@ export default function Settings() {
                 <p>{flow.reason}</p>
                 <p style={{ marginTop: 10 }}>Your changes were rolled back to the values the device last confirmed.</p>
                 <div className="actions">
-                  <button type="button" className="primary" onClick={() => setFlow({ state: 'idle' })}>OK</button>
+                  <button type="button" className="primary" autoFocus onClick={() => setFlow({ state: 'idle' })}>OK</button>
                 </div>
               </div>
             </div>

@@ -3,8 +3,18 @@ import { useNotify } from './NotifyContext';
 import { describeCommandStatus, describeError } from '../services/apiError';
 import { useAuth } from './AuthContext';
 import { devicesAPI } from '../services/respireeApi';
+import { diffDeviceEvents } from '../services/deviceEvents';
 
 const TherapyContext = createContext(null);
+
+// An open page checks its device's row in the device list this often (one small
+// request) and downloads the full device data only when that row changed:
+// therapy status, reported online status, or last_seen (moved by every data
+// packet, e.g. after a settings change on the device). A full read also runs
+// every FULL_REFRESH_MS as a safety net.
+const LIVE_CHECK_MS = 3_000;
+const FULL_REFRESH_MS = 60_000;
+const MAX_DEVICE_EVENTS = 20;
 
 export function TherapyProvider({ children }) {
   const notify = useNotify();
@@ -43,17 +53,46 @@ export function TherapyProvider({ children }) {
   // The serial whose data the screens should show. A response for any other
   // serial was superseded by a device switch and must not overwrite it.
   const latestSerial = useRef(null);
+  // Read at call time, so a background refresh never overwrites an edit in progress.
+  const unsavedRef = useRef(false);
+  const deviceDataRef = useRef(null);
+  deviceDataRef.current = deviceData;
+  // What the device did on its own (button start/stop, settings, connection),
+  // newest first, for the notifications panel.
+  const [deviceEvents, setDeviceEvents] = useState([]);
 
-  const fetchDeviceData = useCallback(async (serial) => {
+  const announceDeviceEvents = useCallback((prev, next) => {
+    // Therapy and settings changes right after the website's own command are
+    // that command landing; it already reports its own result.
+    const ownCommand = devicesAPI.commandedRecently(next.serial);
+    const events = diffDeviceEvents(prev, next)
+      .filter((e) => e.kind === 'connection' || !ownCommand);
+    if (!events.length) return;
+    const at = Date.now();
+    const severity = (e) => (e.kind === 'connection' && !next.device_online && !next.phone_connected ? 'warning' : 'info');
+    events.forEach((e) => notify[severity(e)](e.title, { message: e.detail }));
+    setDeviceEvents((list) => [
+      ...events.map((e, i) => ({
+        ...e, severity: severity(e), id: `${next.serial}:${e.kind}:${at}:${i}`, serial: next.serial, at,
+      })),
+      ...list,
+    ].slice(0, MAX_DEVICE_EVENTS));
+  }, [notify]);
+
+  // `quiet` is the background live refresh: it keeps the data on screen if the
+  // request fails and leaves the user's unsaved edits alone.
+  const fetchDeviceData = useCallback(async (serial, { force = false, quiet = false } = {}) => {
     if (!serial) return;
-    console.log("[TherapyContext] fetchDeviceData called for serial:", serial);
     latestSerial.current = serial;
     try {
-      setDeviceLoadError(null);
-      const data = await devicesAPI.getDeviceDetail(serial);
+      if (!quiet) setDeviceLoadError(null);
+      const data = await devicesAPI.getDeviceDetail(serial, { force });
       if (latestSerial.current !== serial) return;
+      announceDeviceEvents(deviceDataRef.current, data);
       setDeviceData(data);
+      setDeviceLoadError(null);
       setLastServerPull(new Date());
+      if (quiet && unsavedRef.current) return;
 
       const settings = data.settings || {};
       setMode(settings.therapy_mode === 'AUTO CPAP' ? 'auto' : settings.therapy_mode === 'CPAP' ? 'cpap' : null);
@@ -71,7 +110,7 @@ export function TherapyProvider({ children }) {
         ramp: settings.ramp ?? null
       };
     } catch (e) {
-      if (latestSerial.current !== serial) return;
+      if (latestSerial.current !== serial || quiet) return;
       setDeviceLoadError(e);
       // Every screen renders off deviceData, so a silent failure here left the
       // whole app sitting on a loading state with the reason only in the
@@ -82,7 +121,7 @@ export function TherapyProvider({ children }) {
         onRetry: () => fetchDeviceData(serial),
       });
     }
-  }, [notify]);
+  }, [notify, announceDeviceEvents]);
 
   // On a device switch, drop the previous device's data so screens show a
   // loading shimmer — never the old device's readings under the new serial.
@@ -126,6 +165,43 @@ export function TherapyProvider({ children }) {
       ramp !== initialSettings.current.ramp
     );
   }, [pressure, minPressure, maxPressure, aflex, ramp]);
+
+  unsavedRef.current = hasUnsavedChanges;
+
+  // Live view: follow the active device while the tab is visible, so changes
+  // made on the device itself (start/stop, settings) appear without a manual
+  // refresh. Paused in a hidden tab, which also keeps the database idle.
+  useEffect(() => {
+    if (!adminActiveSerial || !isAuthenticated) return undefined;
+    let inFlight = false;
+    let lastSignature = null;
+    let lastFullRead = Date.now();
+    const tick = async () => {
+      if (inFlight || document.visibilityState !== 'visible') return;
+      inFlight = true;
+      try {
+        const row = (await devicesAPI.getDevices({ force: true })).find((d) => d.serial === adminActiveSerial);
+        const signature = row ? [row.therapy_status, row.raw?.status, row.raw?.last_seen].join('|') : null;
+        const changed = lastSignature !== null && signature !== lastSignature;
+        lastSignature = signature;
+        if (changed || Date.now() - lastFullRead > FULL_REFRESH_MS) {
+          lastFullRead = Date.now();
+          await fetchDeviceData(adminActiveSerial, { force: true, quiet: true });
+        }
+      } catch {
+        // A missed check is retried on the next tick; nothing to show.
+      } finally {
+        inFlight = false;
+      }
+    };
+    const timer = setInterval(tick, LIVE_CHECK_MS);
+    const onVisible = () => { if (document.visibilityState === 'visible') tick(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [adminActiveSerial, isAuthenticated, fetchDeviceData]);
 
   // Monitor beforeunload browser events
   useEffect(() => {
@@ -230,6 +306,7 @@ export function TherapyProvider({ children }) {
     deviceData,
     setDeviceData,
     deviceLoadError,
+    deviceEvents,
     fetchDeviceData,
     lastServerPull,
     setLastServerPull
@@ -237,7 +314,7 @@ export function TherapyProvider({ children }) {
     mode, pressure, minPressure, maxPressure, aflex, ramp,
     sidebarOpen, saveState, showToast, toastMessage,
     hasUnsavedChanges, handleSave,
-    adminActiveSerial, deviceData, deviceLoadError, fetchDeviceData, lastServerPull,
+    adminActiveSerial, deviceData, deviceLoadError, deviceEvents, fetchDeviceData, lastServerPull,
   ]);
 
   return (

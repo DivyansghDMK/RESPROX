@@ -160,14 +160,24 @@ function buildNotifications(deviceData, lastServerPull) {
 }
 
 export function useNotifications() {
-  const { deviceData, lastServerPull } = useTherapy();
+  const { deviceData, lastServerPull, deviceEvents } = useTherapy();
   const [state, setState] = useState(loadState);
 
   useEffect(() => { saveState(state); }, [state]);
 
+  // Things the device did on its own come first: they are the newest news.
   const derived = useMemo(
-    () => buildNotifications(deviceData, lastServerPull),
-    [deviceData, lastServerPull]
+    () => [
+      ...deviceEvents.map((e) => ({
+        id: e.id,
+        severity: e.severity,
+        title: e.title,
+        detail: `${e.detail} ${new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+        to: `/device/${e.serial}`,
+      })),
+      ...buildNotifications(deviceData, lastServerPull),
+    ],
+    [deviceEvents, deviceData, lastServerPull]
   );
 
   const notifications = useMemo(() => (

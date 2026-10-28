@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test src/services/reportFileParser.test.mjs src/services/therapyStatistics.test.mjs src/services/apiError.test.mjs protocol/bleProtocol.test.mjs api/alias-login.test.mjs && python3 -m unittest server.test_main"
+    "test": "node --test src/services/deviceEvents.test.mjs src/services/reportFileParser.test.mjs src/services/therapyStatistics.test.mjs src/services/apiError.test.mjs protocol/bleProtocol.test.mjs api/alias-login.test.mjs && python3 -m unittest server.test_main"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

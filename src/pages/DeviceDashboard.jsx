@@ -209,7 +209,7 @@ export default function DeviceDashboard() {
   const notify = useNotify();
   const { serial } = useParams();
   const navigate   = useNavigate();
-  const { setAdminActiveSerial, setLastServerPull, setDeviceData } = useTherapy();
+  const { setAdminActiveSerial, setLastServerPull, setDeviceData, deviceData } = useTherapy();
 
   useEffect(() => {
     if (serial) setAdminActiveSerial(serial);
@@ -349,8 +349,8 @@ export default function DeviceDashboard() {
   };
 
   useEffect(() => {
-    // Initial load only (no background polling). The device list is not used on
-    // this page — fetching it here cost an extra full /devices round-trip.
+    // Initial load. Live updates come from TherapyContext's background refresh,
+    // followed below.
     fetchDevice();
   }, [fetchDevice]);
 
@@ -382,6 +382,18 @@ export default function DeviceDashboard() {
     return mode !== s.therapy_mode || pressure !== s.pressure || minPressure !== s.min_pressure ||
       maxPressure !== s.max_pressure || aflex !== s.aflex || ramp !== s.ramp;
   }, [device, mode, pressure, minPressure, maxPressure, aflex, ramp]);
+
+  // Follow the shared live refresh: changes made on the device itself (start,
+  // stop, settings) show up here. The editable settings follow too, unless the
+  // user has unsaved edits or a save or therapy command is in flight.
+  const busyRef = useRef(false);
+  busyRef.current = dirty || saving || Boolean(therapyAction);
+  useEffect(() => {
+    if (!deviceData || !device || deviceData === device || deviceData.serial !== device.serial) return;
+    setDevice(deviceData);
+    setLastPull(new Date());
+    if (!busyRef.current) applyDeviceState(deviceData);
+  }, [deviceData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sortedSessions = useMemo(() => {
     const rows = [...(device?.sessions || []), ...(device?.settings_history || [])];
@@ -517,6 +529,7 @@ export default function DeviceDashboard() {
   const minsInt     = Math.round((ld.usage_hours - hoursInt) * 60);
   const usagePct    = Math.min(Math.round((ld.usage_hours / 8) * 100), 100);
   const isOnline    = device.device_online;
+  const withPhone   = !isOnline && Boolean(device.phone_connected);
   const isReadOnly  = device.readOnly !== false;
   const therapyStatus = String(device.therapy_status || '').toUpperCase();
   const isTherapyRunning = therapyStatus === 'RUNNING';
@@ -590,20 +603,20 @@ export default function DeviceDashboard() {
             <span style={{ padding: '7px 12px', borderRadius: 20, background: isTherapyRunning ? '#dcfce7' : '#f1f5f9', color: isTherapyRunning ? '#15803d' : '#64748b', fontSize: 12, fontWeight: 800 }}>
               Therapy: {therapyStatus || 'UNKNOWN'}
             </span>
-            <span style={{
+            <span title={withPhone ? 'The phone app is connected over Bluetooth, so the device has left Wi-Fi.' : undefined} style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
-              background: isOnline ? '#dcfce7' : '#f1f5f9',
-              color: isOnline ? '#15803d' : '#64748b',
+              background: isOnline ? '#dcfce7' : withPhone ? '#dbeafe' : '#f1f5f9',
+              color: isOnline ? '#15803d' : withPhone ? '#1d4ed8' : '#64748b',
               padding: '7px 13px', borderRadius: 20, fontWeight: 700, fontSize: 12,
-              border: `1px solid ${isOnline ? '#86efac' : '#e2e8f0'}`,
+              border: `1px solid ${isOnline ? '#86efac' : withPhone ? '#93c5fd' : '#e2e8f0'}`,
             }}>
               <span style={{
                 width: 7, height: 7, borderRadius: '50%',
-                background: isOnline ? '#16a34a' : '#94a3b8',
+                background: isOnline ? '#16a34a' : withPhone ? '#2563eb' : '#94a3b8',
                 boxShadow: isOnline ? '0 0 0 3px #bbf7d0' : 'none',
                 animation: isOnline ? 'pulse 2s infinite' : 'none',
               }}/>
-              {isOnline ? 'Device Online' : 'Device Offline'}
+              {isOnline ? 'Device Online' : withPhone ? 'With phone app' : 'Device Offline'}
             </span>
           </div>
         </div>
@@ -624,9 +637,11 @@ export default function DeviceDashboard() {
           <div role="presentation" onClick={() => setOfflineNoticeClosedFor(serial)} style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'grid', placeItems: 'center', padding: 20, background: 'rgba(15, 23, 42, 0.48)' }}>
             <div role="dialog" aria-modal="true" aria-labelledby="offline-therapy-title" onClick={(event) => event.stopPropagation()} style={{ width: 'min(460px, 100%)', padding: 28, borderRadius: 18, background: '#fff', boxShadow: '0 24px 70px rgba(15,23,42,0.28)' }}>
               <div style={{ width: 52, height: 52, display: 'grid', placeItems: 'center', borderRadius: 16, background: '#fff7ed', color: '#c2410c', fontSize: 27, marginBottom: 14 }}>!</div>
-              <h2 id="offline-therapy-title" style={{ margin: 0, color: '#163257', fontSize: 21, fontWeight: 900 }}>Device is offline</h2>
+              <h2 id="offline-therapy-title" style={{ margin: 0, color: '#163257', fontSize: 21, fontWeight: 900 }}>{withPhone ? 'Device is connected to the phone app' : 'Device is offline'}</h2>
               <p style={{ margin: '10px 0 22px', color: '#64748b', fontSize: 14, lineHeight: 1.55 }}>
-                This device is not connected to the server, so therapy and settings commands cannot reach it. They become available again when the device reconnects.
+                {withPhone
+                  ? 'The phone app is connected to this device over Bluetooth, so the device has left Wi-Fi. Therapy and settings commands from the website cannot reach it until the app disconnects; the device then rejoins Wi-Fi by itself.'
+                  : 'This device is not connected to the server, so therapy and settings commands cannot reach it. They become available again when the device reconnects.'}
               </p>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
                 <button type="button" onClick={() => setOfflineNoticeClosedFor(serial)} style={{ padding: '10px 18px', borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 800, cursor: 'pointer' }}>Close</button>
