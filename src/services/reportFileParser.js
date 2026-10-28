@@ -42,7 +42,8 @@ const MIN_FIELDS = 39;       // through the leak value; terminator/serial option
 const LEAK_SENTINEL = 120;   // at or above this the field is a status code
 const MAX_SESSION_HOURS = 24;
 
-const MASK_TYPES = { 1: 'Nasal', 2: 'Full Face', 3: 'Pillow' };
+// Same numbering as the device settings: 1 = Full Face, 2 = Nasal, 3 = Pillow.
+const MASK_TYPES = { 1: 'Full Face', 2: 'Nasal', 3: 'Pillow' };
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 

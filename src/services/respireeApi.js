@@ -314,6 +314,9 @@ function normalizeDeviceDetail(summary, latest, history, syncState, reports = []
     ...deviceSummary,
     serial,
     device_online: extractStatus(deviceSummary.raw || {}, actualSyncState, telemetry.raw) === 'online',
+    // The phone app is connected over BLE, so the device has left Wi-Fi: it is
+    // running but cloud commands cannot reach it until the app disconnects.
+    phone_connected: /app[\s_]*connected/i.test(String(deviceSummary.raw?.status ?? '')),
     therapy_running: String(deviceSummary.therapy_status || '').toUpperCase() === 'RUNNING',
     model: deviceSummary.model || null,
     firmware: deviceSummary.firmware || '—',
@@ -545,7 +548,22 @@ async function getTelemetryHistory(serial, page = 1, limit = 20) {
   return normalizeSessions(json);
 }
 
+// When the website last sent each device a command. The live refresh uses it
+// to tell its own changes from ones made on the device, so they are not
+// announced twice.
+const lastCommandAt = new Map();
+const COMMAND_SETTLE_MS = 90_000;
+
+function noteCommand(serial) {
+  lastCommandAt.set(serial, Date.now());
+}
+
+function commandedRecently(serial) {
+  return Date.now() - (lastCommandAt.get(serial) || 0) < COMMAND_SETTLE_MS;
+}
+
 async function updateDeviceSettings(serial, settings) {
+  noteCommand(serial);
   // Fetch latest telemetry for baseline settings comparison
   let baseline = {};
   let currentMode = null;
@@ -612,6 +630,7 @@ async function updateDeviceSettings(serial, settings) {
  *   { OPTIONS: { iModeEnabled, leakAlertEnabled, sleepModeEnabled } }  // 0/1
  */
 async function updateDeviceGroups(serial, groups = {}) {
+  noteCommand(serial);
   const entries = Object.entries(groups).filter(([, values]) => values != null);
   // One mode per request is the API contract; callers send groups one at a time.
   if (entries.length !== 1) throw new Error(`updateDeviceGroups expects exactly one group, got ${entries.length}`);
@@ -650,6 +669,7 @@ async function pollCommandStatus(deviceId, commandId, { intervalMs = 2000, timeo
 /** POST /devices/{id}/therapy/start|stop. The device confirms asynchronously. */
 async function setTherapy(serial, action) {
   if (action !== 'start' && action !== 'stop') throw new Error(`Invalid therapy action: ${action}`);
+  noteCommand(serial);
   invalidate('devices');
   invalidate(`detail:${serial}`);
   return request(`/devices/${encodeURIComponent(serial)}/therapy/${action}`, { method: 'POST', body: '{}' });
@@ -727,6 +747,7 @@ export const devicesAPI = {
   syncReports,
   getReports,
   pollTherapyStatus,
+  commandedRecently,
 };
 
 export {
