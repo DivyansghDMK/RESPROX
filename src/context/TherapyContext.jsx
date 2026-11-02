@@ -176,8 +176,13 @@ export function TherapyProvider({ children }) {
     let inFlight = false;
     let lastSignature = null;
     let lastFullRead = Date.now();
+    // After a failed check, wait longer each time (up to 30 s) so a dropped
+    // connection doesn't fire a request every few seconds.
+    let failures = 0;
+    let nextTryAt = 0;
     const tick = async () => {
-      if (inFlight || document.visibilityState !== 'visible') return;
+      if (inFlight || document.visibilityState !== 'visible' || !navigator.onLine) return;
+      if (Date.now() < nextTryAt) return;
       inFlight = true;
       try {
         const row = (await devicesAPI.getDevices({ force: true })).find((d) => d.serial === adminActiveSerial);
@@ -188,18 +193,25 @@ export function TherapyProvider({ children }) {
           lastFullRead = Date.now();
           await fetchDeviceData(adminActiveSerial, { force: true, quiet: true });
         }
+        failures = 0;
+        nextTryAt = 0;
       } catch {
-        // A missed check is retried on the next tick; nothing to show.
+        // Retried later with backoff; nothing to show.
+        failures += 1;
+        nextTryAt = Date.now() + Math.min(LIVE_CHECK_MS * 2 ** failures, 30_000);
       } finally {
         inFlight = false;
       }
     };
     const timer = setInterval(tick, LIVE_CHECK_MS);
     const onVisible = () => { if (document.visibilityState === 'visible') tick(); };
+    const onOnline = () => { nextTryAt = 0; tick(); };
     document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', onOnline);
     return () => {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', onOnline);
     };
   }, [adminActiveSerial, isAuthenticated, fetchDeviceData]);
 
@@ -221,6 +233,15 @@ export function TherapyProvider({ children }) {
     if (stateRef.current.deviceData?.therapy_running) {
       setShowToast(true);
       setToastMessage('Therapy is running. Stop therapy before changing settings.');
+      return;
+    }
+    const current = stateRef.current.deviceData;
+    if (current && !current.device_online) {
+      setShowToast(true);
+      setToastMessage(current.phone_connected
+        ? 'The device is connected to the phone app, so it is off Wi-Fi. Close the app, then save again.'
+        : 'The device is offline. Settings can be sent once it reconnects.');
+      setTimeout(() => setShowToast(false), 4000);
       return;
     }
     setSaveState('saving');

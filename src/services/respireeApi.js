@@ -54,6 +54,8 @@ function extractStatus(item, syncState, latestTelemetry) {
   const explicit = firstDefined(item?.status, syncState?.status, syncState?.direction, latestTelemetry?.status);
   if (!explicit) return 'unknown';
   const normalized = String(explicit).toLowerCase();
+  // The phone app holds the device over Bluetooth, so it left Wi-Fi on purpose.
+  if (/app[\s_]*connected/.test(normalized)) return 'phone';
   if (normalized.includes('online') || normalized.includes('synced') || normalized.includes('success')) return 'online';
   if (normalized.includes('offline') || normalized.includes('stale') || normalized.includes('error')) return 'offline';
   return normalized;

@@ -125,6 +125,10 @@ export function UserIcon() {
   return <SvgBox><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" /></SvgBox>;
 }
 
+export function LogoutIcon() {
+  return <SvgBox><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" /></SvgBox>;
+}
+
 export function LockIcon() {
   return <SvgBox><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></SvgBox>;
 }

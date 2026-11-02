@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useTherapy } from '../context/TherapyContext';
+import { useAuth } from '../context/AuthContext';
 import { prefetch, routeKeyForPath } from '../routes';
 import {
   HomeIcon,
@@ -13,11 +14,22 @@ import {
   GearIcon,
   HelpIcon,
   CloseIcon,
+  LogoutIcon,
 } from './Icons';
 
 function Sidebar() {
   const { sidebarOpen, setSidebarOpen, adminActiveSerial } = useTherapy();
   const activeSerial = adminActiveSerial || localStorage.getItem('adminActiveSerial') || '';
+  const { logout, loginPath } = useAuth();
+  const navigate = useNavigate();
+
+  // Back to the sign-in page this user came from (doctor or admin).
+  const signOut = () => {
+    const path = loginPath();
+    setSidebarOpen(false);
+    logout();
+    navigate(path, { replace: true });
+  };
 
   // Start fetching a route's chunk as soon as the pointer lands on its link.
   // The ~200 ms between hover and click is normally enough to have it parsed
@@ -49,7 +61,7 @@ function Sidebar() {
           aria-hidden="true"
         />
       )}
-      <aside className={`sidebar ${sidebarOpen ? 'mobile-open' : ''}`}>
+      <aside className={`sidebar ${sidebarOpen ? 'mobile-open' : ''}`} data-lenis-prevent>
         <button
           className="sidebar-close-btn"
           onClick={() => setSidebarOpen(false)}
@@ -81,6 +93,11 @@ function Sidebar() {
             </NavLink>
           ))}
         </nav>
+
+        <button type="button" className="nav-item nav-signout" onClick={signOut} title="Sign out" aria-label="Sign out">
+          <LogoutIcon />
+          <span>Sign out</span>
+        </button>
       </aside>
     </>
   );
