@@ -352,6 +352,97 @@ export function parseReportFile(text) {
   return summarize(records, errors, lines.filter((l) => l.trim()).length);
 }
 
+// ── SD card binary (.td1) ─────────────────────────────────────────────────────
+//
+// The SD card stores the same session record as REPORTFL.TXT, in binary:
+// fixed 43-byte frames, E8 … CK 8E, where CK is the XOR of every byte before it
+// (the same rule as the BLE packets). The 41 bytes before CK are the 39 text
+// fields in the same order, with two of them two bytes wide: volume transfer
+// and tidal volume, the only fields whose text values pass 255. Two-byte values
+// are big-endian and pressures are ×10, as in the BLE protocol (40 = 4.0 cmH₂O).
+// The frame carries no serial, so it comes from the file name (CVT3000001.td1).
+
+export const TD1_RECORD_BYTES = 43;
+const TD1_START = 0xE8;
+const TD1_END = 0x8E;
+
+const hex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join(' ');
+
+/** True when the bytes look like .td1 frames rather than text. */
+export function isTd1Data(bytes) {
+  return bytes.length >= TD1_RECORD_BYTES && bytes[0] === TD1_START && bytes[TD1_RECORD_BYTES - 1] === TD1_END;
+}
+
+/** Serial from a name like "CVT3000001.td1"; null when the name is not a serial. */
+function serialFromFileName(fileName) {
+  const base = String(fileName || '').split(/[\\/]/).pop().replace(/\.[^.]*$/, '');
+  return /^[A-Z]{2,}\d{4,}$/i.test(base) ? base.toUpperCase() : null;
+}
+
+/** Decode one 43-byte frame. Returns `{ record }` or `{ error }`, like parseRecordLine. */
+export function parseTd1Record(b, recordNo, serial = null) {
+  const text = hex(b);
+  if (b.length !== TD1_RECORD_BYTES) {
+    return { error: { lineNo: recordNo, text, reason: `only ${b.length} bytes, expected ${TD1_RECORD_BYTES}` } };
+  }
+  if (b[0] !== TD1_START || b[TD1_RECORD_BYTES - 1] !== TD1_END) {
+    return { error: { lineNo: recordNo, text, reason: 'not framed by E8 … 8E' } };
+  }
+  const ck = b.subarray(0, TD1_RECORD_BYTES - 2).reduce((x, v) => x ^ v, 0);
+  if (ck !== b[TD1_RECORD_BYTES - 2]) {
+    return { error: { lineNo: recordNo, text, reason: 'checksum does not match' } };
+  }
+  const u16 = (i) => (b[i] << 8) | b[i + 1];
+  const p = (i) => b[i] / 10;
+
+  return buildRecord({
+    startDay: b[1], startMonth: b[2], startYear: b[3],
+    endDay: b[4], endMonth: b[5], endYear: b[6],
+    modeCode: b[7], volumeTransfer: u16(8),
+    maxPressure: p(10), minPressure: p(11), ipap: p(12), epap: p(13),
+    pressureChangeCount: b[14], modeCounter: b[15], airFlow: b[16],
+    tidalVolume: u16(17), respRate: b[19], startEpap: p(20),
+    startHour: b[21], startMinute: b[22], endHour: b[23], endMinute: b[24],
+    humidifier: b[25], rampTime: b[26], autoOnOff: b[27],
+    titrationChangeFactor: b[28], rateChangeFactor: b[29],
+    csa: b[30], osa: b[31], hsa: b[32],
+    aflexFlag: b[35], aflexLevel: b[36], maskCode: b[38], leakRaw: b[40],
+    terminatorOk: true, serial,
+  }, recordNo, text);
+}
+
+/**
+ * Parse a whole .td1 file from the SD card. Same output as parseReportFile,
+ * plus `format: 'td1'` and `summary.duplicates`.
+ *
+ * The device writes each session to the card twice in a row. A frame that is
+ * byte-for-byte the same as one already read is dropped, or every session
+ * would count double.
+ */
+export function parseTd1File(input, { fileName = '' } = {}) {
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input ?? []);
+  const serial = serialFromFileName(fileName);
+  const records = [];
+  const errors = [];
+  const seen = new Set();
+  let duplicates = 0;
+  let frames = 0;
+
+  for (let offset = 0; offset < bytes.length; offset += TD1_RECORD_BYTES) {
+    const frame = bytes.subarray(offset, offset + TD1_RECORD_BYTES);
+    frames += 1;
+    const key = hex(frame);
+    if (seen.has(key)) { duplicates += 1; continue; }
+    seen.add(key);
+    const { record, error } = parseTd1Record(frame, frames, serial);
+    if (error) errors.push(error);
+    else records.push(record);
+  }
+
+  const parsed = summarize(records, errors, frames);
+  return { ...parsed, format: 'td1', summary: { ...parsed.summary, duplicates } };
+}
+
 /** Same output as parseReportFile, from GET /devices/{id}/reports rows. */
 export function parseReportRows(rows = []) {
   const records = [];
