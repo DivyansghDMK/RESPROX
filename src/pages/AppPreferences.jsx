@@ -6,9 +6,19 @@
 // rather than shown as working.
 
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
 import { useAuth } from '../context/AuthContext';
+
+// On phones the sidebar is hidden, so this page (the "More" tab) links to the
+// pages the bottom bar has no room for. Hidden on wider screens.
+const MORE_PAGES = [
+  { label: 'Trends', path: '/trends' },
+  { label: 'Upload Data', path: '/admin/upload' },
+  { label: 'Mask Fit', path: '/mask-fit' },
+  { label: 'Settings', path: '/settings' },
+  { label: 'Help & Support', path: '/help' },
+];
 
 export default function AppPreferences() {
   const { username, logout, loginPath } = useAuth();
@@ -23,6 +33,20 @@ export default function AppPreferences() {
 
   return (
     <div className="settings-page">
+      <GlassCard className="more-pages-card">
+        <div className="section-title">
+          <h2>More</h2>
+        </div>
+        <nav className="more-pages">
+          {MORE_PAGES.map(({ label, path }) => (
+            <Link key={path} to={path} className="more-pages-link">
+              <span>{label}</span>
+              <span aria-hidden="true">›</span>
+            </Link>
+          ))}
+        </nav>
+      </GlassCard>
+
       <GlassCard>
         <div className="section-title">
           <h2>Account</h2>

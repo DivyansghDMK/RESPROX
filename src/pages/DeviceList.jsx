@@ -43,10 +43,16 @@ function pageWindow(current, total) {
   return pages;
 }
 
+// How often the open list re-checks the server for status changes.
+const LIST_REFRESH_MS = 5_000;
+
 const STATUS_COLOR = {
   online:  { bg: '#e6f9f0', text: '#0f6e56', dot: '#1d9e75' },
-  offline: { bg: '#f1efe8', text: '#5f5e5a', dot: '#888780' }
+  offline: { bg: '#f1efe8', text: '#5f5e5a', dot: '#888780' },
+  phone:   { bg: '#e8f1fd', text: '#1d5fb8', dot: '#3b82f6' },
 };
+const STATUS_LABEL = { online: 'online', offline: 'offline', phone: 'with phone app' };
+const statusLabel = (s) => STATUS_LABEL[s] || s;
 
 // The live API has no clinical numbers until a device's reports are synced; show
 // "—" for a missing value instead of a 0 that reads as a measurement.
@@ -106,6 +112,41 @@ export default function DeviceList() {
   useEffect(() => {
     fetchDevices();
   }, [fetchDevices]);
+
+  // Live list: re-read quietly while the tab is visible, so a device going
+  // online, offline, onto the phone app, or starting therapy shows up in its
+  // row without a refresh. Rows are keyed by serial, so React only touches the
+  // rows whose values changed; an unchanged list is not even set.
+  useEffect(() => {
+    let inFlight = false;
+    let failures = 0;
+    let nextTryAt = 0;
+    const tick = async () => {
+      if (inFlight || document.visibilityState !== 'visible' || !navigator.onLine) return;
+      if (Date.now() < nextTryAt) return;
+      inFlight = true;
+      try {
+        const data = await devicesAPI.getDevices({ force: true });
+        setDevices((prev) => (JSON.stringify(prev) === JSON.stringify(data) ? prev : data));
+        setLastServerPull(new Date());
+        failures = 0;
+        nextTryAt = 0;
+      } catch {
+        // Retried later with backoff; the first load already reports errors.
+        failures += 1;
+        nextTryAt = Date.now() + Math.min(LIST_REFRESH_MS * 2 ** failures, 60_000);
+      } finally {
+        inFlight = false;
+      }
+    };
+    const timer = setInterval(tick, LIST_REFRESH_MS);
+    const onVisible = () => { if (document.visibilityState === 'visible') tick(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [setLastServerPull]);
 
   const hasAnimated = useRef(false);
   useEffect(() => {
@@ -170,6 +211,7 @@ export default function DeviceList() {
       if (!d.serial.toLowerCase().includes(q)) return false;
       if (statusFilter === 'online') return d.status === 'online';
       if (statusFilter === 'offline') return d.status === 'offline';
+      if (statusFilter === 'phone') return d.status === 'phone';
       return true;
     });
   }, [devices, search, statusFilter]);
@@ -329,13 +371,13 @@ export default function DeviceList() {
         </div>
 
         <div className="admin-filter-pills">
-          {['all', 'online', 'offline'].map(s => (
+          {['all', 'online', 'phone', 'offline'].map(s => (
             <button
               key={s}
               className={`admin-filter-pill ${statusFilter === s ? 'active' : ''}`}
               onClick={() => setStatusFilter(s)}
             >
-              {s === 'all' ? 'All Devices' : s}
+              {s === 'all' ? 'All Devices' : statusLabel(s)}
             </button>
           ))}
         </div>
@@ -420,7 +462,7 @@ export default function DeviceList() {
                       <td>
                         <span className="admin-status-pill" style={{ background: sc.bg, color: sc.text }}>
                           <span className="admin-status-dot" style={{ background: sc.dot }} />
-                          {d.status}
+                          {statusLabel(d.status)}
                         </span>
                       </td>
                       <td>
@@ -452,7 +494,7 @@ export default function DeviceList() {
                     <span className="mobile-device-card-serial">{d.serial}</span>
                     <span className="admin-status-pill" style={{ background: sc.bg, color: sc.text, margin: 0 }}>
                       <span className="admin-status-dot" style={{ background: sc.dot }} />
-                      {d.status}
+                      {statusLabel(d.status)}
                     </span>
                   </div>
                   <div className="mobile-device-card-info">

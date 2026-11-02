@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseReportFile, parseRecordLine, parseReportRows } from './reportFileParser.js';
+import { parseReportFile, parseRecordLine, parseReportRows, parseTd1File, parseTd1Record, isTd1Data } from './reportFileParser.js';
 
 const GOOD = 'S,29,3,26,29,3,26,4,352,16,5,0,0,2,0,216,656,0,0,21,55,21,56,2,0,2,0,39,0,0,0,0,0,1,2,2,1,0,4,A,24000425';
 
@@ -51,3 +51,58 @@ test('an API row with an impossible date is reported, not counted', () => {
   assert.equal(out.records.length, 0);
   assert.equal(out.errors.length, 1);
 });
+
+// ── SD card .td1 ──────────────────────────────────────────────────────────────
+
+/** One 43-byte frame with the given byte values, framed and checksummed. */
+function td1Frame(values = {}) {
+  const b = new Uint8Array(43);
+  b[0] = 0xE8;
+  Object.assign(b, { 1: 30, 2: 10, 3: 26, 4: 30, 5: 10, 6: 26, 10: 40, 21: 14, 22: 50, 23: 15, 24: 6 }, values);
+  b[41] = b.subarray(0, 41).reduce((x, v) => x ^ v, 0);
+  b[42] = 0x8E;
+  return b;
+}
+const td1 = (...frames) => Uint8Array.from(frames.flatMap((f) => [...f]));
+
+test('td1: a frame decodes into the same record as a text line', () => {
+  const { record, error } = parseTd1Record(td1Frame({ 17: 1, 18: 44, 19: 12, 30: 2, 31: 1, 38: 1, 40: 9 }), 1, 'CVT3000001');
+  assert.equal(error, undefined);
+  assert.equal(record.startClock, '14:50');
+  assert.equal(record.endClock, '15:06');
+  assert.equal(record.setPressure, 4);          // 40 = 4.0 cmH₂O
+  assert.equal(record.tidalVolume, 300);         // big-endian 0x012C
+  assert.equal(record.respRate, 12);
+  assert.equal(record.events, 3);
+  assert.equal(record.maskType, 'Full Face');
+  assert.equal(record.leak, 9);
+  assert.equal(record.serial, 'CVT3000001');
+});
+
+test('td1: a bad checksum or frame is reported, not decoded', () => {
+  const bad = td1Frame();
+  bad[41] ^= 0xFF;
+  assert.match(parseTd1Record(bad, 3).error.reason, /checksum/);
+  const unframed = td1Frame();
+  unframed[42] = 0;
+  assert.match(parseTd1Record(unframed, 4).error.reason, /E8/);
+});
+
+test('td1: the copy the device writes twice is counted once', () => {
+  const a = td1Frame();
+  const b = td1Frame({ 21: 16, 22: 0, 23: 16, 24: 30 });
+  const parsed = parseTd1File(td1(a, a, b, b), { fileName: 'CVT3000001.td1' });
+  assert.equal(parsed.format, 'td1');
+  assert.equal(parsed.summary.records, 2);
+  assert.equal(parsed.summary.duplicates, 2);
+  assert.equal(parsed.serial, 'CVT3000001');
+  assert.equal(parsed.days.length, 1);
+  assert.equal(parsed.days[0].usage_hours, round2((16 + 30) / 60));
+});
+
+test('td1: detection looks at the framing, not the file name', () => {
+  assert.equal(isTd1Data(td1Frame()), true);
+  assert.equal(isTd1Data(new TextEncoder().encode('S,29,3,26,29,3,26,4,352,16,5,0,0,2,0,216,656,0,0,21,55')), false);
+});
+
+function round2(v) { return Math.round(v * 100) / 100; }

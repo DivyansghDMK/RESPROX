@@ -1,7 +1,8 @@
 // src/pages/AdminDataUpload.jsx
 //
-// Admin tool: upload a REPORTFL.TXT pulled off a device (SD card / USB) and
-// generate the same printable therapy report the live-telemetry path produces.
+// Admin tool: upload a REPORTFL.TXT (USB export) or a .td1 file (the SD card's
+// binary copy of the same records) and generate the same printable therapy
+// report the live-telemetry path produces.
 //
 // The whole pipeline runs in the browser — the file never leaves the machine,
 // which matters because it is patient data and this screen is often used on a
@@ -12,7 +13,7 @@ import GlassCard from '../components/GlassCard';
 import TherapyStatistics from '../components/TherapyStatistics';
 import { ChartSkeleton } from '../components/Skeleton';
 import { FileIcon, DownloadIcon, InfoIcon, CheckIcon, TrashIcon } from '../components/Icons';
-import { parseReportFile, dateRangeOf, daysToCSV, PARSER_CONSTANTS } from '../services/reportFileParser';
+import { parseReportFile, parseTd1File, isTd1Data, dateRangeOf, daysToCSV, PARSER_CONSTANTS, TD1_RECORD_BYTES } from '../services/reportFileParser';
 
 // recharts is ~300 kB; this page is useful before any chart is needed, so the
 // charts arrive on their own chunk once a file has actually been parsed.
@@ -20,6 +21,7 @@ import { parseReportFile, dateRangeOf, daysToCSV, PARSER_CONSTANTS } from '../se
 const ReportCharts = React.lazy(() => import('../components/ReportCharts'));
 
 const ACCEPT = '.txt,.TXT,.csv,.log,text/plain';
+const TD1_ACCEPT = '.td1,.TD1';
 const MAX_BYTES = 8 * 1024 * 1024;
 const PREVIEW_ROWS = 12;
 
@@ -78,14 +80,53 @@ function Notice({ tone = 'info', title, children }) {
   );
 }
 
-export default function AdminDataUpload() {
+/** A drop target with its own hidden file input. */
+function DropZone({ accept, busy, title, hint, icon, label, onFile }) {
   const inputRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
+  const open = () => inputRef.current?.click();
+  return (
+    <div
+      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(e) => { e.preventDefault(); setDragging(false); onFile(e.dataTransfer.files?.[0]); }}
+      onClick={open}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } }}
+      aria-label={label}
+      style={{
+        border: `2px dashed ${dragging ? 'var(--accent)' : 'var(--line)'}`,
+        background: dragging ? '#eff6ff' : 'rgba(255,255,255,0.45)',
+        borderRadius: 14, padding: '30px 20px', textAlign: 'center',
+        cursor: 'pointer', transition: 'all .15s ease',
+      }}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        style={{ display: 'none' }}
+        // Cleared after each pick, so choosing the same file again still loads it.
+        onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ''; }}
+      />
+      <div style={{ fontSize: 30, marginBottom: 8, opacity: 0.5 }}>{icon}</div>
+      <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: 15 }}>
+        {busy ? 'Reading file…' : title}
+      </div>
+      <div style={{ color: 'var(--muted)', fontSize: 12.5, marginTop: 6 }}>{hint}</div>
+    </div>
+  );
+}
+
+export default function AdminDataUpload() {
   const [fileName, setFileName] = useState('');
   const [fileSize, setFileSize] = useState(0);
   const [parsed, setParsed] = useState(null);
   const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [dragging, setDragging] = useState(false);
+  // Which section ('text' or 'td1') is reading, or the last error belongs to.
+  const [busy, setBusy] = useState(null);
+  const [errorSource, setErrorSource] = useState(null);
   const [showAllErrors, setShowAllErrors] = useState(false);
 
   const [range, setRange] = useState({ start: '', end: '' });
@@ -94,31 +135,37 @@ export default function AdminDataUpload() {
   const [model, setModel] = useState('');
 
   const reset = useCallback(() => {
-    setParsed(null); setError(null); setFileName(''); setFileSize(0);
+    setParsed(null); setError(null); setErrorSource(null); setFileName(''); setFileSize(0);
     setRange({ start: '', end: '' });
     setSerial(''); setShowAllErrors(false);
-    if (inputRef.current) inputRef.current.value = '';
   }, []);
 
-  const ingest = useCallback(async (file) => {
+  const ingest = useCallback(async (file, section) => {
     if (!file) return;
-    setBusy(true); setError(null);
+    setBusy(section); setError(null); setErrorSource(section);
     try {
       if (file.size > MAX_BYTES) {
         throw new Error(`File is ${(file.size / 1048576).toFixed(1)} MB — the limit is ${MAX_BYTES / 1048576} MB.`);
       }
-      const text = await file.text();
-      const result = parseReportFile(text);
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      // The content decides the format, so a file dropped in the other
+      // section is still read correctly.
+      const binary = isTd1Data(bytes) || /\.td1$/i.test(file.name);
+      const result = binary
+        ? parseTd1File(bytes, { fileName: file.name })
+        : parseReportFile(new TextDecoder().decode(bytes));
 
       if (!result.records.length) {
         throw new Error(
-          result.errors.length
-            ? `No usable session records found. ${result.errors.length} line(s) could not be read — check this is a REPORTFL.TXT session log.`
-            : 'The file is empty.'
+          !bytes.length ? 'The file is empty.'
+            : binary
+              ? `No usable session records found. ${result.errors.length} record(s) failed the frame or checksum check — check this is a .td1 file from the SD card.`
+              : `No usable session records found. ${result.errors.length} line(s) could not be read — check this is a REPORTFL.TXT session log.`
         );
       }
 
       setParsed(result);
+      setErrorSource(null);
       setFileName(file.name);
       setFileSize(file.size);
       setRange(dateRangeOf(result));
@@ -130,15 +177,9 @@ export default function AdminDataUpload() {
       setParsed(null);
       setError(err.message || 'Could not read the file.');
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }, []);
-
-  const onDrop = useCallback((e) => {
-    e.preventDefault();
-    setDragging(false);
-    ingest(e.dataTransfer.files?.[0]);
-  }, [ingest]);
 
   // Days actually inside the chosen range — the report applies the same filter,
   // so the counts on screen must be the counts in the PDF.
@@ -211,6 +252,7 @@ export default function AdminDataUpload() {
       pressureSource: 'set',
     });
     if (!result.ok) {
+      setErrorSource(parsed.format === 'td1' ? 'td1' : 'text');
       setError('The browser blocked the report window. Allow pop-ups for this site and try again.');
     }
   }, [parsed, deviceData, range]);
@@ -228,6 +270,27 @@ export default function AdminDataUpload() {
   }, [daysInRange, serial, range]);
 
   const summary = parsed?.summary;
+
+  const loadedFile = fileName && !error && (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      gap: 12, marginTop: 14, padding: '10px 14px', flexWrap: 'wrap',
+      background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10,
+    }}>
+      <span style={{ color: '#166534', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <CheckIcon />
+        <strong>{fileName}</strong>
+        <span style={{ opacity: 0.75 }}>
+          ({(fileSize / 1024).toFixed(fileSize < 10240 ? 1 : 0)} KB · {summary?.records} records · {summary?.days} days)
+        </span>
+      </span>
+      <button className="icon-text-button remove" onClick={(e) => { e.stopPropagation(); reset(); }}>
+        <TrashIcon />
+        <span>Clear</span>
+      </button>
+    </div>
+  );
+  const errorNotice = error && <Notice tone="error" title="Could not use this file">{error}</Notice>;
   const visibleErrors = showAllErrors ? parsed?.errors : parsed?.errors?.slice(0, 5);
 
   return (
@@ -237,65 +300,44 @@ export default function AdminDataUpload() {
           <h2>Upload Device Data File</h2>
         </div>
         <p style={{ color: 'var(--muted)', fontSize: 13.5, margin: '0 0 16px', lineHeight: 1.6 }}>
-          Drop the <strong>REPORTFL.TXT</strong> copied from a device&apos;s SD card or USB export.
+          Drop the <strong>REPORTFL.TXT</strong> from a device&apos;s USB export.
           Every session line is parsed, grouped into nights, and turned into the standard
           therapy report. The file is processed in this browser and is never uploaded.
         </p>
+        <DropZone
+          accept={ACCEPT}
+          busy={busy === 'text'}
+          icon="📄"
+          title="Drop REPORTFL.TXT here, or click to browse"
+          hint={`Plain-text session log · up to ${MAX_BYTES / 1048576} MB`}
+          label="Choose a REPORTFL.TXT file"
+          onFile={(file) => ingest(file, 'text')}
+        />
+        {parsed?.format !== 'td1' && loadedFile}
+        {errorSource !== 'td1' && errorNotice}
+      </GlassCard>
 
-        {/* Drop zone */}
-        <div
-          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={onDrop}
-          onClick={() => inputRef.current?.click()}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputRef.current?.click(); } }}
-          aria-label="Choose a device data file"
-          style={{
-            border: `2px dashed ${dragging ? 'var(--accent)' : 'var(--line)'}`,
-            background: dragging ? '#eff6ff' : 'rgba(255,255,255,0.45)',
-            borderRadius: 14, padding: '30px 20px', textAlign: 'center',
-            cursor: 'pointer', transition: 'all .15s ease',
-          }}
-        >
-          <input
-            ref={inputRef}
-            type="file"
-            accept={ACCEPT}
-            style={{ display: 'none' }}
-            onChange={(e) => ingest(e.target.files?.[0])}
-          />
-          <div style={{ fontSize: 30, marginBottom: 8, opacity: 0.5 }}>📄</div>
-          <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: 15 }}>
-            {busy ? 'Reading file…' : 'Drop REPORTFL.TXT here, or click to browse'}
-          </div>
-          <div style={{ color: 'var(--muted)', fontSize: 12.5, marginTop: 6 }}>
-            Plain-text session log · up to {MAX_BYTES / 1048576} MB
-          </div>
+      <GlassCard style={{ marginTop: 20 }}>
+        <div className="section-title">
+          <h2>SD Card File (.td1)</h2>
         </div>
-
-        {fileName && !error && (
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            gap: 12, marginTop: 14, padding: '10px 14px', flexWrap: 'wrap',
-            background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10,
-          }}>
-            <span style={{ color: '#166534', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <CheckIcon />
-              <strong>{fileName}</strong>
-              <span style={{ opacity: 0.75 }}>
-                ({(fileSize / 1024).toFixed(0)} KB · {summary?.records} records · {summary?.days} days)
-              </span>
-            </span>
-            <button className="icon-text-button remove" onClick={(e) => { e.stopPropagation(); reset(); }}>
-              <TrashIcon />
-              <span>Clear</span>
-            </button>
-          </div>
-        )}
-
-        {error && <Notice tone="error" title="Could not use this file">{error}</Notice>}
+        <p style={{ color: 'var(--muted)', fontSize: 13.5, margin: '0 0 16px', lineHeight: 1.6 }}>
+          Drop the <strong>.td1</strong> file from the device&apos;s SD card, named after its serial
+          (for example <code>CVT3000001.td1</code>). It holds the same session records in binary;
+          each one is checked, copies the device wrote twice are counted once, and the result
+          gives the same report. Processed in this browser, never uploaded.
+        </p>
+        <DropZone
+          accept={TD1_ACCEPT}
+          busy={busy === 'td1'}
+          icon="💾"
+          title="Drop the .td1 file here, or click to browse"
+          hint={`Binary session records (${TD1_RECORD_BYTES} bytes each) · up to ${MAX_BYTES / 1048576} MB`}
+          label="Choose a .td1 file from the SD card"
+          onFile={(file) => ingest(file, 'td1')}
+        />
+        {parsed?.format === 'td1' && loadedFile}
+        {errorSource === 'td1' && errorNotice}
       </GlassCard>
 
       {parsed && (
@@ -338,12 +380,21 @@ export default function AdminDataUpload() {
               </Notice>
             )}
 
+            {parsed.format === 'td1' && (
+              <Notice tone={summary.dropped ? 'warn' : 'good'} title="SD card file (.td1)">
+                {summary.lines} records read
+                {summary.duplicates > 0 && <>; {summary.duplicates} were copies the device wrote twice and are counted once</>}.
+                {' '}{summary.dropped ? `${summary.dropped} failed the frame or checksum check.` : 'Every record passed the checksum check.'}
+                {!parsed.serial && ' The file name is not a serial number, so enter the serial under Report Details.'}
+              </Notice>
+            )}
+
             {summary.dropped > 0 && (
-              <Notice tone="warn" title={`${summary.dropped} line(s) skipped`}>
+              <Notice tone="warn" title={`${summary.dropped} ${parsed.format === 'td1' ? 'record' : 'line'}(s) skipped`}>
                 <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
                   {visibleErrors.map((e) => (
                     <li key={e.lineNo}>
-                      Line {e.lineNo}: {e.reason} — <code style={{ fontSize: 12 }}>{e.text.slice(0, 48)}{e.text.length > 48 ? '…' : ''}</code>
+                      {parsed.format === 'td1' ? 'Record' : 'Line'} {e.lineNo}: {e.reason} — <code style={{ fontSize: 12 }}>{e.text.slice(0, 48)}{e.text.length > 48 ? '…' : ''}</code>
                     </li>
                   ))}
                 </ul>

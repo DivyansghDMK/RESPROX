@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { HomeIcon, PhoneIcon, PulseIcon, ClipboardIcon } from './Icons';
+import { HomeIcon, PhoneIcon, PulseIcon, ClipboardIcon, DotsIcon } from './Icons';
 import { prefetch, routeKeyForPath } from '../routes';
 
 function BottomNavbar() {
@@ -23,6 +23,8 @@ function BottomNavbar() {
     },
     { label: 'Therapy', path: '/therapy', icon: PulseIcon },
     { label: 'Reports', path: '/reports', icon: ClipboardIcon },
+    // Phones have no sidebar: the rest of the pages and Sign out live here.
+    { label: 'More', path: '/preferences', icon: DotsIcon },
   ];
 
   return (

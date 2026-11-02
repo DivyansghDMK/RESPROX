@@ -193,7 +193,7 @@ export default function Therapy() {
                 <div className="panel-head">
                   <h3>CPAP</h3>
                   <span>Fixed Pressure Setting</span>
-                  <button className="micro-pill" aria-label="Fixed Pressure type">Fixed Mode</button>
+                  <span className="micro-pill">Fixed Mode</span>
                 </div>
 
                 <div className="pressure-row">
@@ -262,7 +262,7 @@ export default function Therapy() {
                 <div className="panel-head">
                   <h3>{mode === 'bipap' ? 'BiPAP' : 'AUTO CPAP'}</h3>
                   <span>Settings</span>
-                  <button className="micro-pill light" aria-label="Auto Adjusting type">Auto Adjusting</button>
+                  <span className="micro-pill light">Auto Adjusting</span>
                 </div>
 
                 <div className="auto-grid">

@@ -162,6 +162,40 @@ svg {
   transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
+/* Pinned to the bottom of the sidebar when there is room; when the window is
+   short the sidebar scrolls (overflow-y: auto) to reach it. */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar > * {
+  flex-shrink: 0;
+}
+
+.sidebar .nav-list {
+  margin-bottom: 20px;
+}
+
+/* Below the page links, set apart so it is not clicked by mistake. */
+.nav-signout {
+  margin-top: auto;
+  border: 0;
+  border-top: 1px solid rgba(28, 50, 87, 0.08);
+  border-radius: 0 0 14px 14px;
+  padding-top: 18px;
+  background: none;
+  font: inherit;
+  color: #b42318;
+  cursor: pointer;
+  text-align: left;
+}
+
+.nav-signout:hover,
+.nav-signout:focus-visible {
+  background: rgba(180, 35, 24, 0.07);
+}
+
 .nav-item.secondary {
   padding-left: 14px;
   color: #3a4a67;
@@ -2144,6 +2178,12 @@ textarea:focus-visible,
     top: 12px;
     bottom: 12px;
     width: 3px;
+  }
+
+  .nav-signout {
+    display: flex;
+    margin: auto auto 0;
+    border-top: 0;
   }
 
   .metrics-grid {
@@ -6495,4 +6535,43 @@ textarea:focus-visible,
 .auth-hint { margin: -8px 0 0; font-size: 12px; line-height: 1.5; color: #94a3b8; }
 .auth-notice-success {
   background: rgba(16, 185, 129, 0.14); border-color: rgba(16, 185, 129, 0.45); color: #a7f3d0;
+}
+
+/* "More" tab on phones: the pages the bottom bar has no room for. */
+.more-pages {
+  display: grid;
+}
+
+.more-pages-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 4px;
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.more-pages-link:last-child {
+  border-bottom: 0;
+}
+
+.more-pages-link span:last-child {
+  color: var(--muted);
+  font-size: 1.3rem;
+}
+
+.more-pages-card + .therapy-card {
+  margin-top: 20px;
+}
+
+@media (min-width: 768px) {
+  .more-pages-card {
+    display: none;
+  }
+
+  .more-pages-card + .therapy-card {
+    margin-top: 0;
+  }
 }

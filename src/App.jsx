@@ -73,6 +73,9 @@ function AppContent() {
         duration: 1.2,
         easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
         smoothWheel: true,
+        // Without this Lenis takes every wheel event, so panels with their own
+        // scrollbar (sidebar, notifications, wide tables, dialogs) never scroll.
+        allowNestedScroll: true,
       });
       // The rAF loop must be cancellable, otherwise StrictMode's double-mount
       // and every HMR update leave a loop running forever against a destroyed
