@@ -4,6 +4,7 @@ import { describeCommandStatus, describeError } from '../services/apiError';
 import { useAuth } from './AuthContext';
 import { devicesAPI } from '../services/respireeApi';
 import { diffDeviceEvents } from '../services/deviceEvents';
+import { IDLE_AFTER_MS, IDLE_CHECK_MS, idleFor } from '../services/userActivity';
 
 const TherapyContext = createContext(null);
 
@@ -14,6 +15,8 @@ const TherapyContext = createContext(null);
 // every FULL_REFRESH_MS as a safety net.
 const LIVE_CHECK_MS = 3_000;
 const FULL_REFRESH_MS = 60_000;
+// Read the sync marker on every third live check (~9 s).
+const SYNC_CHECK_EVERY = 3;
 const MAX_DEVICE_EVENTS = 20;
 
 export function TherapyProvider({ children }) {
@@ -180,13 +183,27 @@ export function TherapyProvider({ children }) {
     // connection doesn't fire a request every few seconds.
     let failures = 0;
     let nextTryAt = 0;
+    let lastTickAt = 0;
+    let tickNo = 0;
+    let syncMark = '';
     const tick = async () => {
       if (inFlight || document.visibilityState !== 'visible' || !navigator.onLine) return;
       if (Date.now() < nextTryAt) return;
+      // Nobody at the screen: check once a minute instead.
+      if (idleFor(IDLE_AFTER_MS) && Date.now() - lastTickAt < IDLE_CHECK_MS) return;
+      lastTickAt = Date.now();
       inFlight = true;
       try {
-        const row = (await devicesAPI.getDevices({ force: true })).find((d) => d.serial === adminActiveSerial);
-        const signature = row ? [row.therapy_status, row.raw?.status, row.raw?.last_seen].join('|') : null;
+        // The device row doesn't move when new reports land, so every few
+        // checks also read the sync marker; that is what catches new values.
+        tickNo += 1;
+        const [rows, sync] = await Promise.all([
+          devicesAPI.getDevices({ force: true }),
+          tickNo % SYNC_CHECK_EVERY === 1 ? devicesAPI.getSyncState(adminActiveSerial).catch(() => null) : null,
+        ]);
+        if (sync) syncMark = [sync.progressMarker, sync.last_acknowledgement, sync.sync_status].join('|');
+        const row = rows.find((d) => d.serial === adminActiveSerial);
+        const signature = row ? [row.therapy_status, row.raw?.status, row.raw?.last_seen, syncMark].join('|') : null;
         const changed = lastSignature !== null && signature !== lastSignature;
         lastSignature = signature;
         if (changed || Date.now() - lastFullRead > FULL_REFRESH_MS) {

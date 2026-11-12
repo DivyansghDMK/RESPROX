@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import DeviceDataState from '../components/DeviceDataState';
 import { useTherapy } from '../context/TherapyContext';
+import { useAccess } from '../context/AccessContext';
 import SaveButton from '../components/SaveButton';
 import GlassCard from '../components/GlassCard';
 import {
@@ -39,6 +40,7 @@ export default function Therapy() {
     ramp,
     setRamp,
   } = useTherapy();
+  const access = useAccess();
 
   const progress = useMemo(() => ((pressure - 4) / (30 - 4)) * 100, [pressure]);
 
@@ -65,9 +67,17 @@ export default function Therapy() {
 
   if (!deviceData) return <DeviceDataState what="therapy settings" />;
 
+  // Pressure and mode: running therapy or a dealer's account makes them view only.
+  const viewOnly = deviceData.therapy_running || !access.editTherapySettings;
+
 
   return (
     <div className="therapy-page-container">
+      {!access.editTherapySettings && (
+        <div className="therapy-lock-note" role="status">
+          <strong>View only.</strong> Pressure and mode are set by Resprox admin. Comfort settings can be changed on the Settings page.
+        </div>
+      )}
       {deviceData.therapy_running && (
         <div className="therapy-lock-note" role="status">
           <strong>Therapy is running.</strong> Settings are locked until therapy is stopped from the device dashboard.
@@ -134,7 +144,7 @@ export default function Therapy() {
       {/* 2. Pressure Configuration - Responsive Wrapper */}
       <div className="therapy-settings-responsive-wrapper">
         {/* Desktop Therapy Settings */}
-        <section className="therapy-card desktop-therapy-settings" style={{ marginTop: '20px' }} inert={deviceData.therapy_running ? '' : undefined}>
+        <section className="therapy-card desktop-therapy-settings" style={{ marginTop: '20px' }} inert={viewOnly ? '' : undefined}>
           <div className="section-title">
             <h2>Pressure Configuration</h2>
           </div>
@@ -351,7 +361,7 @@ export default function Therapy() {
         </section>
 
         {/* Mobile Therapy Settings */}
-        <div className="mobile-therapy-settings" inert={deviceData.therapy_running ? '' : undefined}>
+        <div className="mobile-therapy-settings" inert={viewOnly ? '' : undefined}>
           {/* Mode Switcher */}
           <div className="mobile-mode-switcher">
             <button 

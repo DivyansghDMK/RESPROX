@@ -2,6 +2,7 @@ import React, { useCallback } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useTherapy } from '../context/TherapyContext';
 import { useAuth } from '../context/AuthContext';
+import { useAccess } from '../context/AccessContext';
 import { prefetch, routeKeyForPath } from '../routes';
 import {
   HomeIcon,
@@ -15,12 +16,16 @@ import {
   HelpIcon,
   CloseIcon,
   LogoutIcon,
+  StoreIcon,
+  UsersIcon,
+  GaugeIcon,
 } from './Icons';
 
 function Sidebar() {
   const { sidebarOpen, setSidebarOpen, adminActiveSerial } = useTherapy();
   const activeSerial = adminActiveSerial || localStorage.getItem('adminActiveSerial') || '';
   const { logout, loginPath } = useAuth();
+  const access = useAccess();
   const navigate = useNavigate();
 
   // Back to the sign-in page this user came from (doctor or admin).
@@ -41,15 +46,18 @@ function Sidebar() {
 
   const sidebarItems = [
     { label: 'Dashboard', path: activeSerial ? `/device/${activeSerial}` : '/devices', icon: HomeIcon },
-    { label: 'Devices', path: '/devices', icon: DeviceIcon },
+    { label: access.isDealer ? 'My Devices' : 'Devices', path: '/devices', icon: DeviceIcon },
+    access.manageDealers && { label: 'Dealers', path: '/admin/dealers', icon: StoreIcon },
+    access.manageCustomers && { label: access.isDealer ? 'My Customers' : 'Customers', path: '/customers', icon: UsersIcon },
     { label: 'Therapy', path: '/therapy', icon: PulseIcon },
     { label: 'Reports', path: '/reports', icon: FileIcon },
     { label: 'Upload Data', path: '/admin/upload', icon: ClipboardIcon },
     { label: 'Trends', path: '/trends', icon: ChartIcon },
     { label: 'Mask Fit', path: '/mask-fit', icon: MaskIcon },
     { label: 'Settings', path: '/settings', icon: GearIcon },
+    access.calibrate && { label: 'Calibration', path: '/calibration', icon: GaugeIcon },
     { label: 'Help & Support', path: '/help', icon: HelpIcon },
-  ];
+  ].filter(Boolean);
 
 
   return (

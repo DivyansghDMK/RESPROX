@@ -34,3 +34,12 @@ test('an unknown error never shows the raw technical text as the message', () =>
   assert.equal(d.kind, 'unknown');
   assert.doesNotMatch(d.message, /undefined/);
 });
+
+test('a command the device has not confirmed yet is not an unexpected error', async () => {
+  const { describeError } = await import('./apiError.js');
+  const err = Object.assign(new Error('x'), { code: 'ACK_PENDING' });
+  const d = describeError(err, { action: 'save settings', subject: 'CVT3000001' });
+  assert.equal(d.kind, 'timeout');
+  assert.match(d.title, /hasn't confirmed/);
+  assert.match(d.message, /CVT3000001/);
+});

@@ -109,8 +109,9 @@ export function AuthProvider({ children }) {
 
   const logout = () => {
     clearCognitoSession();
-    localStorage.removeItem('adminToken');
-    localStorage.removeItem('adminUsername');
+    // Nothing about the last account stays behind on a shared computer.
+    ['adminToken', 'adminUsername', 'adminEmail', 'adminActiveSerial', 'resproxPreviewRole']
+      .forEach((key) => localStorage.removeItem(key));
     setToken(null);
     setUsername(null);
     setIsAuthenticated(false);

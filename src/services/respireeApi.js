@@ -665,7 +665,11 @@ async function pollCommandStatus(deviceId, commandId, { intervalMs = 2000, timeo
     }
     await new Promise(resolve => setTimeout(resolve, intervalMs));
   }
-  throw new Error("Polling timed out client-side");
+  // The server still holds the command as PENDING (and may retry it), so this
+  // is "not confirmed yet", not a failure to send.
+  const err = new Error(`The device has not confirmed command ${commandId} yet.`);
+  err.code = 'ACK_PENDING';
+  throw err;
 }
 
 /** POST /devices/{id}/therapy/start|stop. The device confirms asynchronously. */

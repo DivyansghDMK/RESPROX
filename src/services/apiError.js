@@ -44,6 +44,16 @@ export function describeError(err, { action = 'complete that', subject } = {}) {
     };
   }
 
+  if (err?.code === 'ACK_PENDING') {
+    return {
+      kind: 'timeout',
+      title: "Sent, but the device hasn't confirmed",
+      message: `The server sent the change${on}, but no confirmation from the device has reached it yet. It may still arrive; refresh in a minute to see what the device holds.`,
+      detail: raw,
+      retryable: true,
+    };
+  }
+
   if (err?.code === 'TIMEOUT' || err?.name === 'AbortError') {
     return {
       kind: 'timeout',

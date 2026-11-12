@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { devicesAPI } from '../services/respireeApi';
 import { useTherapy } from '../context/TherapyContext';
 import { useNotify } from '../context/NotifyContext';
+import { useAccess } from '../context/AccessContext';
 import { describeError } from '../services/apiError';
 
 // Material UI Icons
@@ -14,6 +15,8 @@ import WarningIcon from '@mui/icons-material/Warning';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import SearchIcon from '@mui/icons-material/Search';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import LiveValue from '../components/LiveValue';
+import { IDLE_AFTER_MS, IDLE_CHECK_MS, idleFor } from '../services/userActivity';
 
 const PAGE_SIZE = 20;
 const GAP = '…';
@@ -46,6 +49,9 @@ function pageWindow(current, total) {
 // How often the open list re-checks the server for status changes.
 const LIST_REFRESH_MS = 5_000;
 
+// What a row shows; a change here makes that row glow once.
+const rowSignature = (d) => [d.status, d.compliance_pct, d.ahi, d.usage_hours, d.firmware].join('|');
+
 const STATUS_COLOR = {
   online:  { bg: '#e6f9f0', text: '#0f6e56', dot: '#1d9e75' },
   offline: { bg: '#f1efe8', text: '#5f5e5a', dot: '#888780' },
@@ -65,10 +71,16 @@ export default function DeviceList() {
   const navigate = useNavigate();
   const { lastServerPull, setLastServerPull } = useTherapy();
   const notify = useNotify();
-  const [devices, setDevices] = useState([]);
+  const [allDevices, setDevices] = useState([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [loading, setLoading] = useState(true);
+  const [fetching, setLoading] = useState(true);
+
+  // A dealer sees only their own devices (the server will scope /devices the
+  // same way; this keeps the list right until it does).
+  const access = useAccess();
+  const devices = useMemo(() => allDevices.filter((d) => access.canSeeDevice(d.serial)), [allDevices, access]);
+  const loading = fetching || access.dealerLoading;
 
   const [quickSerial, setQuickSerial] = useState('');
   const [page, setPage] = useState(1);
@@ -121,9 +133,13 @@ export default function DeviceList() {
     let inFlight = false;
     let failures = 0;
     let nextTryAt = 0;
+    let lastTickAt = 0;
     const tick = async () => {
       if (inFlight || document.visibilityState !== 'visible' || !navigator.onLine) return;
       if (Date.now() < nextTryAt) return;
+      // Nobody at the screen: check once a minute instead.
+      if (idleFor(IDLE_AFTER_MS) && Date.now() - lastTickAt < IDLE_CHECK_MS) return;
+      lastTickAt = Date.now();
       inFlight = true;
       try {
         const data = await devicesAPI.getDevices({ force: true });
@@ -428,8 +444,11 @@ export default function DeviceList() {
                 {pagedDevices.map(d => {
                   const sc = STATUS_COLOR[d.status] || STATUS_COLOR.offline;
                   return (
-                    <tr
+                    <LiveValue
+                      as="tr"
                       key={d.serial}
+                      scope={d.serial}
+                      watch={rowSignature(d)}
                       className="admin-table-row"
                       onClick={() => { navigate(`/device/${d.serial}`); }}
                       style={{ cursor: 'pointer' }}
@@ -473,7 +492,7 @@ export default function DeviceList() {
                           View Metrics
                         </button>
                       </td>
-                    </tr>
+                    </LiveValue>
                   );
                 })}
               </tbody>
@@ -485,8 +504,10 @@ export default function DeviceList() {
             {pagedDevices.map(d => {
               const sc = STATUS_COLOR[d.status] || STATUS_COLOR.offline;
               return (
-                <div
+                <LiveValue
                   key={d.serial}
+                  scope={d.serial}
+                  watch={rowSignature(d)}
                   className="mobile-device-card"
                   onClick={() => navigate(`/device/${d.serial}`)}
                 >
@@ -530,7 +551,7 @@ export default function DeviceList() {
                       </div>
                     </div>
                   </div>
-                </div>
+                </LiveValue>
               );
             })}
           </div>

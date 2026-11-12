@@ -1,11 +1,13 @@
 // src/pages/DeviceDashboard.jsx — Admin Device Dashboard (no inline tabs)
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import LiveValue from '../components/LiveValue';
 import { DeviceDashboardSkeleton } from '../components/Skeleton';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { devicesAPI } from '../services/respireeApi';
 import { useTherapy } from '../context/TherapyContext';
 import { useNotify } from '../context/NotifyContext';
+import { useAccess } from '../context/AccessContext';
 import { describeCommandStatus, describeError } from '../services/apiError';
 import SendIcon from '@mui/icons-material/Send';
 import SaveIcon from '@mui/icons-material/Save';
@@ -125,7 +127,7 @@ function formatSyncStamp(value) {
 // ── Therapy control ────────────────────────────────────────────────────────────
 // Start/stop changes what the patient is breathing, so it is always a two-step
 // action: press the button, then confirm in a dialog that names the device.
-function TherapyControl({ status, applying, online, onRequest }) {
+function TherapyControl({ status, applying, online, allowed = true, onRequest }) {
   const running = status === 'RUNNING';
   const stopped = status === 'STOPPED';
   const known = running || stopped;
@@ -155,7 +157,9 @@ function TherapyControl({ status, applying, online, onRequest }) {
         <div className="therapy-detail">{detail}</div>
       </div>
       <div className="therapy-actions">
-        {!online ? (
+        {!allowed ? (
+          <div className="therapy-offline" role="status">Start and stop therapy are done by Resprox admin.</div>
+        ) : !online ? (
           <div className="therapy-offline" role="status">Device offline. Commands cannot reach it.</div>
         ) : (
           <>
@@ -205,8 +209,30 @@ function TherapyConfirmDialog({ action, serial, onCancel, onConfirm }) {
 const dash = (v, unit = '') => (v == null || Number.isNaN(Number(v)) ? '—' : `${v}${unit}`);
 
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
+/**
+ * A dealer opening a device that isn't theirs (an old link, a typed serial)
+ * gets a clear message instead of the device's data.
+ */
 export default function DeviceDashboard() {
+  const { serial } = useParams();
+  const navigate = useNavigate();
+  const access = useAccess();
+  if (access.dealerLoading) return <DeviceDashboardSkeleton />;
+  if (!access.canSeeDevice(serial)) {
+    return (
+      <div className="admin-empty partner-empty" style={{ background: 'var(--panel-strong)', borderRadius: 16, border: '1px solid var(--line)' }}>
+        <p style={{ fontWeight: 700 }}>{serial} isn’t one of your devices</p>
+        <p>Ask a Resprox admin if this device should be assigned to you.</p>
+        <button type="button" className="admin-page-btn" style={{ marginTop: 14 }} onClick={() => navigate('/devices')}>← My Devices</button>
+      </div>
+    );
+  }
+  return <DeviceDashboardView />;
+}
+
+function DeviceDashboardView() {
   const notify = useNotify();
+  const access = useAccess();
   const { serial } = useParams();
   const navigate   = useNavigate();
   const { setAdminActiveSerial, setLastServerPull, setDeviceData, deviceData } = useTherapy();
@@ -344,7 +370,7 @@ export default function DeviceDashboard() {
   };
 
   const requestTherapyAction = (action) => {
-    if (!isOnline || therapyAction) return;
+    if (!access.controlTherapy || !isOnline || therapyAction) return;
     setConfirmTherapyAction(action);
   };
 
@@ -534,7 +560,8 @@ export default function DeviceDashboard() {
   const therapyStatus = String(device.therapy_status || '').toUpperCase();
   const isTherapyRunning = therapyStatus === 'RUNNING';
   // The device refuses setting changes mid-therapy (409), so the UI does not offer them.
-  const settingsLocked = isTherapyRunning || Boolean(therapyAction);
+  // Pressure, mode, ramp and A-Flex: a dealer may view them but not change them.
+  const settingsLocked = isTherapyRunning || Boolean(therapyAction) || !access.editTherapySettings;
 
 
   return (
@@ -600,10 +627,10 @@ export default function DeviceDashboard() {
               <RefreshIcon fontSize="small" style={{ animation: refreshing ? 'spin 0.8s linear infinite' : 'none' }}/>
               Refresh
             </button>
-            <span style={{ padding: '7px 12px', borderRadius: 20, background: isTherapyRunning ? '#dcfce7' : '#f1f5f9', color: isTherapyRunning ? '#15803d' : '#64748b', fontSize: 12, fontWeight: 800 }}>
+            <LiveValue as="span" scope={serial} watch={therapyStatus || ''} style={{ padding: '7px 12px', borderRadius: 20, background: isTherapyRunning ? '#dcfce7' : '#f1f5f9', color: isTherapyRunning ? '#15803d' : '#64748b', fontSize: 12, fontWeight: 800 }}>
               Therapy: {therapyStatus || 'UNKNOWN'}
-            </span>
-            <span title={withPhone ? 'The phone app is connected over Bluetooth, so the device has left Wi-Fi.' : undefined} style={{
+            </LiveValue>
+            <LiveValue as="span" scope={serial} watch={isOnline ? 'online' : withPhone ? 'phone' : 'offline'} title={withPhone ? 'The phone app is connected over Bluetooth, so the device has left Wi-Fi.' : undefined} style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
               background: isOnline ? '#dcfce7' : withPhone ? '#dbeafe' : '#f1f5f9',
               color: isOnline ? '#15803d' : withPhone ? '#1d4ed8' : '#64748b',
@@ -617,12 +644,12 @@ export default function DeviceDashboard() {
                 animation: isOnline ? 'pulse 2s infinite' : 'none',
               }}/>
               {isOnline ? 'Device Online' : withPhone ? 'With phone app' : 'Device Offline'}
-            </span>
+            </LiveValue>
           </div>
         </div>
 
         {/* ── Therapy control ─────────────────────────────────────────────────── */}
-        <TherapyControl status={therapyStatus} applying={therapyAction} online={isOnline} onRequest={requestTherapyAction} />
+        <TherapyControl status={therapyStatus} applying={therapyAction} online={isOnline} allowed={access.controlTherapy} onRequest={requestTherapyAction} />
 
         {confirmTherapyAction && (
           <TherapyConfirmDialog
@@ -657,7 +684,7 @@ export default function DeviceDashboard() {
         <div className="dashboard-metrics-grid" style={{ marginBottom: 18 }}>
 
           {/* Usage */}
-          <div style={card}>
+          <LiveValue style={card} scope={serial} watch={`${ld.usage_hours}`}>
             <div style={cardEyebrow}>Usage</div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
               <div>
@@ -667,10 +694,10 @@ export default function DeviceDashboard() {
               </div>
               {ld.usage_hours != null && <RingProgress pct={usagePct} size={68} stroke={6} color="var(--accent)"/>}
             </div>
-          </div>
+          </LiveValue>
 
           {/* AHI */}
-          <div style={card}>
+          <LiveValue style={card} scope={serial} watch={`${ld.ahi}`}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={cardEyebrow}>AHI</div>
               <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: ld.ahi == null ? '#f1f5f9' : ld.ahi <= 5 ? '#dcfce7' : '#fef3c7', color: ld.ahi == null ? '#64748b' : ld.ahi <= 5 ? '#15803d' : '#92400e' }}>
@@ -679,10 +706,10 @@ export default function DeviceDashboard() {
             </div>
             <div style={{ fontSize: 36, fontWeight: 900, color: ld.ahi == null ? '#94a3b8' : ld.ahi <= 5 ? '#15803d' : '#b45309', lineHeight: 1, marginTop: 8 }}>{dash(ld.ahi)}</div>
             <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, fontWeight: 600 }}>Events per hour · Target ≤ 5.0</div>
-          </div>
+          </LiveValue>
 
           {/* Mask Seal */}
-          <div style={card}>
+          <LiveValue style={card} scope={serial} watch={`${ld.mask_leak}`}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={cardEyebrow}>Mask Seal</div>
               <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: ld.mask_leak == null ? '#f1f5f9' : ld.mask_leak <= 24 ? '#dcfce7' : '#fee2e2', color: ld.mask_leak == null ? '#64748b' : ld.mask_leak <= 24 ? '#15803d' : '#b91c1c' }}>
@@ -693,10 +720,10 @@ export default function DeviceDashboard() {
               {dash(ld.mask_leak)} {ld.mask_leak != null && <span style={{ fontSize: 16, color: '#64748b' }}>L/min</span>}
             </div>
             <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, fontWeight: 600 }}>Leak Rate · Target ≤ 24 L/min</div>
-          </div>
+          </LiveValue>
 
           {/* Pressure */}
-          <div style={card}>
+          <LiveValue style={card} scope={serial} watch={`${ld.pressure_95}|${device.settings.max_pressure}`}>
             <div style={cardEyebrow}>Pressure · latest session</div>
             <div style={{ fontSize: 36, fontWeight: 900, color: '#163257', lineHeight: 1, marginTop: 8 }}>
               {dash(ld.pressure_95)} {ld.pressure_95 != null && <span style={{ fontSize: 16, color: '#64748b' }}>cmH₂O</span>}
@@ -705,7 +732,7 @@ export default function DeviceDashboard() {
             <div style={{ height: 4, background: '#e2e8f0', borderRadius: 2, marginTop: 10, overflow: 'hidden' }}>
               <div style={{ height: '100%', borderRadius: 2, transition: 'width 0.5s', width: `${device.settings.max_pressure && ld.pressure_95 != null ? Math.min((ld.pressure_95 / device.settings.max_pressure) * 100, 100) : 0}%`, background: 'var(--brand-gradient)' }}/>
             </div>
-          </div>
+          </LiveValue>
         </div>
           </>
         ) : (
@@ -735,7 +762,10 @@ export default function DeviceDashboard() {
 
           {settingsLocked && (
             <div className="therapy-lock-note" role="status">
-              <strong>Settings are locked.</strong> {therapyAction ? 'A therapy command is being applied.' : 'Stop therapy to change pressure, ramp or mode.'}
+              <strong>{access.editTherapySettings ? 'Settings are locked.' : 'View only.'}</strong>{' '}
+              {!access.editTherapySettings
+                ? 'Pressure, mode, ramp and A-Flex are set by Resprox admin. Comfort settings (mask, tube, humidifier, comfort ramp) can be changed on the Settings page.'
+                : therapyAction ? 'A therapy command is being applied.' : 'Stop therapy to change pressure, ramp or mode.'}
             </div>
           )}
 
