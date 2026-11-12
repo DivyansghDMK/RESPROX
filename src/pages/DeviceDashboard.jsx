@@ -643,7 +643,7 @@ function DeviceDashboardView() {
                 boxShadow: isOnline ? '0 0 0 3px #bbf7d0' : 'none',
                 animation: isOnline ? 'pulse 2s infinite' : 'none',
               }}/>
-              {isOnline ? 'Device Online' : withPhone ? 'With phone app' : 'Device Offline'}
+              {isOnline ? 'Device Online' : withPhone ? 'Connected to app' : 'Device Offline'}
             </LiveValue>
           </div>
         </div>
