@@ -6,9 +6,11 @@ import Header from './components/Header';
 import Toast from './components/Toast';
 import BottomNavbar from './components/BottomNavbar';
 import RouteFallback from './components/RouteFallback';
+import ErrorBoundary from './components/ErrorBoundary';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ConnectionBanner from './components/ConnectionBanner';
 import { NotifyProvider } from './context/NotifyContext';
+import { AccessProvider } from './context/AccessContext';
 
 // Login is the entry point for every session, so it stays in the main chunk —
 // lazy-loading it would only add a round-trip before the first paint.
@@ -30,6 +32,9 @@ import {
   AppPreferences,
   HelpSupport,
   AdminDataUpload,
+  Dealers,
+  Customers,
+  Calibration,
   ForgotPassword,
   DoctorSignup,
 } from './routes';
@@ -129,15 +134,17 @@ function AppContent() {
   if (isAuthPage) {
     return (
       <div className="auth-shell">
-        <Suspense fallback={<RouteFallback />}>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/doctor/login" element={<Login variant="doctor" />} />
-            <Route path="/doctor/signup" element={<DoctorSignup />} />
-            <Route path="*" element={<Navigate to="/login" replace />} />
-          </Routes>
-        </Suspense>
+        <ErrorBoundary resetKey={location.pathname}>
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/doctor/login" element={<Login variant="doctor" />} />
+              <Route path="/doctor/signup" element={<DoctorSignup />} />
+              <Route path="*" element={<Navigate to="/login" replace />} />
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
         <Toast />
       </div>
     );
@@ -149,24 +156,30 @@ function AppContent() {
       <main className="content">
         <Header />
 
-        {/* The shell above renders immediately; only the route body suspends. */}
-        <Suspense fallback={<RouteFallback />}>
-          <Routes>
-            <Route path="/dashboard" element={activeSerial ? <Navigate to={`/device/${activeSerial}`} replace /> : <Navigate to="/devices" replace />} />
-            <Route path="/therapy" element={<Therapy />} />
-            <Route path="/trends" element={<Trends />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/devices" element={<DeviceList />} /> {/* Admin devices page */}
-            <Route path="/device/:serial" element={<DeviceDashboard />} />
-            <Route path="/device-info" element={<Devices />} /> {/* Patient device page */}
-            <Route path="/mask-fit" element={<MaskFit />} />
-            <Route path="/settings" element={<Settings />} /> {/* Device comfort & configuration */}
-            <Route path="/preferences" element={<AppPreferences />} /> {/* App-level preferences */}
-            <Route path="/help" element={<HelpSupport />} />
-            <Route path="/admin/upload" element={<AdminDataUpload />} /> {/* Admin: device file upload → report */}
-            <Route path="*" element={<Navigate to={SKIP_LOGIN ? '/devices' : '/login'} replace />} />
-          </Routes>
-        </Suspense>
+        {/* The shell above renders immediately; only the route body suspends.
+            A page that throws is caught here, so the shell stays usable. */}
+        <ErrorBoundary resetKey={location.pathname}>
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
+              <Route path="/dashboard" element={activeSerial ? <Navigate to={`/device/${activeSerial}`} replace /> : <Navigate to="/devices" replace />} />
+              <Route path="/therapy" element={<Therapy />} />
+              <Route path="/trends" element={<Trends />} />
+              <Route path="/reports" element={<Reports />} />
+              <Route path="/devices" element={<DeviceList />} /> {/* Admin devices page */}
+              <Route path="/device/:serial" element={<DeviceDashboard />} />
+              <Route path="/device-info" element={<Devices />} /> {/* Patient device page */}
+              <Route path="/mask-fit" element={<MaskFit />} />
+              <Route path="/settings" element={<Settings />} /> {/* Device comfort & configuration */}
+              <Route path="/preferences" element={<AppPreferences />} /> {/* App-level preferences */}
+              <Route path="/help" element={<HelpSupport />} />
+              <Route path="/admin/upload" element={<AdminDataUpload />} /> {/* Device file upload → report (admin and dealers) */}
+              <Route path="/admin/dealers" element={<Dealers />} /> {/* Admin: dealers and their devices */}
+              <Route path="/customers" element={<Customers />} /> {/* Dealers' customers */}
+              <Route path="/calibration" element={<Calibration />} /> {/* Admin: pressure calibration */}
+              <Route path="*" element={<Navigate to={SKIP_LOGIN ? '/devices' : '/login'} replace />} />
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
       </main>
 
       <Toast />
@@ -180,6 +193,7 @@ export default function App() {
     <AuthProvider>
       <NotifyProvider>
         <TherapyProvider>
+          <AccessProvider>
           <Router>
             <ConnectionBanner />
             <Suspense fallback={<RouteFallback />}>
@@ -188,6 +202,7 @@ export default function App() {
               </Routes>
             </Suspense>
           </Router>
+          </AccessProvider>
         </TherapyProvider>
       </NotifyProvider>
     </AuthProvider>

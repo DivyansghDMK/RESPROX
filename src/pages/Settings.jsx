@@ -32,6 +32,7 @@ import {
 import { devicesAPI } from '../services/respireeApi';
 import { describeCommandStatus, describeError } from '../services/apiError';
 import { useNotify } from '../context/NotifyContext';
+import { useAccess } from '../context/AccessContext';
 import fullFaceImg from '../assets/masks/full-face.svg';
 import nasalImg from '../assets/masks/nasal.svg';
 import pillowImg from '../assets/masks/pillow.svg';
@@ -179,6 +180,7 @@ const known = (obj) => Object.fromEntries(Object.entries(obj).filter(([, v]) => 
 export default function Settings() {
   const ctx = useTherapy();
   const notify = useNotify();
+  const access = useAccess();
   const {
     deviceData, adminActiveSerial,
     setRamp, setAflex, setShowToast, setToastMessage,
@@ -296,6 +298,13 @@ export default function Settings() {
         : { ramp: draft.ramp });
     }
 
+    // Never send a group this role may not change (the controls are locked too).
+    Object.keys(groups).forEach((group) => { if (!access.canEditGroup(group)) delete groups[group]; });
+    if (!Object.keys(groups).length) {
+      setFlow({ state: 'failed', reason: 'Your account can’t change these settings.' });
+      return;
+    }
+
     setPendingGroups(Object.keys(groups));
 
     // The dialog explains it in place; the frame keeps it on screen after the
@@ -376,7 +385,7 @@ export default function Settings() {
     notify.success('Settings acknowledged', {
       message: `The device confirmed ${changeList.length} change${changeList.length === 1 ? '' : 's'} through the server.`,
     });
-  }, [draft, committed, dirtyGroups, deviceData, adminActiveSerial, deviceOnline, phoneConnected, ctx, setRamp, setAflex, notify, changeList]);
+  }, [draft, committed, dirtyGroups, deviceData, adminActiveSerial, deviceOnline, phoneConnected, ctx, setRamp, setAflex, notify, changeList, access]);
 
   // Retry from a notification must call the *current* sendChanges, not the one
   // captured when the failure happened.
@@ -384,6 +393,10 @@ export default function Settings() {
   sendChangesRef.current = sendChanges;
 
   const locked = isTherapyRunning || settingsUnavailable;
+  // A dealer changes comfort only; therapy ramp/A-Flex and device options are admin's.
+  const comfortLocked = locked || !access.canEditGroup('COMFORT');
+  const therapyLocked = locked || !access.editTherapySettings;
+  const optionsLocked = locked || !access.canEditGroup('OPTIONS');
 
   if (!deviceData) return <DeviceDataState what="device settings" skeleton={SettingsSkeleton} />;
 
@@ -428,14 +441,21 @@ export default function Settings() {
         </div>
       )}
 
+      {access.isDealer && (
+        <div className="settings-unavailable dealer-note" role="status">
+          <strong>Comfort settings only</strong>
+          <span>You can change mask, tube, humidifier and comfort ramp. Ramp &amp; A-Flex and device options are set by Resprox admin.</span>
+        </div>
+      )}
+
       {/* 3 — Mask Type */}
-      <SectionCard icon={<MaskIcon />} title="Mask Type" subtitle="Match the mask fitted to this device" locked={locked}>
+      <SectionCard icon={<MaskIcon />} title="Mask Type" subtitle="Match the mask fitted to this device" locked={comfortLocked}>
         <div className="option-grid cols-3">
           {MASK_TYPES.map((m) => (
             <button
               key={m.id}
               type="button"
-              disabled={locked}
+              disabled={comfortLocked}
               aria-pressed={draft.maskType === m.id}
               className={`option-card${draft.maskType === m.id ? ' selected' : ''}`}
               onClick={() => set('maskType', m.id)}
@@ -448,13 +468,13 @@ export default function Settings() {
       </SectionCard>
 
       {/* 4 — Tube Type */}
-      <SectionCard icon={<BreezeIcon />} title="Tube Type" subtitle="Bore size affects delivered pressure" locked={locked}>
+      <SectionCard icon={<BreezeIcon />} title="Tube Type" subtitle="Bore size affects delivered pressure" locked={comfortLocked}>
         <div className="option-grid cols-2">
           {TUBE_TYPES.map((t) => (
             <button
               key={t.id}
               type="button"
-              disabled={locked}
+              disabled={comfortLocked}
               aria-pressed={draft.tubeType === t.id}
               className={`option-card${draft.tubeType === t.id ? ' selected' : ''}`}
               onClick={() => set('tubeType', t.id)}
@@ -468,9 +488,9 @@ export default function Settings() {
       </SectionCard>
 
       {/* 5 — Humidifier */}
-      <SectionCard icon={<DropletIcon />} title="Humidifier Level" subtitle="Warmth and moisture in the air path" locked={locked}>
+      <SectionCard icon={<DropletIcon />} title="Humidifier Level" subtitle="Warmth and moisture in the air path" locked={comfortLocked}>
         <Segmented
-          disabled={locked}
+          disabled={comfortLocked}
           value={draft.humidifier}
           onChange={(v) => set('humidifier', v)}
           options={[0, 1, 2, 3, 4, 5].map((n) => ({ value: n, label: n === 0 ? 'Off' : String(n) }))}
@@ -486,11 +506,11 @@ export default function Settings() {
         icon={<GaugeIcon />}
         title="Ramp Time &amp; A-Flex"
         subtitle="Gradually increase pressure to the set level; A-Flex is available in Auto-CPAP mode."
-        locked={locked}
+        locked={therapyLocked}
       >
         <div className="stepper">
           <button
-            type="button" aria-label="Decrease ramp" disabled={locked || draft.ramp == null || draft.ramp <= 0}
+            type="button" aria-label="Decrease ramp" disabled={therapyLocked || draft.ramp == null || draft.ramp <= 0}
             onClick={() => set('ramp', Math.max(0, draft.ramp - RAMP_STEP))}
           >−</button>
           <div className="value">
@@ -498,7 +518,7 @@ export default function Settings() {
             <span>{draft.ramp == null ? 'not reported' : draft.ramp === 0 ? 'no ramp' : 'minutes'}</span>
           </div>
           <button
-            type="button" aria-label="Increase ramp" disabled={locked || draft.ramp >= RAMP_MAX}
+            type="button" aria-label="Increase ramp" disabled={therapyLocked || draft.ramp >= RAMP_MAX}
             onClick={() => set('ramp', Math.min(RAMP_MAX, (draft.ramp ?? 0) + RAMP_STEP))}
           >+</button>
         </div>
@@ -510,7 +530,7 @@ export default function Settings() {
           <p className="level-note">A-Flex applies to Auto CPAP only, so it can't be changed while the device is in CPAP mode.</p>
         )}
         <Segmented
-          disabled={locked || !isAutoMode}
+          disabled={therapyLocked || !isAutoMode}
           value={draft.aflex}
           onChange={(v) => set('aflex', v)}
           options={[0, 1, 2, 3].map((n) => ({ value: n, label: n === 0 ? 'Off' : String(n) }))}
@@ -518,10 +538,10 @@ export default function Settings() {
       </SectionCard>
 
       {/* Comfort ramp — byte 53, distinct from the shared ramp above */}
-      <SectionCard icon={<GaugeIcon />} title="Comfort Ramp Time" subtitle="Comfort block ramp (independent of the shared ramp)" locked={locked}>
+      <SectionCard icon={<GaugeIcon />} title="Comfort Ramp Time" subtitle="Comfort block ramp (independent of the shared ramp)" locked={comfortLocked}>
         <div className="stepper">
           <button
-            type="button" aria-label="Decrease comfort ramp" disabled={locked || draft.comfortRamp == null || draft.comfortRamp <= 0}
+            type="button" aria-label="Decrease comfort ramp" disabled={comfortLocked || draft.comfortRamp == null || draft.comfortRamp <= 0}
             onClick={() => set('comfortRamp', Math.max(0, draft.comfortRamp - RAMP_STEP))}
           >−</button>
           <div className="value">
@@ -529,14 +549,14 @@ export default function Settings() {
             <span>{draft.comfortRamp == null ? 'not reported' : draft.comfortRamp === 0 ? 'no ramp' : 'minutes'}</span>
           </div>
           <button
-            type="button" aria-label="Increase comfort ramp" disabled={locked || draft.comfortRamp >= RAMP_MAX}
+            type="button" aria-label="Increase comfort ramp" disabled={comfortLocked || draft.comfortRamp >= RAMP_MAX}
             onClick={() => set('comfortRamp', Math.min(RAMP_MAX, (draft.comfortRamp ?? 0) + RAMP_STEP))}
           >+</button>
         </div>
       </SectionCard>
 
       {/* 7 — Device Options */}
-      <SectionCard icon={<ShieldIcon />} title="Device Options" subtitle="Behaviour and alerting" locked={locked}>
+      <SectionCard icon={<ShieldIcon />} title="Device Options" subtitle="Behaviour and alerting" locked={optionsLocked}>
         <div className="toggle-list">
           {OPTION_ROWS.map((row) => (
             <div className="opt-row" key={row.key}>
@@ -546,7 +566,7 @@ export default function Settings() {
               </div>
               <PremiumToggle
                 label={row.label}
-                disabled={locked}
+                disabled={optionsLocked}
                 checked={Boolean(draft[row.key])}
                 onChange={(v) => set(row.key, v)}
               />

@@ -11,6 +11,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import GlassCard from '../components/GlassCard';
 import TherapyStatistics from '../components/TherapyStatistics';
+import { useAccess } from '../context/AccessContext';
 import { ChartSkeleton } from '../components/Skeleton';
 import { FileIcon, DownloadIcon, InfoIcon, CheckIcon, TrashIcon } from '../components/Icons';
 import { parseReportFile, parseTd1File, isTd1Data, dateRangeOf, daysToCSV, PARSER_CONSTANTS, TD1_RECORD_BYTES } from '../services/reportFileParser';
@@ -120,6 +121,7 @@ function DropZone({ accept, busy, title, hint, icon, label, onFile }) {
 }
 
 export default function AdminDataUpload() {
+  const access = useAccess();
   const [fileName, setFileName] = useState('');
   const [fileSize, setFileSize] = useState(0);
   const [parsed, setParsed] = useState(null);
@@ -377,6 +379,13 @@ export default function AdminDataUpload() {
               <Notice tone="warn" title="More than one serial number in this file">
                 Records reference {parsed.serials.join(', ')}. A report covers one device, so confirm the
                 serial below or split the file before generating.
+              </Notice>
+            )}
+
+            {access.isDealer && parsed.serial && !access.canSeeDevice(parsed.serial) && (
+              <Notice tone="warn" title={`${parsed.serial} isn’t one of your devices`}>
+                You can still read the report here; the file never leaves this browser. Ask a Resprox admin
+                if this device should be assigned to you.
               </Notice>
             )}
 
