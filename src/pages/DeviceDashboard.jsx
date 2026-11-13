@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import LiveValue from '../components/LiveValue';
 import BreathingLungs from '../components/BreathingLungs';
+import LiveBars from '../components/LiveBars';
 import { therapyLabel } from '../services/deviceStatus';
 import { DeviceDashboardSkeleton } from '../components/Skeleton';
 import { createPortal } from 'react-dom';
@@ -159,6 +160,9 @@ function TherapyControl({ status, applying, online, allowed = true, onRequest })
           {headline}
         </div>
         <div className="therapy-detail">{detail}</div>
+        {running && !busy && (
+          <span className="session-live"><span className="session-live-dot" aria-hidden="true" />Session live<LiveBars /></span>
+        )}
       </div>
       {busy ? <BreathingLungs mode={applying === 'start' ? 'starting' : 'stopping'} /> : running && <BreathingLungs />}
       <div className="therapy-actions">
@@ -632,8 +636,9 @@ function DeviceDashboardView() {
               <RefreshIcon fontSize="small" style={{ animation: refreshing ? 'spin 0.8s linear infinite' : 'none' }}/>
               Refresh
             </button>
-            <LiveValue as="span" scope={serial} watch={therapyStatus || ''} style={{ padding: '7px 12px', borderRadius: 20, background: isTherapyRunning ? '#dcfce7' : '#f1f5f9', color: isTherapyRunning ? '#15803d' : '#64748b', fontSize: 12, fontWeight: 800 }}>
+            <LiveValue as="span" scope={serial} watch={therapyStatus || ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '7px 12px', borderRadius: 20, background: isTherapyRunning ? '#e0f2fe' : '#f1f5f9', color: isTherapyRunning ? '#0369a1' : '#64748b', fontSize: 12, fontWeight: 800 }}>
               {therapyLabel(therapyStatus) || 'Therapy status unknown'}
+              {isTherapyRunning && <LiveBars className="small" />}
             </LiveValue>
             <LiveValue as="span" scope={serial} watch={isOnline ? 'online' : withPhone ? 'phone' : 'offline'} title={withPhone ? 'The phone app is connected over Bluetooth, so the device has left Wi-Fi.' : undefined} style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
