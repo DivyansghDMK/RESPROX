@@ -1,6 +1,7 @@
 // src/pages/DeviceDashboard.jsx — Admin Device Dashboard (no inline tabs)
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import LiveValue from '../components/LiveValue';
+import BreathingLungs from '../components/BreathingLungs';
 import { DeviceDashboardSkeleton } from '../components/Skeleton';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -142,7 +143,9 @@ function TherapyControl({ status, applying, online, allowed = true, onRequest })
     : 'Refresh to read the current state before sending a command.';
   const btn = (action, label) => (
     <button type="button" className={`therapy-btn ${action}`} onClick={() => onRequest(action)} disabled={busy}>
-      {busy && applying === action ? <span className="therapy-spinner" aria-hidden="true" /> : <span aria-hidden="true">{action === 'start' ? '▶' : '■'}</span>}
+      {busy && applying === action
+        ? <span className="therapy-bubbles" aria-hidden="true"><i /><i /><i /></span>
+        : <span aria-hidden="true">{action === 'start' ? '▶' : '■'}</span>}
       {label}
     </button>
   );
@@ -156,6 +159,7 @@ function TherapyControl({ status, applying, online, allowed = true, onRequest })
         </div>
         <div className="therapy-detail">{detail}</div>
       </div>
+      {busy ? <BreathingLungs mode={applying === 'start' ? 'starting' : 'stopping'} /> : running && <BreathingLungs />}
       <div className="therapy-actions">
         {!allowed ? (
           <div className="therapy-offline" role="status">Start and stop therapy are done by Resprox admin.</div>
