@@ -1,13 +1,13 @@
 // src/components/BreathingLungs.jsx
 //
-// Shown on the therapy card: anatomical lungs. While therapy runs they breathe
-// once every 4 s (15 a minute). While it starts, they wait pale and air bubbles
-// stream in quickly; while it stops, they slowly empty and fade. Air bubbles travel down the trachea into the
-// bronchi on each inhale, and small oxygen bubbles light up inside the lungs.
-// Lungs are pink, air is blue. Decorative only, so hidden from screen readers;
-// with reduced motion the lungs stay still and no bubbles move.
+// Shown on the therapy card: anatomical lungs inside a ring of pulse bars.
+//   running   the lungs breathe once every 4 s (15 a minute) and the ring
+//             pulses outward on each inhale
+//   starting  pale lungs; light sweeps round the ring while the device confirms
+//   stopping  the lungs empty and the ring dims
+// Decorative only, so hidden from screen readers; still for reduced motion.
 
-import React, { useEffect, useId, useState } from 'react';
+import React, { useId } from 'react';
 
 const RIGHT = 'M 88 66 C 84 44, 74 28, 63 29 C 45 30, 30 58, 24 92 C 18 124, 18 150, 34 158 C 50 166, 72 162, 86 152 C 92 140, 90 110, 92 92 C 93 80, 91 72, 88 66 Z';
 // The left lung has the cardiac notch on its lower inner edge.
@@ -32,49 +32,28 @@ const FISSURES = 'M 30 98 C 50 96, 70 100, 90 104 M 82 58 C 66 90, 48 122, 36 15
 const TRACHEA = 'M94 4 h12 v56 c 0 4, 6 8, 14 14 l -4 6 c -8 -6, -14 -10, -16 -12 c -2 2, -8 6, -16 12 l -4 -6 c 8 -6, 14 -10, 14 -14 z';
 const RINGS = 'M95 12 h10 M95 20 h10 M95 28 h10 M95 36 h10 M95 44 h10 M95 52 h10';
 
-// Down the trachea, then out along a bronchus. [path, start offset in s]
-const AIR_PATHS = [
-  ['M100 2 L100 64 C 92 72, 84 78, 78 86 C 66 96, 54 106, 46 116', 0],
-  ['M100 2 L100 64 C 108 72, 116 78, 122 86 C 134 96, 146 106, 154 116', 0.12],
-  ['M100 2 L100 64 C 92 72, 82 84, 74 104 C 70 118, 66 130, 62 142', 0.25],
-  ['M100 2 L100 64 C 108 72, 118 84, 126 104 C 130 118, 134 130, 138 142', 0.38],
-  ['M100 2 L100 64 C 94 70, 76 64, 66 52', 0.45],
-  ['M100 2 L100 64 C 106 70, 124 64, 134 52', 0.2],
-];
-// Oxygen bubbles inside the lungs: [cx, cy, r]
-const ALVEOLI = [
-  [48, 96, 4], [38, 118, 3.4], [58, 128, 4.2], [44, 140, 3], [66, 104, 3], [60, 70, 3.2], [52, 150, 3.6], [30, 100, 2.8],
-  [152, 96, 4], [162, 118, 3.4], [142, 124, 3.2], [156, 140, 3], [134, 104, 3], [140, 70, 3.2], [164, 96, 2.8], [150, 150, 3.4],
-];
-const RISING = [[56, 60], [146, 60], [40, 90], [160, 90]];
-
-function useReducedMotion() {
-  const query = '(prefers-reduced-motion: reduce)';
-  const [reduced, setReduced] = useState(() => typeof window !== 'undefined' && window.matchMedia?.(query).matches);
-  useEffect(() => {
-    const mq = window.matchMedia?.(query);
-    if (!mq) return undefined;
-    const onChange = () => setReduced(mq.matches);
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, []);
-  return reduced;
-}
+const RAYS = 48;
+const rayAngles = Array.from({ length: RAYS }, (_, i) => (i * 360) / RAYS);
 
 export default function BreathingLungs({ mode = 'running' }) {
   // Unique ids: two copies on a page must not share gradients or clip paths.
   const id = useId().replace(/:/g, '');
-  const reduced = useReducedMotion();
   const ref = (name) => `url(#${id}${name})`;
-  const starting = mode === 'starting';
-  // Running: bubbles travel in the inhale (first 36 %) of a 4 s breath.
-  // Starting: a quicker, steady stream to show air is on its way.
-  const breath = starting ? 1.6 : 4;
-  const showBubbles = !reduced && mode !== 'stopping';
 
   return (
     <div className={`lungs-art ${mode}`} aria-hidden="true">
-      <svg viewBox="0 0 200 175">
+      <svg className="lungs-rays" viewBox="0 0 240 240">
+        {rayAngles.map((angle, i) => (
+          <g key={angle} transform={`rotate(${angle} 120 120)`}>
+            <rect
+              className="lungs-ray" x="118.5" y="6" width="3" height="16" rx="1.5"
+              // running: neighbours pulse slightly apart; starting: one sweep per turn
+              style={{ animationDelay: mode === 'starting' ? `${(i * 1.2) / RAYS}s` : `${(i % 12) * 0.05}s` }}
+            />
+          </g>
+        ))}
+      </svg>
+      <svg className="lungs-svg" viewBox="0 0 200 175">
         <defs>
           <linearGradient id={`${id}t`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0" stopColor="#fecdd3" /><stop offset=".55" stopColor="#fda4af" /><stop offset="1" stopColor="#f4899b" />
@@ -82,16 +61,12 @@ export default function BreathingLungs({ mode = 'running' }) {
           <radialGradient id={`${id}s`} cx=".35" cy=".3" r=".8">
             <stop offset="0" stopColor="#fff" stopOpacity=".55" /><stop offset=".5" stopColor="#fff" stopOpacity="0" />
           </radialGradient>
-          <radialGradient id={`${id}b`} cx=".35" cy=".3" r=".75">
-            <stop offset="0" stopColor="#ffffff" /><stop offset=".35" stopColor="#bae6fd" /><stop offset="1" stopColor="#0ea5e9" stopOpacity=".85" />
-          </radialGradient>
           <radialGradient id={`${id}o`} cx=".5" cy=".55" r=".6">
             <stop offset="0" stopColor="#7dd3fc" /><stop offset="1" stopColor="#38bdf8" stopOpacity="0" />
           </radialGradient>
           <clipPath id={`${id}c`}><path d={RIGHT} /><path d={LEFT} /></clipPath>
         </defs>
 
-        <ellipse className="lungs-halo" cx="100" cy="100" rx="94" ry="74" fill="none" stroke="#7dd3fc" strokeWidth="2" />
         <g className="lungs-body">
           <path d={RIGHT} fill={ref('t')} />
           <path d={LEFT} fill={ref('t')} />
@@ -99,12 +74,6 @@ export default function BreathingLungs({ mode = 'running' }) {
             <rect className="lungs-o2" x="0" y="20" width="200" height="150" fill={ref('o')} />
             <path d={TREE} fill="none" stroke="#fff1f2" strokeWidth="2.2" strokeLinecap="round" opacity=".9" />
             <path d={FISSURES} fill="none" stroke="#e0607e" strokeWidth="1.2" opacity=".45" />
-            {ALVEOLI.map(([cx, cy, r], i) => (
-              <circle key={i} className="lungs-alv" cx={cx} cy={cy} r={r} fill={ref('b')} style={{ animationDelay: `${(i % 5) * 0.08}s` }} />
-            ))}
-            {showBubbles && !starting && RISING.map(([cx, cy], i) => (
-              <circle key={i} className="lungs-rise" cx={cx} cy={cy} r="2.2" fill="#e0f2fe" stroke="#7dd3fc" style={{ animationDelay: `${i * 0.15}s` }} />
-            ))}
             <path d={RIGHT} fill={ref('s')} />
             <path d={LEFT} fill={ref('s')} />
           </g>
@@ -112,19 +81,6 @@ export default function BreathingLungs({ mode = 'running' }) {
           <path d={LEFT} fill="none" stroke="#d9546f" strokeWidth="1.8" />
           <path d={TRACHEA} fill="#fbcfe8" stroke="#d9546f" strokeWidth="1.6" strokeLinejoin="round" />
           <path d={RINGS} stroke="#e48aa3" strokeWidth="2" strokeLinecap="round" />
-          {showBubbles && AIR_PATHS.map(([path, start], i) => (
-            <circle key={`${mode}${i}`} r={i % 2 ? 3.6 : 4.4} fill={ref('b')} opacity="0">
-              {/* the bubble travels, then fades before the next breath */}
-              <animateMotion
-                dur={`${breath}s`} repeatCount="indefinite" begin={`${starting ? i * 0.27 : start}s`} path={path}
-                keyPoints="0;1;1" keyTimes={starting ? '0;0.85;1' : '0;0.36;1'} calcMode="linear"
-              />
-              <animate
-                attributeName="opacity" dur={`${breath}s`} repeatCount="indefinite" begin={`${starting ? i * 0.27 : start}s`}
-                values="0;1;0.9;0;0" keyTimes={starting ? '0;0.1;0.85;0.95;1' : '0;0.06;0.36;0.46;1'}
-              />
-            </circle>
-          ))}
         </g>
       </svg>
     </div>

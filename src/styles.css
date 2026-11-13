@@ -6398,39 +6398,36 @@ textarea:focus-visible,
 
 .therapy-actions { display: flex; gap: 10px; justify-content: flex-end; flex: 0 1 auto; }
 
-/* Breathing lungs while therapy runs: one breath = 4 s, inhale 0–35 % */
-.lungs-art { flex: 0 0 auto; width: 170px; align-self: center; text-align: center; }
-.lungs-art svg { width: 100%; height: auto; display: block; overflow: visible; }
+/* Breathing lungs in a ring of pulse bars; one breath = 4 s, inhale 0–35 % */
+.lungs-art { position: relative; flex: 0 0 auto; width: 190px; height: 190px; align-self: center; }
+.lungs-rays { position: absolute; inset: 0; width: 100%; height: 100%; }
+.lungs-svg { position: absolute; inset: 30px 26px 26px; width: calc(100% - 52px); height: auto; overflow: visible; }
 .lungs-body { transform-box: view-box; transform-origin: 100px 95px; animation: lungs-inflate 4s ease-in-out infinite; }
 @keyframes lungs-inflate { 0%, 100% { transform: scale(0.955); } 35%, 45% { transform: scale(1.035); } }
 .lungs-o2 { animation: lungs-o2 4s ease-in-out infinite; }
 @keyframes lungs-o2 { 0%, 100% { opacity: 0.08; } 35%, 45% { opacity: 0.55; } }
-.lungs-halo { transform-box: view-box; transform-origin: 100px 100px; animation: lungs-halo 4s ease-out infinite; }
-@keyframes lungs-halo { 0% { opacity: 0; transform: scale(0.92); } 35% { opacity: 0.45; transform: scale(1.04); } 75%, 100% { opacity: 0; transform: scale(1.12); } }
-.lungs-alv { transform-box: fill-box; transform-origin: center; animation: lungs-alv 4s ease-in-out infinite; }
-@keyframes lungs-alv { 0%, 100% { transform: scale(0.4); opacity: 0.15; } 38% { transform: scale(1.1); opacity: 0.95; } 55% { transform: scale(0.9); opacity: 0.6; } }
-.lungs-rise { opacity: 0; animation: lungs-rise 4s ease-in infinite; }
-@keyframes lungs-rise { 0%, 40% { opacity: 0; transform: translateY(0); } 55% { opacity: 0.8; } 100% { opacity: 0; transform: translateY(-34px); } }
-/* Starting: pale lungs, oxygen slowly filling, quick bubble stream */
+.lungs-ray { fill: #38bdf8; transform-box: fill-box; transform-origin: 50% 100%; animation: lungs-ray 4s ease-in-out infinite; }
+@keyframes lungs-ray { 0%, 100% { transform: scaleY(0.3); opacity: 0.25; } 35%, 45% { transform: scaleY(1); opacity: 0.95; } }
+
+/* Starting: pale lungs, light sweeping round the ring */
 .lungs-art.starting .lungs-body { filter: saturate(0.55); animation: lungs-wait 1.6s ease-in-out infinite; }
 @keyframes lungs-wait { 0%, 100% { transform: scale(0.94); } 50% { transform: scale(0.965); } }
 .lungs-art.starting .lungs-o2 { animation: lungs-fill 3.2s ease-in-out infinite; }
 @keyframes lungs-fill { 0% { opacity: 0.05; } 80% { opacity: 0.5; } 100% { opacity: 0.05; } }
-.lungs-art.starting .lungs-alv { animation-duration: 1.6s; }
-.lungs-art.starting .lungs-halo { display: none; }
-/* Stopping: lungs empty and fade */
+.lungs-art.starting .lungs-ray { animation: lungs-sweep 1.2s linear infinite; }
+@keyframes lungs-sweep { 0% { transform: scaleY(1); opacity: 0.95; } 25%, 100% { transform: scaleY(0.35); opacity: 0.18; } }
+/* Stopping: lungs empty, ring dims */
 .lungs-art.stopping .lungs-body { animation: lungs-empty 2.4s ease-in-out infinite; }
 @keyframes lungs-empty { 0% { transform: scale(1); filter: saturate(1); opacity: 1; } 100% { transform: scale(0.92); filter: saturate(0.2); opacity: 0.6; } }
-.lungs-art.stopping .lungs-o2, .lungs-art.stopping .lungs-halo { display: none; }
-.lungs-art.stopping .lungs-alv { animation: none; opacity: 0.25; }
+.lungs-art.stopping .lungs-o2 { display: none; }
+.lungs-art.stopping .lungs-ray { animation: lungs-dim 2.4s ease-in-out infinite; }
+@keyframes lungs-dim { 0% { transform: scaleY(0.6); opacity: 0.5; } 100% { transform: scaleY(0.25); opacity: 0.1; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .lungs-body, .lungs-o2, .lungs-halo, .lungs-alv { animation: none; }
-  .lungs-alv { opacity: 0.6; }
-  .lungs-art.starting .lungs-body, .lungs-art.stopping .lungs-body, .lungs-art.starting .lungs-o2 { animation: none; }
+  .lungs-art .lungs-body, .lungs-art .lungs-o2, .lungs-art .lungs-ray { animation: none !important; }
+  .lungs-ray { transform: scaleY(0.6); opacity: 0.5; }
 }
 
-/* Calm by default: the confirm dialog is where the decision is made, not here. */
 .therapy-btn {
   flex: 0 0 auto; min-width: 150px; min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   padding: 0 18px; border: 1.5px solid transparent; border-radius: 12px; color: #fff;
@@ -6488,7 +6485,7 @@ textarea:focus-visible,
   .therapy-control { padding: 18px 16px; }
   .therapy-headline { font-size: 19px; }
   .therapy-actions { flex: 1 1 100%; flex-direction: column; min-width: 0; }
-  .lungs-art { flex: 1 1 100%; width: auto; max-width: 200px; margin: 0 auto; }
+  .lungs-art { margin: 0 auto; }
   .therapy-dialog { padding: 22px; }
   .therapy-dialog-actions { flex-direction: column-reverse; }
   .therapy-dialog-actions button { width: 100%; }
