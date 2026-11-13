@@ -6441,13 +6441,8 @@ textarea:focus-visible,
 .live-bars.small i { width: 2.5px; }
 @media (prefers-reduced-motion: reduce) { .live-bars i { animation: none; transform: scaleY(0.7); } }
 
-.session-live {
-  display: inline-flex; align-items: center; gap: 9px; margin-top: 12px; padding: 7px 14px;
-  border-radius: 999px; border: 1px solid #bae6fd; background: linear-gradient(135deg, #f0f9ff, #ffffff);
-  font-size: 12px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; color: #0369a1;
-  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.12);
-}
-.session-live-dot { width: 9px; height: 9px; border-radius: 50%; background: #34d399; box-shadow: 0 0 0 3px #d1fae5; }
+.live-bars.headline { height: 18px; gap: 3px; margin-left: 4px; }
+.live-bars.headline i { width: 4px; }
 
 /* Device list: therapy running / stopped */
 .admin-therapy-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; background: #f1f5f9; color: #64748b; }

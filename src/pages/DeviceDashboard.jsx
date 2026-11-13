@@ -159,11 +159,9 @@ function TherapyControl({ status, applying, online, allowed = true, onRequest })
         <div className="therapy-headline" role="status" aria-live="polite">
           {running && !busy && <span className="therapy-live-dot" aria-hidden="true" />}
           {headline}
+          {running && !busy && <LiveBars className="headline" />}
         </div>
         <div className="therapy-detail">{detail}</div>
-        {running && !busy && (
-          <span className="session-live"><span className="session-live-dot" aria-hidden="true" />Session live<LiveBars /></span>
-        )}
       </div>
       {busy ? <BreathingLungs mode={applying === 'start' ? 'starting' : 'stopping'} /> : running && <BreathingLungs />}
       <div className="therapy-actions">
