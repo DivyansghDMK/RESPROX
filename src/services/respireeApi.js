@@ -1,5 +1,6 @@
 import { clearCognitoSession, getCognitoSession, refreshCognitoSession, loginWithTeamKey, TEAM_KEY_STORAGE } from './respireeAuth';
 import { parseReportRows } from './reportFileParser';
+import { extractStatus } from './deviceStatus';
 
 const BASE_URL = import.meta.env.VITE_RESPIREE_API_BASE_URL
   || (import.meta.env.DEV ? '/api-proxy' : 'https://52ct9sbsu3.execute-api.us-east-1.amazonaws.com');
@@ -48,17 +49,6 @@ function extractTherapyStatus(item) {
     item?.state?.therapy_status,
     item?.state?.therapyStatus,
   ) || '').toUpperCase();
-}
-
-function extractStatus(item, syncState, latestTelemetry) {
-  const explicit = firstDefined(item?.status, syncState?.status, syncState?.direction, latestTelemetry?.status);
-  if (!explicit) return 'unknown';
-  const normalized = String(explicit).toLowerCase();
-  // The phone app holds the device over Bluetooth, so it left Wi-Fi on purpose.
-  if (/app[\s_]*connected/.test(normalized)) return 'phone';
-  if (normalized.includes('online') || normalized.includes('synced') || normalized.includes('success')) return 'online';
-  if (normalized.includes('offline') || normalized.includes('stale') || normalized.includes('error')) return 'offline';
-  return normalized;
 }
 
 function normalizeTelemetry(raw = {}) {
@@ -302,6 +292,7 @@ function normalizeDeviceDetail(summary, latest, history, syncState, reports = []
   }
 
   const serial = deviceSummary.serial || telemetry.serial || extractSerial(latestTelemetry) || '';
+  const connection = extractStatus(deviceSummary.raw || {}, actualSyncState, telemetry.raw);
   const settings = {
     therapy_mode: telemetry.therapy_mode,
     pressure: telemetry.pressure ?? null,
@@ -315,10 +306,10 @@ function normalizeDeviceDetail(summary, latest, history, syncState, reports = []
   return {
     ...deviceSummary,
     serial,
-    device_online: extractStatus(deviceSummary.raw || {}, actualSyncState, telemetry.raw) === 'online',
+    device_online: connection === 'online',
     // The phone app is connected over BLE, so the device has left Wi-Fi: it is
     // running but cloud commands cannot reach it until the app disconnects.
-    phone_connected: /app[\s_]*connected/i.test(String(deviceSummary.raw?.status ?? '')),
+    phone_connected: connection === 'phone',
     therapy_running: String(deviceSummary.therapy_status || '').toUpperCase() === 'RUNNING',
     model: deviceSummary.model || null,
     firmware: deviceSummary.firmware || '—',

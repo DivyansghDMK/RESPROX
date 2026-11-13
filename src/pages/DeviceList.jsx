@@ -57,7 +57,7 @@ const STATUS_COLOR = {
   offline: { bg: '#f1efe8', text: '#5f5e5a', dot: '#888780' },
   phone:   { bg: '#e8f1fd', text: '#1d5fb8', dot: '#3b82f6' },
 };
-const STATUS_LABEL = { online: 'online', offline: 'offline', phone: 'with phone app' };
+const STATUS_LABEL = { online: 'online', offline: 'offline', phone: 'connected to app' };
 const statusLabel = (s) => STATUS_LABEL[s] || s;
 
 // The live API has no clinical numbers until a device's reports are synced; show

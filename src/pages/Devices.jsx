@@ -23,7 +23,7 @@ export default function Devices() {
     ['Serial Number', device.serial || '—'],
     ['Firmware Version', device.firmware || '—'],
     ['Therapy Status', device.therapy_status || '—'],
-    ['Connection', device.device_online ? 'Online' : device.phone_connected ? 'With phone app' : 'Offline'],
+    ['Connection', device.device_online ? 'Online' : device.phone_connected ? 'Connected to app' : 'Offline'],
     ['Last Sync', device.sync_state?.lastSynced || '—'],
   ];
 
