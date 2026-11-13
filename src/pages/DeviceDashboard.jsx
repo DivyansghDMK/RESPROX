@@ -1,6 +1,7 @@
 // src/pages/DeviceDashboard.jsx — Admin Device Dashboard (no inline tabs)
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import LiveValue from '../components/LiveValue';
+import BreathingLungs from '../components/BreathingLungs';
 import { DeviceDashboardSkeleton } from '../components/Skeleton';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -127,36 +128,6 @@ function formatSyncStamp(value) {
 // ── Therapy control ────────────────────────────────────────────────────────────
 // Start/stop changes what the patient is breathing, so it is always a two-step
 // action: press the button, then confirm in a dialog that names the device.
-// While therapy runs: a breathing flow trace, like a ventilator screen. One
-// breath every 4 s (15 a minute); the wave scrolls by one breath per cycle so
-// it loops without a jump. Decorative only, so hidden from screen readers.
-const WAVE_W = 120; // one breath, in SVG units
-function wavePath(breaths, amp, mid) {
-  let d = `M 0 ${mid}`;
-  for (let i = 0; i < breaths; i += 1) {
-    const x = i * WAVE_W;
-    // inhale: a quick rise; exhale: a longer, flatter fall
-    d += ` C ${x + 18} ${mid - amp}, ${x + 42} ${mid - amp}, ${x + 54} ${mid}`
-      + ` S ${x + 96} ${mid + amp * 0.55}, ${x + WAVE_W} ${mid}`;
-  }
-  return d;
-}
-
-function AirflowTrace() {
-  return (
-    <div className="airflow" aria-hidden="true">
-      <svg viewBox="0 0 240 64" preserveAspectRatio="none">
-        <line x1="0" y1="32" x2="240" y2="32" className="airflow-base" />
-        <g className="airflow-scroll">
-          <path d={wavePath(4, 13, 32)} className="airflow-echo" />
-          <path d={wavePath(4, 22, 32)} className="airflow-wave" />
-        </g>
-      </svg>
-      <span className="airflow-label"><span className="airflow-dot" />Air flowing</span>
-    </div>
-  );
-}
-
 function TherapyControl({ status, applying, online, allowed = true, onRequest }) {
   const running = status === 'RUNNING';
   const stopped = status === 'STOPPED';
@@ -186,7 +157,7 @@ function TherapyControl({ status, applying, online, allowed = true, onRequest })
         </div>
         <div className="therapy-detail">{detail}</div>
       </div>
-      {running && !busy && <AirflowTrace />}
+      {running && !busy && <BreathingLungs />}
       <div className="therapy-actions">
         {!allowed ? (
           <div className="therapy-offline" role="status">Start and stop therapy are done by Resprox admin.</div>
