@@ -6411,9 +6411,23 @@ textarea:focus-visible,
 @keyframes lungs-alv { 0%, 100% { transform: scale(0.4); opacity: 0.15; } 38% { transform: scale(1.1); opacity: 0.95; } 55% { transform: scale(0.9); opacity: 0.6; } }
 .lungs-rise { opacity: 0; animation: lungs-rise 4s ease-in infinite; }
 @keyframes lungs-rise { 0%, 40% { opacity: 0; transform: translateY(0); } 55% { opacity: 0.8; } 100% { opacity: 0; transform: translateY(-34px); } }
+/* Starting: pale lungs, oxygen slowly filling, quick bubble stream */
+.lungs-art.starting .lungs-body { filter: saturate(0.55); animation: lungs-wait 1.6s ease-in-out infinite; }
+@keyframes lungs-wait { 0%, 100% { transform: scale(0.94); } 50% { transform: scale(0.965); } }
+.lungs-art.starting .lungs-o2 { animation: lungs-fill 3.2s ease-in-out infinite; }
+@keyframes lungs-fill { 0% { opacity: 0.05; } 80% { opacity: 0.5; } 100% { opacity: 0.05; } }
+.lungs-art.starting .lungs-alv { animation-duration: 1.6s; }
+.lungs-art.starting .lungs-halo { display: none; }
+/* Stopping: lungs empty and fade */
+.lungs-art.stopping .lungs-body { animation: lungs-empty 2.4s ease-in-out infinite; }
+@keyframes lungs-empty { 0% { transform: scale(1); filter: saturate(1); opacity: 1; } 100% { transform: scale(0.92); filter: saturate(0.2); opacity: 0.6; } }
+.lungs-art.stopping .lungs-o2, .lungs-art.stopping .lungs-halo { display: none; }
+.lungs-art.stopping .lungs-alv { animation: none; opacity: 0.25; }
+
 @media (prefers-reduced-motion: reduce) {
   .lungs-body, .lungs-o2, .lungs-halo, .lungs-alv { animation: none; }
   .lungs-alv { opacity: 0.6; }
+  .lungs-art.starting .lungs-body, .lungs-art.stopping .lungs-body, .lungs-art.starting .lungs-o2 { animation: none; }
 }
 
 /* Calm by default: the confirm dialog is where the decision is made, not here. */
@@ -6435,6 +6449,13 @@ textarea:focus-visible,
   flex: 1; min-height: 46px; display: grid; place-items: center; padding: 0 16px; text-align: center;
   border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; color: #64748b; font-size: 13.5px; font-weight: 700;
 }
+.therapy-bubbles { display: inline-flex; align-items: flex-end; gap: 3px; height: 16px; }
+.therapy-bubbles i { width: 6px; height: 6px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, #bae6fd 40%, #38bdf8); animation: therapy-bubble 1s ease-in-out infinite; }
+.therapy-bubbles i:nth-child(2) { animation-delay: 0.15s; }
+.therapy-bubbles i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes therapy-bubble { 0%, 100% { transform: translateY(0); opacity: 0.6; } 50% { transform: translateY(-8px); opacity: 1; } }
+.therapy-btn.stop .therapy-bubbles i { background: radial-gradient(circle at 35% 30%, #fff, #fecaca 40%, #ef4444); }
+@media (prefers-reduced-motion: reduce) { .therapy-bubbles i { animation: none; } }
 .therapy-spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.45); border-top-color: #fff; animation: spin 0.7s linear infinite; }
 .therapy-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(0, 71, 204, 0.12); }
 .therapy-progress span { display: block; width: 40%; height: 100%; background: var(--brand-gradient); animation: therapy-slide 1.2s ease-in-out infinite; }

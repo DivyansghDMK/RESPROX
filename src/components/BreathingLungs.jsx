@@ -1,7 +1,8 @@
 // src/components/BreathingLungs.jsx
 //
-// Shown on the therapy card while therapy runs: anatomical lungs that breathe
-// once every 4 s (15 a minute). Air bubbles travel down the trachea into the
+// Shown on the therapy card: anatomical lungs. While therapy runs they breathe
+// once every 4 s (15 a minute). While it starts, they wait pale and air bubbles
+// stream in quickly; while it stops, they slowly empty and fade. Air bubbles travel down the trachea into the
 // bronchi on each inhale, and small oxygen bubbles light up inside the lungs.
 // Lungs are pink, air is blue. Decorative only, so hidden from screen readers;
 // with reduced motion the lungs stay still and no bubbles move.
@@ -60,14 +61,19 @@ function useReducedMotion() {
   return reduced;
 }
 
-export default function BreathingLungs() {
+export default function BreathingLungs({ mode = 'running' }) {
   // Unique ids: two copies on a page must not share gradients or clip paths.
   const id = useId().replace(/:/g, '');
   const reduced = useReducedMotion();
   const ref = (name) => `url(#${id}${name})`;
+  const starting = mode === 'starting';
+  // Running: bubbles travel in the inhale (first 36 %) of a 4 s breath.
+  // Starting: a quicker, steady stream to show air is on its way.
+  const breath = starting ? 1.6 : 4;
+  const showBubbles = !reduced && mode !== 'stopping';
 
   return (
-    <div className="lungs-art" aria-hidden="true">
+    <div className={`lungs-art ${mode}`} aria-hidden="true">
       <svg viewBox="0 0 200 175">
         <defs>
           <linearGradient id={`${id}t`} x1="0" y1="0" x2="0" y2="1">
@@ -96,7 +102,7 @@ export default function BreathingLungs() {
             {ALVEOLI.map(([cx, cy, r], i) => (
               <circle key={i} className="lungs-alv" cx={cx} cy={cy} r={r} fill={ref('b')} style={{ animationDelay: `${(i % 5) * 0.08}s` }} />
             ))}
-            {!reduced && RISING.map(([cx, cy], i) => (
+            {showBubbles && !starting && RISING.map(([cx, cy], i) => (
               <circle key={i} className="lungs-rise" cx={cx} cy={cy} r="2.2" fill="#e0f2fe" stroke="#7dd3fc" style={{ animationDelay: `${i * 0.15}s` }} />
             ))}
             <path d={RIGHT} fill={ref('s')} />
@@ -106,11 +112,17 @@ export default function BreathingLungs() {
           <path d={LEFT} fill="none" stroke="#d9546f" strokeWidth="1.8" />
           <path d={TRACHEA} fill="#fbcfe8" stroke="#d9546f" strokeWidth="1.6" strokeLinejoin="round" />
           <path d={RINGS} stroke="#e48aa3" strokeWidth="2" strokeLinecap="round" />
-          {!reduced && AIR_PATHS.map(([path, start], i) => (
-            <circle key={i} r={i % 2 ? 3.6 : 4.4} fill={ref('b')} opacity="0">
-              {/* inhale is the first 36 % of the breath; the bubble then fades */}
-              <animateMotion dur="4s" repeatCount="indefinite" begin={`${start}s`} path={path} keyPoints="0;1;1" keyTimes="0;0.36;1" calcMode="linear" />
-              <animate attributeName="opacity" dur="4s" repeatCount="indefinite" begin={`${start}s`} values="0;1;0.9;0;0" keyTimes="0;0.06;0.36;0.46;1" />
+          {showBubbles && AIR_PATHS.map(([path, start], i) => (
+            <circle key={`${mode}${i}`} r={i % 2 ? 3.6 : 4.4} fill={ref('b')} opacity="0">
+              {/* the bubble travels, then fades before the next breath */}
+              <animateMotion
+                dur={`${breath}s`} repeatCount="indefinite" begin={`${starting ? i * 0.27 : start}s`} path={path}
+                keyPoints="0;1;1" keyTimes={starting ? '0;0.85;1' : '0;0.36;1'} calcMode="linear"
+              />
+              <animate
+                attributeName="opacity" dur={`${breath}s`} repeatCount="indefinite" begin={`${starting ? i * 0.27 : start}s`}
+                values="0;1;0.9;0;0" keyTimes={starting ? '0;0.1;0.85;0.95;1' : '0;0.06;0.36;0.46;1'}
+              />
             </circle>
           ))}
         </g>
