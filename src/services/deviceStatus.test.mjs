@@ -21,3 +21,12 @@ test('responses without status_reason still work', () => {
   assert.equal(extractStatus({}, { status: 'SYNCED' }), 'online');
   assert.equal(extractStatus({}), 'unknown');
 });
+
+test('therapy_status reads as plain words', async () => {
+  const { therapyLabel } = await import('./deviceStatus.js');
+  assert.equal(therapyLabel('RUNNING'), 'Therapy running');
+  assert.equal(therapyLabel('running'), 'Therapy running');
+  assert.equal(therapyLabel('STOPPED'), 'Therapy stopped');
+  assert.equal(therapyLabel(''), null);
+  assert.equal(therapyLabel(undefined), null);
+});

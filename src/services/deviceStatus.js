@@ -20,3 +20,10 @@ export function extractStatus(item, syncState, latestTelemetry) {
   if (normalized.includes('offline') || normalized.includes('stale') || normalized.includes('error')) return 'offline';
   return normalized;
 }
+
+// GET /devices also returns therapy_status. Words for it, or null when the
+// device has not reported one.
+const THERAPY_LABEL = { RUNNING: 'Therapy running', STOPPED: 'Therapy stopped' };
+export function therapyLabel(status) {
+  return THERAPY_LABEL[String(status || '').toUpperCase()] || null;
+}
