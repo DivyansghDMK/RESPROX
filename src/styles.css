@@ -6411,11 +6411,8 @@ textarea:focus-visible,
 @keyframes lungs-alv { 0%, 100% { transform: scale(0.4); opacity: 0.15; } 38% { transform: scale(1.1); opacity: 0.95; } 55% { transform: scale(0.9); opacity: 0.6; } }
 .lungs-rise { opacity: 0; animation: lungs-rise 4s ease-in infinite; }
 @keyframes lungs-rise { 0%, 40% { opacity: 0; transform: translateY(0); } 55% { opacity: 0.8; } 100% { opacity: 0; transform: translateY(-34px); } }
-.lungs-label { white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase; color: #0369a1; }
-.lungs-dot { width: 7px; height: 7px; border-radius: 50%; background: #38bdf8; animation: lungs-dot 4s ease-in-out infinite; }
-@keyframes lungs-dot { 0%, 100% { transform: scale(0.7); opacity: 0.5; } 35% { transform: scale(1.25); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
-  .lungs-body, .lungs-o2, .lungs-halo, .lungs-alv, .lungs-dot { animation: none; }
+  .lungs-body, .lungs-o2, .lungs-halo, .lungs-alv { animation: none; }
   .lungs-alv { opacity: 0.6; }
 }
 

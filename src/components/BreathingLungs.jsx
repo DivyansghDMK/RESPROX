@@ -60,7 +60,7 @@ function useReducedMotion() {
   return reduced;
 }
 
-export default function BreathingLungs({ label = 'Breathing with support' }) {
+export default function BreathingLungs() {
   // Unique ids: two copies on a page must not share gradients or clip paths.
   const id = useId().replace(/:/g, '');
   const reduced = useReducedMotion();
@@ -115,7 +115,6 @@ export default function BreathingLungs({ label = 'Breathing with support' }) {
           ))}
         </g>
       </svg>
-      <span className="lungs-label"><span className="lungs-dot" />{label}</span>
     </div>
   );
 }
