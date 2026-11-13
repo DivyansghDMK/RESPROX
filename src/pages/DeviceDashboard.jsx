@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import LiveValue from '../components/LiveValue';
 import BreathingLungs from '../components/BreathingLungs';
+import LiveBars from '../components/LiveBars';
+import SyncReportsButton from '../components/SyncReportsButton';
 import { therapyLabel } from '../services/deviceStatus';
 import { DeviceDashboardSkeleton } from '../components/Skeleton';
 import { createPortal } from 'react-dom';
@@ -157,6 +159,7 @@ function TherapyControl({ status, applying, online, allowed = true, onRequest })
         <div className="therapy-headline" role="status" aria-live="polite">
           {running && !busy && <span className="therapy-live-dot" aria-hidden="true" />}
           {headline}
+          {running && !busy && <LiveBars className="headline" />}
         </div>
         <div className="therapy-detail">{detail}</div>
       </div>
@@ -250,6 +253,9 @@ function DeviceDashboardView() {
   const [loading, setLoading]         = useState(true);
   const [refreshing, setRefreshing]   = useState(false);
   const [reportSyncing, setReportSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
+  const syncResultTimer = useRef(null);
+  useEffect(() => () => clearTimeout(syncResultTimer.current), []);
   const [loadError, setLoadError] = useState(null);
   const [therapyAction, setTherapyAction] = useState(null);
   const [confirmTherapyAction, setConfirmTherapyAction] = useState(null);
@@ -328,6 +334,10 @@ function DeviceDashboardView() {
       if (stillRunning) {
         notify.info('Report sync is still running', { message: 'It continues in the background. Refresh later to see new sessions.' });
       } else {
+        // The button shows the result for a few seconds, then goes back to idle.
+        setSyncResult({ added });
+        clearTimeout(syncResultTimer.current);
+        syncResultTimer.current = setTimeout(() => setSyncResult(null), 3000);
         notify.success('Report sync finished', {
           message: added ? `${added} new session report${added === 1 ? '' : 's'}.` : 'No new sessions. The device was already up to date.',
         });
@@ -622,18 +632,15 @@ function DeviceDashboardView() {
                 <div style={{ marginTop: 2 }}>Reports to {formatSyncStamp(device.sync_state.lastSynced)}</div>
               )}
             </div>
-            <button onClick={handleReportSync} disabled={reportSyncing || !isOnline}
-              title={isOnline ? 'Pull new therapy reports from the device' : 'Device is offline'}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 9, fontSize: 12, fontWeight: 700, color: 'var(--muted)', cursor: 'pointer', opacity: reportSyncing || !isOnline ? 0.6 : 1 }}>
-              {reportSyncing ? 'Syncing…' : 'Sync reports'}
-            </button>
+            <SyncReportsButton syncing={reportSyncing} result={syncResult} disabled={!isOnline} onClick={handleReportSync} />
             <button onClick={handleRefresh} disabled={refreshing}
               style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 9, fontSize: 12, fontWeight: 700, color: 'var(--muted)', cursor: 'pointer', opacity: refreshing ? 0.6 : 1 }}>
               <RefreshIcon fontSize="small" style={{ animation: refreshing ? 'spin 0.8s linear infinite' : 'none' }}/>
               Refresh
             </button>
-            <LiveValue as="span" scope={serial} watch={therapyStatus || ''} style={{ padding: '7px 12px', borderRadius: 20, background: isTherapyRunning ? '#dcfce7' : '#f1f5f9', color: isTherapyRunning ? '#15803d' : '#64748b', fontSize: 12, fontWeight: 800 }}>
+            <LiveValue as="span" scope={serial} watch={therapyStatus || ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '7px 12px', borderRadius: 20, background: isTherapyRunning ? '#e0f2fe' : '#f1f5f9', color: isTherapyRunning ? '#0369a1' : '#64748b', fontSize: 12, fontWeight: 800 }}>
               {therapyLabel(therapyStatus) || 'Therapy status unknown'}
+              {isTherapyRunning && <LiveBars className="small" />}
             </LiveValue>
             <LiveValue as="span" scope={serial} watch={isOnline ? 'online' : withPhone ? 'phone' : 'offline'} title={withPhone ? 'The phone app is connected over Bluetooth, so the device has left Wi-Fi.' : undefined} style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,

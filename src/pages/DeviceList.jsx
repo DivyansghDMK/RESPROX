@@ -17,6 +17,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import LiveValue from '../components/LiveValue';
 import { therapyLabel } from '../services/deviceStatus';
+import LiveBars from '../components/LiveBars';
 import { IDLE_AFTER_MS, IDLE_CHECK_MS, idleFor } from '../services/userActivity';
 
 const PAGE_SIZE = 20;
@@ -68,7 +69,7 @@ function TherapyPill({ status, style }) {
   const running = String(status).toUpperCase() === 'RUNNING';
   return (
     <span className={`admin-therapy-pill${running ? ' running' : ''}`} style={style}>
-      <span className="admin-therapy-dot" aria-hidden="true" />{label}
+      {running ? <LiveBars className="small" /> : <span className="admin-therapy-dot" aria-hidden="true" />}{label}
     </span>
   );
 }
