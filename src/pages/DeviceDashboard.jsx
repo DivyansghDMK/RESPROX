@@ -919,15 +919,15 @@ function DeviceDashboardView() {
               style={{ padding: '11px 22px', borderRadius: 10, fontWeight: 700, fontSize: 13, background: 'var(--panel)', border: '1px solid var(--line)', color: 'var(--muted)', cursor: dirty ? 'pointer' : 'not-allowed', opacity: dirty ? 1 : 0.5 }}>
               Discard Changes
             </button>
-            <button onClick={saveSettings} disabled={isReadOnly || settingsLocked || !dirty || saving}
-              style={{ flex: 1, padding: '11px 22px', borderRadius: 10, fontWeight: 800, fontSize: 14, background: dirty ? 'var(--brand-gradient)' : '#e2e8f0', color: dirty ? '#fff' : '#94a3b8', border: 'none', cursor: dirty ? 'pointer' : 'not-allowed', boxShadow: dirty ? '0 4px 16px rgba(0,71,204,0.3)' : 'none', transition: 'all 0.25s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <button onClick={saveSettings} disabled={isReadOnly || settingsLocked || !dirty || saving || !isOnline}
+              style={{ flex: 1, padding: '11px 22px', borderRadius: 10, fontWeight: 800, fontSize: 14, background: dirty && isOnline ? 'var(--brand-gradient)' : '#e2e8f0', color: dirty && isOnline ? '#fff' : '#94a3b8', border: 'none', cursor: dirty && isOnline ? 'pointer' : 'not-allowed', boxShadow: dirty && isOnline ? '0 4px 16px rgba(0,71,204,0.3)' : 'none', transition: 'all 0.25s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               {isReadOnly
                 ? <><SaveIcon fontSize="small"/> Read-only</>
                 : saving
                   ? <><span style={{ width: 15, height: 15, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }}/> Applying…</>
                   : isOnline
                     ? <><SendIcon fontSize="small"/> Push Settings to Device</>
-                    : <><SaveIcon fontSize="small"/> Save &amp; Queue for Device</>
+                    : <>{withPhone ? 'Connected to the phone app' : 'Device offline'}: settings can be sent once it is online</>
               }
             </button>
           </div>

@@ -491,6 +491,24 @@ async function request(path, options = {}, { retry = true } = {}) {
 const DEVICES_TTL_MS = 15000;
 const DETAIL_TTL_MS = 5000;
 
+/**
+ * Commands only go to a device the server sees online right now. Its status is
+ * read fresh, not from cache, just before sending; offline or held by the
+ * phone app throws a coded error and nothing is sent.
+ */
+async function ensureDeviceReachable(serial) {
+  const rows = await getDevices({ force: true });
+  const row = rows.find((d) => d.serial === serial);
+  // Not in the list: let the server answer (it returns 404).
+  if (!row || row.status === 'online') return;
+  const withApp = row.status === 'phone';
+  const err = new Error(withApp ? `${serial} is connected to the phone app.` : `${serial} is offline.`);
+  err.code = withApp ? 'DEVICE_WITH_APP' : 'DEVICE_OFFLINE';
+  err.serial = serial;
+  err.lastSeen = row.raw?.last_seen ?? row.raw?.lastSeen ?? null;
+  throw err;
+}
+
 async function getDevices({ force = false } = {}) {
   if (force) invalidate('devices');
   return dedupe('devices', DEVICES_TTL_MS, async () => {
@@ -598,6 +616,7 @@ async function updateDeviceSettings(serial, settings) {
   if (!Object.keys(payload).length) {
     return { success: true, commandId: null, status: 'NO_CHANGE' };
   }
+  await ensureDeviceReachable(serial);
 
   // Cached reads are stale the moment we write, so drop them.
   invalidate('devices');
@@ -627,6 +646,7 @@ async function updateDeviceGroups(serial, groups = {}) {
   const entries = Object.entries(groups).filter(([, values]) => values != null);
   // One mode per request is the API contract; callers send groups one at a time.
   if (entries.length !== 1) throw new Error(`updateDeviceGroups expects exactly one group, got ${entries.length}`);
+  await ensureDeviceReachable(serial);
 
   // Cached reads are stale the moment we write, so drop them.
   invalidate('devices');
@@ -666,6 +686,7 @@ async function pollCommandStatus(deviceId, commandId, { intervalMs = 2000, timeo
 /** POST /devices/{id}/therapy/start|stop. The device confirms asynchronously. */
 async function setTherapy(serial, action) {
   if (action !== 'start' && action !== 'stop') throw new Error(`Invalid therapy action: ${action}`);
+  await ensureDeviceReachable(serial);
   noteCommand(serial);
   invalidate('devices');
   invalidate(`detail:${serial}`);
@@ -681,6 +702,7 @@ async function setTherapy(serial, action) {
  * follow that one instead of failing.
  */
 async function syncReports(serial, { timeoutMs = 180_000 } = {}) {
+  await ensureDeviceReachable(serial);
   const before = await getSyncState(serial).catch(() => ({}));
   try {
     await triggerReportSync(serial);
@@ -733,6 +755,7 @@ async function pollTherapyStatus(serial, expected, { intervalMs = 2000, timeoutM
 
 export const devicesAPI = {
   getDevices,
+  ensureDeviceReachable,
   getDeviceDetail,
   getSyncState,
   getTelemetryHistory,

@@ -43,3 +43,20 @@ test('a command the device has not confirmed yet is not an unexpected error', as
   assert.match(d.title, /hasn't confirmed/);
   assert.match(d.message, /CVT3000001/);
 });
+
+test('an offline device says nothing was sent and when it was last heard from', () => {
+  const lastSeen = new Date(Date.now() - 2 * 3600_000).toISOString();
+  const d = describeError(Object.assign(new Error('x'), { code: 'DEVICE_OFFLINE', serial: 'CVT3000001', lastSeen }));
+  assert.equal(d.kind, 'device-offline');
+  assert.equal(d.title, 'CVT3000001 is offline');
+  assert.match(d.message, /Nothing was sent/);
+  assert.match(d.message, /last heard from 2 h ago/);
+});
+
+test('a device held by the phone app says to close the app', () => {
+  const d = describeError(Object.assign(new Error('x'), { code: 'DEVICE_WITH_APP', serial: 'CVT3000001' }));
+  assert.equal(d.kind, 'device-app');
+  assert.match(d.title, /connected to the phone app/);
+  assert.match(d.message, /Nothing was sent/);
+  assert.match(d.message, /Close the app/);
+});
