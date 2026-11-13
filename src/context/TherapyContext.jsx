@@ -203,7 +203,9 @@ export function TherapyProvider({ children }) {
         ]);
         if (sync) syncMark = [sync.progressMarker, sync.last_acknowledgement, sync.sync_status].join('|');
         const row = rows.find((d) => d.serial === adminActiveSerial);
-        const signature = row ? [row.therapy_status, row.raw?.status, row.raw?.last_seen, syncMark].join('|') : null;
+        // status_reason is in it because OFFLINE → OFFLINE/APP_CONNECTED keeps
+        // the same status; without it "Connected to app" waits for the full read.
+        const signature = row ? [row.therapy_status, row.raw?.status, row.raw?.status_reason, row.raw?.last_seen, syncMark].join('|') : null;
         const changed = lastSignature !== null && signature !== lastSignature;
         lastSignature = signature;
         if (changed || Date.now() - lastFullRead > FULL_REFRESH_MS) {
