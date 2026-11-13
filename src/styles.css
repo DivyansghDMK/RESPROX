@@ -6398,6 +6398,8 @@ textarea:focus-visible,
 
 .therapy-actions { display: flex; gap: 10px; justify-content: flex-end; flex: 0 1 auto; }
 
+.client-ip { white-space: nowrap; }
+
 /* Sync reports button */
 .sync-btn {
   position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 7px;

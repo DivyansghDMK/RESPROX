@@ -9,6 +9,8 @@ import { useTherapy } from './TherapyContext';
 import { readTokenClaims } from '../services/respireeAuth';
 import { permissionsFor, roleFromClaims, ROLES } from '../services/access';
 import { partnersAPI } from '../services/partnersApi';
+import { request } from '../services/respireeApi';
+import { pickClientIp } from '../services/clientIp';
 
 // `npm run dev` only: view the app as a dealer before dealer logins exist.
 const PREVIEW_ROLE_KEY = 'resproxPreviewRole';
@@ -52,6 +54,16 @@ export function AccessProvider({ children }) {
 
   useEffect(() => { loadDealer(); }, [loadDealer]);
 
+  // The address the server sees this browser at, shown in the header. Older
+  // servers don't send it, and then nothing is shown.
+  const [clientIp, setClientIp] = useState(null);
+  useEffect(() => {
+    if (!isAuthenticated) { setClientIp(null); return undefined; }
+    let live = true;
+    request('/me').then((me) => { if (live) setClientIp(pickClientIp(me)); }).catch(() => {});
+    return () => { live = false; };
+  }, [isAuthenticated]);
+
   const permissions = useMemo(
     () => permissionsFor(role, dealer?.device_serials || []),
     [role, dealer],
@@ -87,7 +99,8 @@ export function AccessProvider({ children }) {
     reloadDealer: loadDealer,
     previewRole,
     setPreviewRole,
-  }), [permissions, dealer, dealerState, loadDealer, previewRole, setPreviewRole]);
+    clientIp,
+  }), [permissions, dealer, dealerState, loadDealer, previewRole, setPreviewRole, clientIp]);
 
   return <AccessContext.Provider value={value}>{children}</AccessContext.Provider>;
 }
