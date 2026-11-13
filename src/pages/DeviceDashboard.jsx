@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import LiveValue from '../components/LiveValue';
 import BreathingLungs from '../components/BreathingLungs';
 import LiveBars from '../components/LiveBars';
+import SyncReportsButton from '../components/SyncReportsButton';
 import { therapyLabel } from '../services/deviceStatus';
 import { DeviceDashboardSkeleton } from '../components/Skeleton';
 import { createPortal } from 'react-dom';
@@ -254,6 +255,9 @@ function DeviceDashboardView() {
   const [loading, setLoading]         = useState(true);
   const [refreshing, setRefreshing]   = useState(false);
   const [reportSyncing, setReportSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
+  const syncResultTimer = useRef(null);
+  useEffect(() => () => clearTimeout(syncResultTimer.current), []);
   const [loadError, setLoadError] = useState(null);
   const [therapyAction, setTherapyAction] = useState(null);
   const [confirmTherapyAction, setConfirmTherapyAction] = useState(null);
@@ -332,6 +336,10 @@ function DeviceDashboardView() {
       if (stillRunning) {
         notify.info('Report sync is still running', { message: 'It continues in the background. Refresh later to see new sessions.' });
       } else {
+        // The button shows the result for a few seconds, then goes back to idle.
+        setSyncResult({ added });
+        clearTimeout(syncResultTimer.current);
+        syncResultTimer.current = setTimeout(() => setSyncResult(null), 3000);
         notify.success('Report sync finished', {
           message: added ? `${added} new session report${added === 1 ? '' : 's'}.` : 'No new sessions. The device was already up to date.',
         });
@@ -626,11 +634,7 @@ function DeviceDashboardView() {
                 <div style={{ marginTop: 2 }}>Reports to {formatSyncStamp(device.sync_state.lastSynced)}</div>
               )}
             </div>
-            <button onClick={handleReportSync} disabled={reportSyncing || !isOnline}
-              title={isOnline ? 'Pull new therapy reports from the device' : 'Device is offline'}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 9, fontSize: 12, fontWeight: 700, color: 'var(--muted)', cursor: 'pointer', opacity: reportSyncing || !isOnline ? 0.6 : 1 }}>
-              {reportSyncing ? 'Syncing…' : 'Sync reports'}
-            </button>
+            <SyncReportsButton syncing={reportSyncing} result={syncResult} disabled={!isOnline} onClick={handleReportSync} />
             <button onClick={handleRefresh} disabled={refreshing}
               style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 9, fontSize: 12, fontWeight: 700, color: 'var(--muted)', cursor: 'pointer', opacity: refreshing ? 0.6 : 1 }}>
               <RefreshIcon fontSize="small" style={{ animation: refreshing ? 'spin 0.8s linear infinite' : 'none' }}/>
