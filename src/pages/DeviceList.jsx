@@ -16,6 +16,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import SearchIcon from '@mui/icons-material/Search';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import LiveValue from '../components/LiveValue';
+import { therapyLabel } from '../services/deviceStatus';
 import { IDLE_AFTER_MS, IDLE_CHECK_MS, idleFor } from '../services/userActivity';
 
 const PAGE_SIZE = 20;
@@ -50,7 +51,7 @@ function pageWindow(current, total) {
 const LIST_REFRESH_MS = 5_000;
 
 // What a row shows; a change here makes that row glow once.
-const rowSignature = (d) => [d.status, d.compliance_pct, d.ahi, d.usage_hours, d.firmware].join('|');
+const rowSignature = (d) => [d.status, d.therapy_status, d.compliance_pct, d.ahi, d.usage_hours, d.firmware].join('|');
 
 const STATUS_COLOR = {
   online:  { bg: '#e6f9f0', text: '#0f6e56', dot: '#1d9e75' },
@@ -59,6 +60,18 @@ const STATUS_COLOR = {
 };
 const STATUS_LABEL = { online: 'online', offline: 'offline', phone: 'connected to app' };
 const statusLabel = (s) => STATUS_LABEL[s] || s;
+
+// therapy_status from GET /devices: running or stopped, nothing when unreported.
+function TherapyPill({ status, style }) {
+  const label = therapyLabel(status);
+  if (!label) return <span className="admin-td-secondary">—</span>;
+  const running = String(status).toUpperCase() === 'RUNNING';
+  return (
+    <span className={`admin-therapy-pill${running ? ' running' : ''}`} style={style}>
+      <span className="admin-therapy-dot" aria-hidden="true" />{label}
+    </span>
+  );
+}
 
 // The live API has no clinical numbers until a device's reports are synced; show
 // "—" for a missing value instead of a 0 that reads as a measurement.
@@ -437,6 +450,7 @@ export default function DeviceList() {
                   <th>AHI</th>
                   <th>Usage</th>
                   <th>Status</th>
+                  <th>Therapy</th>
                   <th />
                 </tr>
               </thead>
@@ -484,6 +498,7 @@ export default function DeviceList() {
                           {statusLabel(d.status)}
                         </span>
                       </td>
+                      <td><TherapyPill status={d.therapy_status} /></td>
                       <td>
                         <button
                           className="admin-view-btn"
@@ -521,6 +536,7 @@ export default function DeviceList() {
                   <div className="mobile-device-card-info">
                     {d.raw?.model || '—'} · FW: {d.firmware}
                   </div>
+                  {therapyLabel(d.therapy_status) && <TherapyPill status={d.therapy_status} style={{ marginTop: 8 }} />}
 
                   {/* Compliance bar */}
                   <div style={{ marginTop: 8 }}>

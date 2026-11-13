@@ -4,6 +4,7 @@ import GlassCard from '../components/GlassCard';
 import DeviceDataState from '../components/DeviceDataState';
 import { DeviceInfoSkeleton } from '../components/Skeleton';
 import { DeviceIcon, SyncIcon } from '../components/Icons';
+import { therapyLabel } from '../services/deviceStatus';
 
 export default function Devices() {
   const { deviceData, adminActiveSerial, fetchDeviceData } = useTherapy();
@@ -22,7 +23,7 @@ export default function Devices() {
     ['Device Name', device.model || '—'],
     ['Serial Number', device.serial || '—'],
     ['Firmware Version', device.firmware || '—'],
-    ['Therapy Status', device.therapy_status || '—'],
+    ['Therapy', therapyLabel(device.therapy_status) || '—'],
     ['Connection', device.device_online ? 'Online' : device.phone_connected ? 'Connected to app' : 'Offline'],
     ['Last Sync', device.sync_state?.lastSynced || '—'],
   ];

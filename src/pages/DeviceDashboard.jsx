@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import LiveValue from '../components/LiveValue';
 import BreathingLungs from '../components/BreathingLungs';
+import { therapyLabel } from '../services/deviceStatus';
 import { DeviceDashboardSkeleton } from '../components/Skeleton';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -632,7 +633,7 @@ function DeviceDashboardView() {
               Refresh
             </button>
             <LiveValue as="span" scope={serial} watch={therapyStatus || ''} style={{ padding: '7px 12px', borderRadius: 20, background: isTherapyRunning ? '#dcfce7' : '#f1f5f9', color: isTherapyRunning ? '#15803d' : '#64748b', fontSize: 12, fontWeight: 800 }}>
-              Therapy: {therapyStatus || 'UNKNOWN'}
+              {therapyLabel(therapyStatus) || 'Therapy status unknown'}
             </LiveValue>
             <LiveValue as="span" scope={serial} watch={isOnline ? 'online' : withPhone ? 'phone' : 'offline'} title={withPhone ? 'The phone app is connected over Bluetooth, so the device has left Wi-Fi.' : undefined} style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
