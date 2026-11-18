@@ -102,8 +102,14 @@ export default function AppPreferences() {
           </div>
           <div className="overview-stat">
             <span>Role</span>
-            <strong>{ROLE_LABEL[access.role] || access.role}{access.isDealer && access.dealer ? ` · ${access.dealer.name}` : ''}</strong>
+            <strong>{ROLE_LABEL[access.role] || access.role}</strong>
           </div>
+          {access.org && (
+            <div className="overview-stat">
+              <span>Organisation</span>
+              <strong>{access.org.name}</strong>
+            </div>
+          )}
         </div>
         <p style={{ margin: '16px 0 0', color: 'var(--muted)', lineHeight: 1.6 }}>
           Your account is managed by your organisation's sign-in. To change your password, use
