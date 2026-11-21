@@ -202,6 +202,13 @@ function buildRecord(f, lineNo, raw) {
 
   const durationHours = (end - start) / 3600000;
 
+  // The Android app's session length, which the therapy report uses: clock
+  // times only, with an end at or before the start taken as the next morning.
+  const startTotal = f.startHour * 60 + f.startMinute;
+  let endTotal = f.endHour * 60 + f.endMinute;
+  if (endTotal <= startTotal) endTotal += 1440;
+  const durationMinutes = endTotal - startTotal;
+
   // A record is kept but excluded from statistics when its own timestamps say
   // it cannot be a night of therapy — a device clock glitch must not silently
   // add days of "usage".
@@ -222,6 +229,7 @@ function buildRecord(f, lineNo, raw) {
       dayKey: dayKey(start),
       dateLabel: dayLabel(start),
       durationHours,
+      durationMinutes,
       crossesMidnight: dayKey(start) !== dayKey(end),
 
       modeCode,
@@ -325,8 +333,42 @@ function aggregateDays(records) {
         airFlow: round(airFlow, 0),
         firstOn: first.startClock,
         lastOff: all[all.length - 1].endClock,
+
+        // The day as the therapy report counts it (reportCalc.js).
+        report: reportDay(all),
       };
     });
+}
+
+/**
+ * One day's values the way the Android app's report adds them up: every
+ * session of the day counts, leak is the day's highest reading, and tidal
+ * volume and breathing rate are averaged over sessions that report them.
+ * Leak status codes (LEAK_SENTINEL and up) are not readings and are left out.
+ */
+function reportDay(all) {
+  const leaks = all.filter((r) => r.leakValid).map((r) => r.leak);
+  const nonZero = (key) => all.map((r) => r[key]).filter((v) => Number.isFinite(v) && v > 0);
+  const avg = (values) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0);
+  const tidal = avg(nonZero('tidalVolume'));
+  const resp = avg(nonZero('respRate'));
+  const last = all[all.length - 1];
+  return {
+    usageMinutes: all.reduce((sum, r) => sum + r.durationMinutes, 0),
+    maxPressure: Math.max(0, ...all.map((r) => Math.max(r.ipap || 0, r.maxPressure || 0))),
+    csa: all.reduce((sum, r) => sum + r.csa, 0),
+    osa: all.reduce((sum, r) => sum + r.osa, 0),
+    hsa: all.reduce((sum, r) => sum + r.hsa, 0),
+    leak: leaks.length ? Math.max(...leaks) : 0,
+    leaks,
+    tidal,
+    resp,
+    minuteVent: (tidal * resp) / 1000,
+    modeCode: last.modeCode,
+    aflexOn: last.aflexOn,
+    aflexLevel: last.aflexLevel,
+    maskType: last.maskType,
+  };
 }
 
 // ── public API ────────────────────────────────────────────────────────────────
