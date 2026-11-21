@@ -284,7 +284,13 @@ function DeviceDashboardView() {
     setCurrentPage(1);
   }, [serial]);
 
+  // The device settings the editable values were last loaded from. Anything
+  // different from these is the user's own edit; anything equal to them can
+  // follow the device when it changes.
+  const draftBase = useRef(null);
+
   const applyDeviceState = (data) => {
+    draftBase.current = data.settings;
     setMode(data.settings.therapy_mode);
     setPressure(data.settings.pressure);
     setMinPressure(data.settings.min_pressure);
@@ -306,7 +312,11 @@ function DeviceDashboardView() {
       const now = new Date();
       setLastPull(now);
       setLastServerPull(now);
-      if (!silent) applyDeviceState(data);
+      // A refresh (Refresh button, after a report sync) brings the device's
+      // values into the editable settings too, unless the user has unsaved
+      // edits or a command is in flight. The shared live refresh below can't
+      // do it for these: it skips data this page has already taken in.
+      if (!silent || !busyRef.current) applyDeviceState(data);
       return data;
     } catch (e) {
       if (id !== requestId.current) return;
@@ -435,7 +445,10 @@ function DeviceDashboardView() {
   // stop, settings) show up here. The editable settings follow too, unless the
   // user has unsaved edits or a save or therapy command is in flight.
   const busyRef = useRef(false);
-  busyRef.current = dirty || saving || Boolean(therapyAction);
+  const base = draftBase.current;
+  const edited = Boolean(base) && (mode !== base.therapy_mode || pressure !== base.pressure || minPressure !== base.min_pressure ||
+    maxPressure !== base.max_pressure || aflex !== base.aflex || ramp !== base.ramp);
+  busyRef.current = edited || saving || Boolean(therapyAction);
   useEffect(() => {
     if (!deviceData || !device || deviceData === device || deviceData.serial !== device.serial) return;
     setDevice(deviceData);
@@ -495,10 +508,12 @@ function DeviceDashboardView() {
       
       const res = await devicesAPI.updateDeviceSettings(serial, payload);
       // The draft becomes the device's settings only once the device has them.
-      const confirmed = () => setDevice((d) => (d ? {
-        ...d,
-        settings: { ...d.settings, therapy_mode: mode, pressure, min_pressure: minPressure, max_pressure: maxPressure, aflex, ramp },
-      } : d));
+      const confirmed = () => setDevice((d) => {
+        if (!d) return d;
+        const settings = { ...d.settings, therapy_mode: mode, pressure, min_pressure: minPressure, max_pressure: maxPressure, aflex, ramp };
+        draftBase.current = settings;
+        return { ...d, settings };
+      });
 
       if (res && res.status === 'NO_CHANGE') {
         confirmed();
