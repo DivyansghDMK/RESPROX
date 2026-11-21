@@ -130,8 +130,9 @@ function formatSyncStamp(value) {
 }
 
 // ── Therapy control ────────────────────────────────────────────────────────────
-// Start/stop changes what the patient is breathing, so it is always a two-step
-// action: press the button, then confirm in a dialog that names the device.
+// Starting changes what the patient is breathing, so it is a two-step action:
+// press the button, then confirm in a dialog that names the device. Therapy is
+// never stopped from the website: only on the device itself.
 function TherapyControl({ status, applying, online, allowed = true, onRequest }) {
   const running = status === 'RUNNING';
   const stopped = status === 'STOPPED';
@@ -142,7 +143,7 @@ function TherapyControl({ status, applying, online, allowed = true, onRequest })
     : running ? 'Therapy is running' : stopped ? 'Therapy is stopped' : 'Therapy status unknown';
   const detail = busy
     ? 'Waiting for the device to confirm. Do not close this page.'
-    : running ? 'Settings are locked while therapy is running.'
+    : running ? 'Settings are locked while therapy is running. Therapy can only be stopped on the device.'
     : stopped ? 'Settings can be changed. Starting therapy locks them.'
     : 'Refresh to read the current state before sending a command.';
   const btn = (action, label) => (
@@ -173,7 +174,7 @@ function TherapyControl({ status, applying, online, allowed = true, onRequest })
         ) : (
           <>
             {(stopped || !known) && btn('start', busy && applying === 'start' ? 'Starting…' : 'Start therapy')}
-            {(running || !known) && btn('stop', busy && applying === 'stop' ? 'Stopping…' : 'Stop therapy')}
+            {running && <div className="therapy-offline" role="status">Stop therapy on the device.</div>}
           </>
         )}
       </div>
@@ -402,7 +403,7 @@ function DeviceDashboardView() {
   };
 
   const requestTherapyAction = (action) => {
-    if (!access.controlTherapy || !isOnline || therapyAction) return;
+    if (action !== 'start' || !access.controlTherapy || !isOnline || therapyAction) return;
     setConfirmTherapyAction(action);
   };
 
@@ -800,7 +801,7 @@ function DeviceDashboardView() {
               <strong>{access.editTherapySettings ? 'Settings are locked.' : 'View only.'}</strong>{' '}
               {!access.editTherapySettings
                 ? 'Pressure, mode, ramp and A-Flex are set by Resprox admin. Comfort settings (mask, tube, humidifier, comfort ramp) can be changed on the Settings page.'
-                : therapyAction ? 'A therapy command is being applied.' : 'Stop therapy to change pressure, ramp or mode.'}
+                : therapyAction ? 'A therapy command is being applied.' : 'Stop therapy on the device to change pressure, ramp or mode.'}
             </div>
           )}
 

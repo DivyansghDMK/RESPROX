@@ -695,9 +695,15 @@ async function pollCommandStatus(deviceId, commandId, { intervalMs = 2000, timeo
   throw err;
 }
 
-/** POST /devices/{id}/therapy/start|stop. The device confirms asynchronously. */
+/** POST /devices/{id}/therapy/start. The device confirms asynchronously. */
 async function setTherapy(serial, action) {
-  if (action !== 'start' && action !== 'stop') throw new Error(`Invalid therapy action: ${action}`);
+  // Therapy is never stopped from the website: only the device stops it.
+  if (action === 'stop') {
+    const err = new Error('Therapy can only be stopped on the device.');
+    err.code = 'STOP_NOT_ALLOWED';
+    throw err;
+  }
+  if (action !== 'start') throw new Error(`Invalid therapy action: ${action}`);
   await ensureDeviceReachable(serial);
   noteCommand(serial);
   invalidate('devices');
@@ -744,6 +750,53 @@ async function syncReports(serial, { timeoutMs = 180_000, onProgress } = {}) {
   invalidate('devices');
   invalidate(`detail:${serial}`);
   return { stillRunning: Boolean(state.syncing), received };
+}
+
+/**
+ * What the Activity Log needs: the device's settings packets, its session
+ * records, and the settings the website sent (null until the server has
+ * GET /devices/{id}/commands; see docs/activity-log-api.md).
+ */
+async function getDeviceActivity(serial) {
+  const [telemetry, reports, commands] = await Promise.all([
+    getAllTelemetry(serial),
+    getAllReports(serial).catch(() => []),
+    getCommands(serial),
+  ]);
+  return { telemetry, records: parseReportRows(reports).records, commands };
+}
+
+const ACTIVITY_PAGE = 100;
+const MAX_ACTIVITY_PAGES = 10;
+
+async function getAllTelemetry(serial) {
+  const rows = [];
+  for (let page = 1; page <= MAX_ACTIVITY_PAGES; page += 1) {
+    const json = await request(`/devices/${encodeURIComponent(serial)}/telemetry/history?page=${page}&limit=${ACTIVITY_PAGE}`);
+    const items = telemetryRows(json);
+    rows.push(...items);
+    const totalPages = Number((json?.data?.pagination || json?.pagination)?.totalPages);
+    if (items.length < ACTIVITY_PAGE || (Number.isFinite(totalPages) && page >= totalPages)) break;
+  }
+  return rows;
+}
+
+async function getCommands(serial) {
+  const rows = [];
+  try {
+    for (let page = 1; page <= MAX_ACTIVITY_PAGES; page += 1) {
+      const json = await request(`/devices/${encodeURIComponent(serial)}/commands?page=${page}&limit=${ACTIVITY_PAGE}`);
+      const items = normalizeReportList(json);
+      rows.push(...items);
+      const totalPages = Number((json?.data?.pagination || json?.pagination)?.totalPages);
+      if (items.length < ACTIVITY_PAGE || (Number.isFinite(totalPages) && page >= totalPages)) break;
+    }
+  } catch (err) {
+    // Not deployed yet (or not allowed): the log shows the device's side only.
+    if (err?.status === 404 || err?.status === 403) return null;
+    throw err;
+  }
+  return rows;
 }
 
 /** How many session reports the server holds for a device; null if unknown. */
@@ -816,6 +869,7 @@ export const devicesAPI = {
   setTherapy,
   triggerReportSync,
   syncReports,
+  getDeviceActivity,
   getReports,
   pollTherapyStatus,
   commandedRecently,

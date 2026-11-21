@@ -20,6 +20,10 @@ export function ChartIcon() {
   return <SvgBox><path d="M4 19V5m5 14V9m5 10V3m5 16v-8" /></SvgBox>;
 }
 
+export function ActivityIcon() {
+  return <SvgBox><path d="M3 12h4l3-8 4 16 3-8h4" /></SvgBox>;
+}
+
 export function FileIcon() {
   return <SvgBox><path d="M6 3h7l5 5v13H6zM13 3v6h6" /></SvgBox>;
 }
