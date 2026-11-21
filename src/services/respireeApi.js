@@ -1,6 +1,7 @@
 import { clearCognitoSession, getCognitoSession, refreshCognitoSession, loginWithTeamKey, TEAM_KEY_STORAGE } from './respireeAuth';
 import { parseReportRows } from './reportFileParser';
 import { extractStatus } from './deviceStatus';
+import { currentSettingsRow, telemetryRows } from './currentSettings';
 
 const BASE_URL = import.meta.env.VITE_RESPIREE_API_BASE_URL
   || (import.meta.env.DEV ? '/api-proxy' : 'https://52ct9sbsu3.execute-api.us-east-1.amazonaws.com');
@@ -154,9 +155,12 @@ function normalizeSessions(history = []) {
     const rawBytes = entryPayload.raw || entry.raw;
     const hasRawBytes = Array.isArray(rawBytes) && rawBytes.length >= 20;
 
-    const autoObj = entryPayload.AUTO || entry.AUTO || entryPayload.settings?.AUTO;
-    const cpapObj = entryPayload.CPAP || entry.CPAP || entryPayload.settings?.CPAP;
-    const isSettingsFrame = (entryPayload.CONFIG || autoObj || cpapObj) && !hasRawBytes;
+    // An UPDATE carries one group's fields flat, without the group wrapper.
+    const isUpdate = entry?.packet_type === 'UPDATE';
+    const group = String(entry?.mode || '').toUpperCase();
+    const autoObj = entryPayload.AUTO || entry.AUTO || entryPayload.settings?.AUTO || (isUpdate && group === 'AUTO' ? entryPayload : null);
+    const cpapObj = entryPayload.CPAP || entry.CPAP || entryPayload.settings?.CPAP || (isUpdate && group === 'CPAP' ? entryPayload : null);
+    const isSettingsFrame = isUpdate || ((entryPayload.CONFIG || autoObj || cpapObj) && !hasRawBytes);
 
     const serverTs = entry?.server_timestamp || entry?.serverTimestamp || entry?.device_timestamp || entry?.deviceTimestamp
       || entry?.session_timestamp || entry?.sessionTimestamp || entry?.timestamp || entry?.date;
@@ -537,7 +541,10 @@ async function getDeviceDetail(serial, { force = false } = {}) {
     ]);
 
     const summary = devices.find((device) => device.serial === serial) || { serial, model: null, firmware: '—', patient_name: null, raw: {} };
-    return normalizeDeviceDetail(summary, latest, history, syncState, reports);
+    // Settings changed on the device arrive as partial UPDATEs; replay them
+    // over the last full sync so the screen shows the latest value of each.
+    const current = currentSettingsRow([...telemetryRows(latest), ...telemetryRows(history)]);
+    return normalizeDeviceDetail(summary, current || latest, history, syncState, reports);
   });
 }
 
@@ -579,8 +586,12 @@ async function updateDeviceSettings(serial, settings) {
   let baseline = {};
   let currentMode = null;
   try {
-    const latest = await request(`/devices/${encodeURIComponent(serial)}/telemetry/latest`);
-    const latestData = latest?.data || latest?.telemetry || latest || {};
+    const [latest, history] = await Promise.all([
+      request(`/devices/${encodeURIComponent(serial)}/telemetry/latest`),
+      request(`/devices/${encodeURIComponent(serial)}/telemetry/history?page=1&limit=20`).catch(() => null),
+    ]);
+    const current = currentSettingsRow([...telemetryRows(latest), ...telemetryRows(history)]);
+    const latestData = current || latest?.data || latest?.telemetry || latest || {};
     baseline = latestData.decoded_payload || latestData.modes || {};
     currentMode = latestData.mode || latestData.activeMode || null;
   } catch (err) {
