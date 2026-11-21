@@ -88,6 +88,7 @@ function DropZone({ accept, busy, title, hint, icon, label, onFile }) {
   const open = () => inputRef.current?.click();
   return (
     <div
+      className={`upload-drop${dragging ? ' is-dragging' : ''}${busy ? ' is-busy' : ''}`}
       onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
       onDragLeave={() => setDragging(false)}
       onDrop={(e) => { e.preventDefault(); setDragging(false); onFile(e.dataTransfer.files?.[0]); }}
@@ -111,7 +112,7 @@ function DropZone({ accept, busy, title, hint, icon, label, onFile }) {
         // Cleared after each pick, so choosing the same file again still loads it.
         onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ''; }}
       />
-      <div style={{ fontSize: 30, marginBottom: 8, opacity: 0.5 }}>{icon}</div>
+      <div className="upload-drop-icon" style={{ fontSize: 30, marginBottom: 8, opacity: 0.5 }}>{icon}</div>
       <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: 15 }}>
         {busy ? 'Reading file…' : title}
       </div>

@@ -978,14 +978,14 @@ function DeviceDashboardView() {
 
         {/* ── Session Log Table ─────────────────────────────────────────────────── */}
         <div style={sectionCard}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px 12px', marginBottom: 12 }}>
             <div style={sectionLabel}>Session Log</div>
             <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>
               Page {currentPage} of {totalPages} ({sortedSessions.length} total records)
             </div>
           </div>
           <div className="admin-table-wrap" style={{ margin: 0, borderRadius: '10px 10px 0 0', border: '1px solid var(--line)' }}>
-            <table className="admin-table">
+            <table className="admin-table session-log-table">
               <thead>
                 <tr>{['Date', 'Usage', 'AHI', 'Mask Leak', '95th Pressure', 'Compliance'].map(h => <th key={h}>{h}</th>)}</tr>
               </thead>
@@ -1061,7 +1061,7 @@ function DeviceDashboardView() {
                         </td>
                       </tr>
                       {isExpanded && (
-                        <tr style={{ background: 'var(--panel-deep, #f8fafc)' }}>
+                        <tr className="session-log-detail" style={{ background: 'var(--panel-deep, #f8fafc)' }}>
                           <td colSpan={6} style={{ padding: '16px 20px', borderBottom: '1px solid var(--line)' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
                               <div>

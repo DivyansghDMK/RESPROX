@@ -14,7 +14,6 @@ import { lazy } from 'react';
 export const loaders = {
   deviceDashboard:    () => import('./pages/DeviceDashboard'),
   deviceList:         () => import('./pages/DeviceList'),
-  therapy:            () => import('./pages/Therapy'),
   trends:             () => import('./pages/Trends'),
   reports:            () => import('./pages/Reports'),
   devices:            () => import('./pages/Devices'),
@@ -23,8 +22,6 @@ export const loaders = {
   preferences:        () => import('./pages/AppPreferences'),
   help:               () => import('./pages/HelpSupport'),
   adminDataUpload:    () => import('./pages/AdminDataUpload'),
-  dealers:            () => import('./pages/Dealers'),
-  customers:          () => import('./pages/Customers'),
   calibration:        () => import('./pages/Calibration'),
   forgotPassword:     () => import('./features/auth/ForgotPasswordPage'),
   doctorSignup:       () => import('./features/auth/DoctorSignupPage'),
@@ -51,7 +48,6 @@ export function routeKeyForPath(path = '') {
     '/dashboard': 'deviceDashboard',
     '/devices': 'deviceList',
     '/device-info': 'devices',
-    '/therapy': 'therapy',
     '/trends': 'trends',
     '/reports': 'reports',
     '/mask-fit': 'maskFit',
@@ -59,8 +55,6 @@ export function routeKeyForPath(path = '') {
     '/preferences': 'preferences',
     '/help': 'help',
     '/admin/upload': 'adminDataUpload',
-    '/admin/dealers': 'dealers',
-    '/customers': 'customers',
     '/calibration': 'calibration',
     '/forgot-password': 'forgotPassword',
     '/doctor/login': 'doctorSignup',
@@ -102,7 +96,6 @@ export function prefetchWhenIdle(keys) {
 
 export const DeviceDashboard    = lazy(loaders.deviceDashboard);
 export const DeviceList         = lazy(loaders.deviceList);
-export const Therapy            = lazy(loaders.therapy);
 export const Trends             = lazy(loaders.trends);
 export const Reports            = lazy(loaders.reports);
 export const Devices            = lazy(loaders.devices);
@@ -111,8 +104,6 @@ export const Settings           = lazy(loaders.settings);
 export const AppPreferences     = lazy(loaders.preferences);
 export const HelpSupport        = lazy(loaders.help);
 export const AdminDataUpload    = lazy(loaders.adminDataUpload);
-export const Dealers            = lazy(loaders.dealers);
-export const Customers          = lazy(loaders.customers);
 export const Calibration        = lazy(loaders.calibration);
 export const ForgotPassword     = lazy(loaders.forgotPassword);
 export const DoctorSignup       = lazy(loaders.doctorSignup);

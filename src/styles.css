@@ -2437,18 +2437,6 @@ textarea:focus-visible,
     height: 24px;
   }
 
-  /* Device Status Card */
-  .mobile-device-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-    padding: 14px 18px;
-    border-radius: 18px;
-    margin-bottom: 20px;
-    box-shadow: 0 4px 12px rgba(14, 165, 233, 0.04);
-  }
-
   .device-status-info {
     display: flex;
     align-items: center;
@@ -6345,7 +6333,11 @@ textarea:focus-visible,
 @media (max-width: 767px) {
   .setting-screen { padding: 12px 16px 120px; }
   .reports-actions-bar { flex-wrap: wrap; }
-  .reports-actions-bar .icon-text-button { flex: 1 1 140px; justify-content: center; }
+  .reports-actions-bar .icon-text-button { flex: 1 1 100%; justify-content: center; }
+  .reports-page,
+  .trends-page,
+  .maskfit-page,
+  .helpsupport-page { padding: 12px 16px 24px; }
 }
 
 /* 44px is the minimum comfortable touch target; the toggle keeps its look and only grows its hit area. */
@@ -6805,3 +6797,93 @@ tr.live-updated > td { animation: live-flash-bg 1.6s ease-out; }
   .live-updated, tr.live-updated > td { animation-duration: 0.01s; }
 }
 .cal-sending { min-width: 64px; text-align: center; font-size: 12px; color: var(--s-text-2); }
+
+/* Session log on phones: keep each cell on one line and let the table scroll
+   sideways inside its card, instead of breaking dates and pills mid-word. */
+@media (max-width: 768px) {
+  .session-log-table th,
+  .session-log-table td { padding: 10px 12px; white-space: nowrap; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Page motion. Sections rise in one after another when a page opens, clickable
+   cards lift on hover, and bars fill in. `backwards` fill only: no transform is
+   left behind once an animation ends, so fixed dialogs stay pinned to the
+   viewport. Everything here switches off under prefers-reduced-motion.
+   ══════════════════════════════════════════════════════════════════════════ */
+@keyframes page-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes bar-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes row-open { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes icon-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+
+.admin-patients-page > *,
+.admin-detail-page > *,
+.reports-page > *,
+.trends-page > *,
+.maskfit-page > *,
+.settings-page > *,
+.setting-screen > :not(.apply-bar),
+.helpsupport-page .therapy-card,
+.admin-stats-bar > *,
+.kpi-grid > *,
+.mobile-device-cards-grid > * {
+  animation: page-rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+:is(.admin-patients-page, .admin-detail-page, .reports-page, .trends-page, .maskfit-page,
+    .settings-page, .setting-screen, .admin-stats-bar, .kpi-grid, .mobile-device-cards-grid) > :nth-child(2) { animation-delay: 60ms; }
+:is(.admin-patients-page, .admin-detail-page, .reports-page, .trends-page, .maskfit-page,
+    .settings-page, .setting-screen, .admin-stats-bar, .kpi-grid, .mobile-device-cards-grid) > :nth-child(3) { animation-delay: 120ms; }
+:is(.admin-patients-page, .admin-detail-page, .reports-page, .trends-page, .maskfit-page,
+    .settings-page, .setting-screen, .admin-stats-bar, .kpi-grid, .mobile-device-cards-grid) > :nth-child(4) { animation-delay: 180ms; }
+:is(.admin-patients-page, .admin-detail-page, .reports-page, .trends-page, .maskfit-page,
+    .settings-page, .setting-screen, .admin-stats-bar, .kpi-grid, .mobile-device-cards-grid) > :nth-child(5) { animation-delay: 240ms; }
+:is(.admin-patients-page, .admin-detail-page, .reports-page, .trends-page, .maskfit-page,
+    .settings-page, .setting-screen, .admin-stats-bar, .kpi-grid, .mobile-device-cards-grid) > :nth-child(n+6) { animation-delay: 300ms; }
+.helpsupport-page .therapy-card + .therapy-card { animation-delay: 80ms; }
+.setting-screen > .apply-bar, .settings-page > .apply-bar { animation-delay: 0s; }
+
+/* Bars grow from the left the first time they appear. */
+.admin-compliance-fill {
+  transform-origin: left center;
+  animation: bar-fill 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.15s backwards;
+}
+
+/* Clickable cards and rows answer the pointer. */
+.mobile-device-card,
+.kpi-card,
+.more-pages-link { transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, color 0.2s ease; }
+@media (hover: hover) {
+  .mobile-device-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(28, 50, 87, 0.08); }
+  .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(28, 50, 87, 0.07); }
+  .more-pages-link:hover { color: var(--accent); }
+  .more-pages-link:hover span:last-child { transform: translateX(3px); }
+}
+.more-pages-link span:last-child { transition: transform 0.2s ease; }
+.admin-table tbody tr { transition: background 0.18s ease; }
+.segmented-filters button,
+.mini-segmented button { transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease; }
+
+/* FAQ: the + turns into × and the answer slides open. */
+.faq-toggle { display: inline-block; font-size: 1.2rem; line-height: 1; transition: transform 0.25s ease; }
+.faq-question-btn.expanded .faq-toggle { transform: rotate(45deg); }
+.faq-answer-panel { animation: row-open 0.25s ease; }
+
+/* Session log: the inspected packet opens under its row. */
+.session-log-detail td > * { animation: row-open 0.25s ease; }
+
+/* Upload: the icon lifts on hover and bobs while a file is held over it. */
+.upload-drop-icon { transition: transform 0.2s ease, opacity 0.2s ease; }
+@media (hover: hover) {
+  .upload-drop:hover .upload-drop-icon { transform: translateY(-3px); opacity: 0.8 !important; }
+}
+.upload-drop.is-dragging .upload-drop-icon { animation: icon-bob 0.9s ease-in-out infinite; opacity: 0.9 !important; }
+.upload-drop.is-busy .upload-drop-icon { animation: s-pulse 1.2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-patients-page > *, .admin-detail-page > *, .reports-page > *, .trends-page > *,
+  .maskfit-page > *, .settings-page > *, .setting-screen > :not(.apply-bar), .helpsupport-page .therapy-card,
+  .admin-stats-bar > *, .kpi-grid > *, .mobile-device-cards-grid > *,
+  .admin-compliance-fill, .faq-answer-panel, .session-log-detail td > *,
+  .upload-drop .upload-drop-icon { animation: none !important; }
+  .mobile-device-card:hover, .kpi-card:hover { transform: none; }
+}
