@@ -10,7 +10,8 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ConnectionBanner from './components/ConnectionBanner';
 import { NotifyProvider } from './context/NotifyContext';
-import { AccessProvider } from './context/AccessContext';
+import { AccessProvider, useAccess } from './context/AccessContext';
+import AccountBlocked from './components/AccountBlocked';
 
 // Login is the entry point for every session, so it stays in the main chunk —
 // lazy-loading it would only add a round-trip before the first paint.
@@ -43,6 +44,7 @@ function AppContent() {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout, teamSignIn, loginPath } = useAuth();
+  const { accountBlocked, reloadDealer } = useAccess();
 
   // The API layer raises this when the session can no longer be refreshed.
   useEffect(() => {
@@ -143,6 +145,14 @@ function AppContent() {
           </Suspense>
         </ErrorBoundary>
         <Toast />
+      </div>
+    );
+  }
+
+  if (accountBlocked) {
+    return (
+      <div className="auth-shell">
+        <AccountBlocked reason={accountBlocked} onRetry={reloadDealer} />
       </div>
     );
   }

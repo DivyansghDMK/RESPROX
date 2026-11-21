@@ -3518,10 +3518,12 @@ textarea:focus-visible,
    ADMIN PATIENTS AND DETAIL PANEL STYLING
    ========================================================================== */
 
+/* Full width and flush with the greeting header above: a centred 1200px
+   column left a wide empty gap on large screens and sat out of line with it. */
 .admin-patients-page, .admin-detail-page {
-  padding: 24px 30px;
-  max-width: 1200px;
-  margin: 0 auto;
+  padding: 8px 0 24px;
+  max-width: 1680px;
+  margin: 0;
   animation: fadeIn 0.4s ease-out;
 }
 

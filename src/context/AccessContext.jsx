@@ -33,7 +33,7 @@ export function AccessProvider({ children }) {
   const { adminActiveSerial, setAdminActiveSerial } = useTherapy();
   const [previewRole, setPreviewRoleState] = useState(readPreviewRole);
   const [me, setMe] = useState(null);
-  const [meState, setMeState] = useState('idle'); // idle | loading | ready | error
+  const [meState, setMeState] = useState('idle'); // idle | loading | ready | error | disabled | unprovisioned
 
   const tokenRole = roleFromClaims(token ? readTokenClaims(token) : {});
 
@@ -48,16 +48,19 @@ export function AccessProvider({ children }) {
       // Dev preview of a dealer reads the preview store; everyone else the server.
       setMe(previewRole ? await partnersAPI.me(previewRole.dealerId) : await request('/me'));
       setMeState('ready');
-    } catch {
+    } catch (err) {
       setMe(null);
-      setMeState('error');
+      // 403: the user row is disabled. 404: no user row for this Cognito sub.
+      // Neither may fall back to the token's role (no group reads as admin).
+      setMeState(err?.status === 403 ? 'disabled' : err?.status === 404 && !previewRole ? 'unprovisioned' : 'error');
     }
   }, [isAuthenticated, previewRole]);
 
   useEffect(() => { loadMe(); }, [loadMe]);
 
   const account = useMemo(() => parseMe(me, tokenRole), [me, tokenRole]);
-  const role = previewRole?.role || account.role;
+  const blocked = meState === 'disabled' || meState === 'unprovisioned' ? meState : null;
+  const role = blocked ? null : previewRole?.role || account.role;
   const dealer = role === ROLES.DEALER ? account.dealer : null;
 
   const permissions = useMemo(
@@ -98,7 +101,8 @@ export function AccessProvider({ children }) {
     previewRole,
     setPreviewRole,
     clientIp: account.ip,
-  }), [permissions, dealer, account, meState, loadMe, previewRole, setPreviewRole]);
+    accountBlocked: blocked,
+  }), [permissions, dealer, account, meState, blocked, loadMe, previewRole, setPreviewRole]);
 
   return <AccessContext.Provider value={value}>{children}</AccessContext.Provider>;
 }
