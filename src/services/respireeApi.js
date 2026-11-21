@@ -712,9 +712,16 @@ async function setTherapy(serial, action) {
  * up-to-date device sends nothing). A 409 means a sync is already running:
  * follow that one instead of failing.
  */
-async function syncReports(serial, { timeoutMs = 180_000 } = {}) {
+async function syncReports(serial, { timeoutMs = 180_000, onProgress } = {}) {
+  // onProgress({ phase, received }): phase is 'requesting' until the device
+  // starts sending, then 'receiving'; received counts stored sessions added.
+  const report = (phase, received) => { try { onProgress?.({ phase, received }); } catch { /* display only */ } };
+  report('requesting', 0);
   await ensureDeviceReachable(serial);
-  const before = await getSyncState(serial).catch(() => ({}));
+  const [before, totalBefore] = await Promise.all([
+    getSyncState(serial).catch(() => ({})),
+    getReportTotal(serial),
+  ]);
   try {
     await triggerReportSync(serial);
   } catch (err) {
@@ -723,15 +730,30 @@ async function syncReports(serial, { timeoutMs = 180_000 } = {}) {
   const started = Date.now();
   let seenSyncing = false;
   let state = {};
+  let received = 0;
   while (Date.now() - started < timeoutMs) {
     await new Promise((r) => setTimeout(r, 3000));
-    state = await getSyncState(serial);
+    const [next, total] = await Promise.all([getSyncState(serial), getReportTotal(serial)]);
+    state = next;
+    if (total != null && totalBefore != null) received = Math.max(received, total - totalBefore);
+    if (state.syncing || received > 0) report('receiving', received);
     if (state.syncing) { seenSyncing = true; continue; }
     if (seenSyncing || state.progressMarker !== before.progressMarker || Date.now() - started > 15_000) break;
   }
   invalidate('devices');
   invalidate(`detail:${serial}`);
-  return { stillRunning: Boolean(state.syncing) };
+  return { stillRunning: Boolean(state.syncing), received };
+}
+
+/** How many session reports the server holds for a device; null if unknown. */
+async function getReportTotal(serial) {
+  try {
+    const json = await request(`/devices/${encodeURIComponent(serial)}/reports?limit=1&page=1`);
+    const total = Number((json?.data?.pagination || json?.pagination)?.total);
+    return Number.isFinite(total) ? total : null;
+  } catch {
+    return null;
+  }
 }
 
 /** POST /devices/{id}/reports/sync. Progress is read from getSyncState(). */

@@ -1,5 +1,6 @@
 import { useNotify } from '../context/NotifyContext';
 import DeviceDataState from '../components/DeviceDataState';
+import SyncProgress, { useSyncProgress } from '../components/SyncProgress';
 import { ReportsSkeleton } from '../components/Skeleton';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -38,21 +39,29 @@ export default function Reports() {
     setEndDate(dataRange.end);
   }, [dataRange.start, dataRange.end]);
   const [syncing, setSyncing] = useState(false);
+  const sync = useSyncProgress();
 
   const handleSyncReports = useCallback(async () => {
     if (!activeSerial || syncing) return;
     setSyncing(true);
+    sync.begin();
     try {
-      const { stillRunning } = await devicesAPI.syncReports(activeSerial);
+      const { stillRunning, received } = await devicesAPI.syncReports(activeSerial, { onProgress: sync.progress });
+      sync.finishing();
       await fetchDeviceData(activeSerial);
-      if (stillRunning) notify.info('Report sync is still running', { message: 'It continues in the background. Refresh later to see new sessions.' });
-      else notify.success('Report sync finished');
+      if (stillRunning) {
+        sync.clear();
+        notify.info('Report sync is still running', { message: 'It continues in the background. Refresh later to see new sessions.' });
+      } else {
+        sync.finish(received);
+      }
     } catch (e) {
+      sync.clear();
       notify.fromError(e, { action: 'sync reports', subject: activeSerial });
     } finally {
       setSyncing(false);
     }
-  }, [activeSerial, fetchDeviceData, notify, syncing]);
+  }, [activeSerial, fetchDeviceData, notify, syncing, sync]);
 
 
 
@@ -103,6 +112,9 @@ export default function Reports() {
 
   return (
     <div className="reports-page">
+      {sync.view && !sync.view.hidden && (
+        <SyncProgress serial={activeSerial} {...sync.view} onHide={sync.hide} />
+      )}
 
 
       {/* Session filters card */}
