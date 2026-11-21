@@ -1,5 +1,10 @@
 # RESPROX — Clinical CPAP Telemetry Portal
 
+> **Scope:** Resprox is the **admin portal for internal DeckMount users only**.
+> Dealers use **Deckmount Care**, a separate project in its own folder
+> (`~/Desktop/deckmount-care`). Dealer-facing features go there, not here.
+> Resprox still adds dealers and assigns devices to them.
+
 An end-to-end clinical monitoring and therapy management platform for **RESPROX CPAP devices**. Built with a **Vite + React** Single Page Application (SPA), **AWS Cognito Authentication**, **AWS IoT Core / REST API Gateway integration**, and a **FastAPI** backend service.
 
 ---
