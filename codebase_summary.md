@@ -1,5 +1,10 @@
 # ResproX CPAP Dashboard - Codebase & Design Reference
 
+> **Scope:** Resprox is the **admin portal for internal DeckMount users only**.
+> Dealers use **Deckmount Care**, a separate project in its own folder
+> (`~/Desktop/deckmount-care`). Dealer-facing features go there, not here.
+> Resprox still adds dealers and assigns devices to them.
+
 This document serves as an end-to-end developer reference explaining the current architecture, components, routing, responsive design, and CSS style tokens implemented in the **resproX** CPAP dashboard.
 
 ---
