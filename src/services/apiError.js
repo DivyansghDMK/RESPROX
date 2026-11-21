@@ -12,6 +12,17 @@
 //   message — what it means and what they can do
 //   detail  — the technical text, shown small; support asks for this
 
+/** "5 min ago", "2 h ago", "13 Nov" for a last-seen time, or null. */
+function lastHeard(value) {
+  const t = value ? new Date(value).getTime() : NaN;
+  if (!Number.isFinite(t)) return null;
+  const min = Math.round((Date.now() - t) / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min} min ago`;
+  if (min < 24 * 60) return `${Math.round(min / 60)} h ago`;
+  return new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
 const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
 
 /** True for the errors a browser throws when the request never reached a server. */
@@ -42,6 +53,26 @@ export function describeError(err, { action = 'complete that', subject } = {}) {
       detail: raw,
       retryable: true,
     };
+  }
+
+  if (err?.code === 'DEVICE_OFFLINE' || err?.code === 'DEVICE_WITH_APP') {
+    const device = err.serial || subject || 'The device';
+    const heard = lastHeard(err.lastSeen);
+    return err.code === 'DEVICE_WITH_APP'
+      ? {
+        kind: 'device-app',
+        title: `${device} is connected to the phone app`,
+        message: 'While the app is connected over Bluetooth, the device is off Wi-Fi and the website cannot reach it. Nothing was sent. Close the app on the phone, wait a few seconds for the device to rejoin Wi-Fi, then try again.',
+        detail: raw,
+        retryable: true,
+      }
+      : {
+        kind: 'device-offline',
+        title: `${device} is offline`,
+        message: `Nothing was sent. The device is not connected to the internet${heard ? ` (last heard from ${heard})` : ''}. Check that it is switched on and on Wi-Fi, then try again once it shows Online.`,
+        detail: raw,
+        retryable: true,
+      };
   }
 
   if (err?.code === 'ACK_PENDING') {

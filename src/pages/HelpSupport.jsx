@@ -29,7 +29,7 @@ export default function HelpSupport() {
                   aria-expanded={openFaq === idx}
                 >
                   <span>{faq.q}</span>
-                  <span>{openFaq === idx ? '−' : '+'}</span>
+                  <span className="faq-toggle" aria-hidden="true">+</span>
                 </button>
                 {openFaq === idx && (
                   <div className="faq-answer-panel">

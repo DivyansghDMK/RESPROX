@@ -919,15 +919,15 @@ function DeviceDashboardView() {
               style={{ padding: '11px 22px', borderRadius: 10, fontWeight: 700, fontSize: 13, background: 'var(--panel)', border: '1px solid var(--line)', color: 'var(--muted)', cursor: dirty ? 'pointer' : 'not-allowed', opacity: dirty ? 1 : 0.5 }}>
               Discard Changes
             </button>
-            <button onClick={saveSettings} disabled={isReadOnly || settingsLocked || !dirty || saving}
-              style={{ flex: 1, padding: '11px 22px', borderRadius: 10, fontWeight: 800, fontSize: 14, background: dirty ? 'var(--brand-gradient)' : '#e2e8f0', color: dirty ? '#fff' : '#94a3b8', border: 'none', cursor: dirty ? 'pointer' : 'not-allowed', boxShadow: dirty ? '0 4px 16px rgba(0,71,204,0.3)' : 'none', transition: 'all 0.25s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <button onClick={saveSettings} disabled={isReadOnly || settingsLocked || !dirty || saving || !isOnline}
+              style={{ flex: 1, padding: '11px 22px', borderRadius: 10, fontWeight: 800, fontSize: 14, background: dirty && isOnline ? 'var(--brand-gradient)' : '#e2e8f0', color: dirty && isOnline ? '#fff' : '#94a3b8', border: 'none', cursor: dirty && isOnline ? 'pointer' : 'not-allowed', boxShadow: dirty && isOnline ? '0 4px 16px rgba(0,71,204,0.3)' : 'none', transition: 'all 0.25s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               {isReadOnly
                 ? <><SaveIcon fontSize="small"/> Read-only</>
                 : saving
                   ? <><span style={{ width: 15, height: 15, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }}/> Applying…</>
                   : isOnline
                     ? <><SendIcon fontSize="small"/> Push Settings to Device</>
-                    : <><SaveIcon fontSize="small"/> Save &amp; Queue for Device</>
+                    : <>{withPhone ? 'Connected to the phone app' : 'Device offline'}: settings can be sent once it is online</>
               }
             </button>
           </div>
@@ -978,14 +978,14 @@ function DeviceDashboardView() {
 
         {/* ── Session Log Table ─────────────────────────────────────────────────── */}
         <div style={sectionCard}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px 12px', marginBottom: 12 }}>
             <div style={sectionLabel}>Session Log</div>
             <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>
               Page {currentPage} of {totalPages} ({sortedSessions.length} total records)
             </div>
           </div>
           <div className="admin-table-wrap" style={{ margin: 0, borderRadius: '10px 10px 0 0', border: '1px solid var(--line)' }}>
-            <table className="admin-table">
+            <table className="admin-table session-log-table">
               <thead>
                 <tr>{['Date', 'Usage', 'AHI', 'Mask Leak', '95th Pressure', 'Compliance'].map(h => <th key={h}>{h}</th>)}</tr>
               </thead>
@@ -1061,7 +1061,7 @@ function DeviceDashboardView() {
                         </td>
                       </tr>
                       {isExpanded && (
-                        <tr style={{ background: 'var(--panel-deep, #f8fafc)' }}>
+                        <tr className="session-log-detail" style={{ background: 'var(--panel-deep, #f8fafc)' }}>
                           <td colSpan={6} style={{ padding: '16px 20px', borderBottom: '1px solid var(--line)' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
                               <div>

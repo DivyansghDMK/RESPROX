@@ -1,7 +1,9 @@
 // src/context/AccessContext.jsx
 //
-// The signed-in user's role and what it allows, for every screen. A dealer's
-// device list comes from GET /me; the rules themselves live in services/access.js.
+// The signed-in user's role and what it allows, for every screen. GET /me is
+// read once per sign-in: role, organisation, organisation roles, the dealer's
+// devices and the IP the server sees (services/account.js reads every server
+// version). The rules themselves live in services/access.js.
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from './AuthContext';
@@ -9,6 +11,8 @@ import { useTherapy } from './TherapyContext';
 import { readTokenClaims } from '../services/respireeAuth';
 import { permissionsFor, roleFromClaims, ROLES } from '../services/access';
 import { partnersAPI } from '../services/partnersApi';
+import { request } from '../services/respireeApi';
+import { parseMe } from '../services/account';
 
 // `npm run dev` only: view the app as a dealer before dealer logins exist.
 const PREVIEW_ROLE_KEY = 'resproxPreviewRole';
@@ -28,43 +32,47 @@ export function AccessProvider({ children }) {
   const { token, isAuthenticated } = useAuth();
   const { adminActiveSerial, setAdminActiveSerial } = useTherapy();
   const [previewRole, setPreviewRoleState] = useState(readPreviewRole);
-  const [dealer, setDealer] = useState(null);
-  const [dealerState, setDealerState] = useState('idle'); // idle | loading | ready | error
+  const [me, setMe] = useState(null);
+  const [meState, setMeState] = useState('idle'); // idle | loading | ready | error
 
-  const role = previewRole?.role || roleFromClaims(token ? readTokenClaims(token) : {});
+  const tokenRole = roleFromClaims(token ? readTokenClaims(token) : {});
 
-  const loadDealer = useCallback(async () => {
-    if (!isAuthenticated || role !== ROLES.DEALER) {
-      setDealer(null);
-      setDealerState('idle');
+  const loadMe = useCallback(async () => {
+    if (!isAuthenticated) {
+      setMe(null);
+      setMeState('idle');
       return;
     }
-    setDealerState('loading');
+    setMeState('loading');
     try {
-      const me = await partnersAPI.me(previewRole?.dealerId);
-      setDealer(me?.dealer || null);
-      setDealerState('ready');
+      // Dev preview of a dealer reads the preview store; everyone else the server.
+      setMe(previewRole ? await partnersAPI.me(previewRole.dealerId) : await request('/me'));
+      setMeState('ready');
     } catch {
-      setDealer(null);
-      setDealerState('error');
+      setMe(null);
+      setMeState('error');
     }
-  }, [isAuthenticated, role, previewRole]);
+  }, [isAuthenticated, previewRole]);
 
-  useEffect(() => { loadDealer(); }, [loadDealer]);
+  useEffect(() => { loadMe(); }, [loadMe]);
+
+  const account = useMemo(() => parseMe(me, tokenRole), [me, tokenRole]);
+  const role = previewRole?.role || account.role;
+  const dealer = role === ROLES.DEALER ? account.dealer : null;
 
   const permissions = useMemo(
-    () => permissionsFor(role, dealer?.device_serials || []),
+    () => permissionsFor(role, dealer ? dealer.device_serials : []),
     [role, dealer],
   );
 
   // A dealer must not land on a device that isn't theirs through a serial
   // remembered from an earlier session.
   useEffect(() => {
-    if (permissions.isDealer && dealerState === 'ready' && adminActiveSerial
+    if (permissions.isDealer && meState === 'ready' && adminActiveSerial
       && !permissions.canSeeDevice(adminActiveSerial)) {
       setAdminActiveSerial(null);
     }
-  }, [permissions, dealerState, adminActiveSerial, setAdminActiveSerial]);
+  }, [permissions, meState, adminActiveSerial, setAdminActiveSerial]);
 
   const setPreviewRole = useCallback((next) => {
     if (!import.meta.env.DEV) return;
@@ -80,14 +88,17 @@ export function AccessProvider({ children }) {
   const value = useMemo(() => ({
     ...permissions,
     dealer,
-    // A dealer's device list is still loading (or failed): screens wait instead
+    org: account.org,
+    orgRoles: account.orgRoles,
+    // A dealer's account is still loading (or failed): screens wait instead
     // of briefly showing "not your device".
-    dealerLoading: permissions.isDealer && (dealerState === 'loading' || dealerState === 'idle'),
-    dealerError: permissions.isDealer && dealerState === 'error',
-    reloadDealer: loadDealer,
+    dealerLoading: permissions.isDealer && (meState === 'loading' || meState === 'idle'),
+    dealerError: permissions.isDealer && meState === 'error',
+    reloadDealer: loadMe,
     previewRole,
     setPreviewRole,
-  }), [permissions, dealer, dealerState, loadDealer, previewRole, setPreviewRole]);
+    clientIp: account.ip,
+  }), [permissions, dealer, account, meState, loadMe, previewRole, setPreviewRole]);
 
   return <AccessContext.Provider value={value}>{children}</AccessContext.Provider>;
 }

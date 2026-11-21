@@ -20,6 +20,8 @@ const ACK_TIMEOUT_MS = 45_000;
 
 /** Send one calibration request; START and SAVE also wait for the device's ACK. */
 async function send(serial, body) {
+  // Nothing goes to a device the server does not see online.
+  await devicesAPI.ensureDeviceReachable(serial);
   const res = await request(`/devices/${encodeURIComponent(serial)}/calibration`, {
     method: 'POST',
     body: JSON.stringify(body),

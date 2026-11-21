@@ -21,7 +21,7 @@ function BottomNavbar() {
       path: isAuthenticated ? '/devices' : '/device-info',
       icon: PhoneIcon
     },
-    { label: 'Therapy', path: '/therapy', icon: PulseIcon },
+    { label: 'Trends', path: '/trends', icon: PulseIcon },
     { label: 'Reports', path: '/reports', icon: ClipboardIcon },
     // Phones have no sidebar: the rest of the pages and Sign out live here.
     { label: 'More', path: '/preferences', icon: DotsIcon },

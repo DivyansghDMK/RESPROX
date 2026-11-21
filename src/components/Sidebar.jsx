@@ -6,7 +6,6 @@ import { useAccess } from '../context/AccessContext';
 import { prefetch, routeKeyForPath } from '../routes';
 import {
   HomeIcon,
-  PulseIcon,
   ChartIcon,
   FileIcon,
   DeviceIcon,
@@ -16,8 +15,6 @@ import {
   HelpIcon,
   CloseIcon,
   LogoutIcon,
-  StoreIcon,
-  UsersIcon,
   GaugeIcon,
 } from './Icons';
 
@@ -47,9 +44,6 @@ function Sidebar() {
   const sidebarItems = [
     { label: 'Dashboard', path: activeSerial ? `/device/${activeSerial}` : '/devices', icon: HomeIcon },
     { label: access.isDealer ? 'My Devices' : 'Devices', path: '/devices', icon: DeviceIcon },
-    access.manageDealers && { label: 'Dealers', path: '/admin/dealers', icon: StoreIcon },
-    access.manageCustomers && { label: access.isDealer ? 'My Customers' : 'Customers', path: '/customers', icon: UsersIcon },
-    { label: 'Therapy', path: '/therapy', icon: PulseIcon },
     { label: 'Reports', path: '/reports', icon: FileIcon },
     { label: 'Upload Data', path: '/admin/upload', icon: ClipboardIcon },
     { label: 'Trends', path: '/trends', icon: ChartIcon },

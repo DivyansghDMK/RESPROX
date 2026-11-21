@@ -6,6 +6,7 @@ import { MenuIcon, ServerIcon, BellIcon, UserIcon } from './Icons';
 import { useOnline } from './ConnectionBanner';
 import { Skel } from './Skeleton';
 import { useAuth } from '../context/AuthContext';
+import { useAccess } from '../context/AccessContext';
 
 const STALE_AFTER_MS = 10 * 60 * 1000;
 
@@ -100,6 +101,8 @@ export default function Header() {
     </button>
   );
 
+  const { clientIp, org } = useAccess() || {};
+
   return (
     <header className="topbar-wrapper">
       {/* Desktop Header */}
@@ -117,6 +120,8 @@ export default function Header() {
             <h1>Hello, {adminLabel}</h1>
             <p className="last-synced">
               Last pulled from server: <strong>{displayTime}</strong>
+              {org && <span className="client-ip" title="The organisation this account belongs to. You see its devices and those of organisations under it."> · <strong>{org.name}</strong></span>}
+              {clientIp && <span className="client-ip" title="The address the server sees you at. Every command you send is recorded with it."> · Your IP <strong>{clientIp}</strong></span>}
             </p>
           </div>
         </div>

@@ -23,7 +23,6 @@ import {
   routeKeyForPath,
   DeviceDashboard,
   DeviceList,
-  Therapy,
   Trends,
   Reports,
   Devices,
@@ -32,8 +31,6 @@ import {
   AppPreferences,
   HelpSupport,
   AdminDataUpload,
-  Dealers,
-  Customers,
   Calibration,
   ForgotPassword,
   DoctorSignup,
@@ -120,7 +117,7 @@ function AppContent() {
   useEffect(() => {
     if (isAuthPage) return undefined;
     return prefetchWhenIdle([
-      'deviceDashboard', 'deviceList', 'therapy', 'trends',
+      'deviceDashboard', 'deviceList', 'trends',
       'reports', 'maskFit', 'settings', 'help',
     ]);
   }, [isAuthPage]);
@@ -162,7 +159,6 @@ function AppContent() {
           <Suspense fallback={<RouteFallback />}>
             <Routes>
               <Route path="/dashboard" element={activeSerial ? <Navigate to={`/device/${activeSerial}`} replace /> : <Navigate to="/devices" replace />} />
-              <Route path="/therapy" element={<Therapy />} />
               <Route path="/trends" element={<Trends />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/devices" element={<DeviceList />} /> {/* Admin devices page */}
@@ -173,8 +169,6 @@ function AppContent() {
               <Route path="/preferences" element={<AppPreferences />} /> {/* App-level preferences */}
               <Route path="/help" element={<HelpSupport />} />
               <Route path="/admin/upload" element={<AdminDataUpload />} /> {/* Device file upload → report (admin and dealers) */}
-              <Route path="/admin/dealers" element={<Dealers />} /> {/* Admin: dealers and their devices */}
-              <Route path="/customers" element={<Customers />} /> {/* Dealers' customers */}
               <Route path="/calibration" element={<Calibration />} /> {/* Admin: pressure calibration */}
               <Route path="*" element={<Navigate to={SKIP_LOGIN ? '/devices' : '/login'} replace />} />
             </Routes>

@@ -29,11 +29,14 @@ const DEALER_GROUPS = new Set(['COMFORT']);
 
 /**
  * What a role may do. `serials` is the dealer's device list (ignored for
- * other roles, who see every device until per-doctor scoping exists).
+ * other roles, who see every device until per-doctor scoping exists). `null`
+ * means the server didn't send one: it already filters /devices to the
+ * dealer's organisation, so the website shows what the server returns.
  */
 export function permissionsFor(role, serials = []) {
   const dealer = role === ROLES.DEALER;
-  const allowed = new Set(serials.map((s) => String(s).toUpperCase()));
+  const filtered = Array.isArray(serials);
+  const allowed = new Set((serials || []).map((s) => String(s).toUpperCase()));
   return {
     role,
     isAdmin: role === ROLES.ADMIN,
@@ -47,7 +50,7 @@ export function permissionsFor(role, serials = []) {
     // Pressure, mode, shared ramp and A-Flex.
     editTherapySettings: !dealer,
     canEditGroup: (group) => !dealer || DEALER_GROUPS.has(group),
-    canSeeDevice: (serial) => !dealer || allowed.has(String(serial || '').toUpperCase()),
-    allowedSerials: dealer ? allowed : null,
+    canSeeDevice: (serial) => !dealer || !filtered || allowed.has(String(serial || '').toUpperCase()),
+    allowedSerials: dealer && filtered ? allowed : null,
   };
 }
