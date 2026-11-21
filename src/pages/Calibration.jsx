@@ -141,7 +141,7 @@ export default function Calibration() {
       {therapyRunning && (
         <div className="settings-unavailable" role="status">
           <strong>Therapy is running</strong>
-          <span>Stop therapy on the dashboard before calibrating.</span>
+          <span>Stop therapy on the device before calibrating.</span>
         </div>
       )}
       {phoneConnected && (

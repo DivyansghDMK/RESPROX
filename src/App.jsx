@@ -26,6 +26,7 @@ import {
   DeviceList,
   Trends,
   Reports,
+  ActivityLog,
   Devices,
   MaskFit,
   Settings,
@@ -171,6 +172,7 @@ function AppContent() {
               <Route path="/dashboard" element={activeSerial ? <Navigate to={`/device/${activeSerial}`} replace /> : <Navigate to="/devices" replace />} />
               <Route path="/trends" element={<Trends />} />
               <Route path="/reports" element={<Reports />} />
+              <Route path="/activity" element={<ActivityLog />} />
               <Route path="/devices" element={<DeviceList />} /> {/* Admin devices page */}
               <Route path="/device/:serial" element={<DeviceDashboard />} />
               <Route path="/device-info" element={<Devices />} /> {/* Patient device page */}

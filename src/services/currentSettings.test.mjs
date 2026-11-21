@@ -21,7 +21,7 @@ test('a change on the device overrides its group and keeps the others', () => {
   ]);
   assert.equal(row.mode, 'AUTO');
   assert.deepEqual(row.decoded_payload.AUTO, { minPressure: 8, maxPressure: 14, ramp: 10, aflex: 2 });
-  assert.deepEqual(row.decoded_payload.CPAP, { pressure: 4, ramp: 0 });
+  assert.deepEqual(row.decoded_payload.CPAP, { pressure: 4, ramp: 10 }); // ramp is shared
   assert.equal(row.decoded_payload.COMFORT.maskType, 1);
   assert.equal(row.server_timestamp, '2026-11-20T11:00:00Z');
 });
@@ -53,4 +53,21 @@ test('rows are read from the API wrappings', () => {
   assert.equal(telemetryRows({ success: true, data: full }).length, 1);
   assert.equal(telemetryRows({ data: { items: [full, full], pagination: {} } }).length, 2);
   assert.equal(telemetryRows(null).length, 0);
+});
+
+test('a ramp change in either mode is the ramp of both', () => {
+  const row = currentSettingsRow([full, update(3, 'AUTO', '2026-11-20T11:00:00Z', { minPressure: 6, maxPressure: 12, ramp: 15, aflex: 1 })]);
+  assert.equal(row.decoded_payload.AUTO.ramp, 15);
+  assert.equal(row.decoded_payload.CPAP.ramp, 15);
+  assert.equal(row.decoded_payload.CPAP.pressure, 4);
+});
+
+test('AUTO pressures and A-Flex changed on the device are the current ones', () => {
+  const row = currentSettingsRow([
+    full,
+    update(3, 'AUTO', '2026-11-20T11:00:00Z', { minPressure: 7, maxPressure: 15, ramp: 0, aflex: 3 }),
+    update(4, 'AUTO', '2026-11-20T11:05:00Z', { minPressure: 8, maxPressure: 15, ramp: 0, aflex: 2 }),
+  ]);
+  assert.equal(row.mode, 'AUTO');
+  assert.deepEqual(row.decoded_payload.AUTO, { minPressure: 8, maxPressure: 15, ramp: 0, aflex: 2 });
 });

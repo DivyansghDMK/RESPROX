@@ -130,8 +130,9 @@ function formatSyncStamp(value) {
 }
 
 // ── Therapy control ────────────────────────────────────────────────────────────
-// Start/stop changes what the patient is breathing, so it is always a two-step
-// action: press the button, then confirm in a dialog that names the device.
+// Starting changes what the patient is breathing, so it is a two-step action:
+// press the button, then confirm in a dialog that names the device. Therapy is
+// never stopped from the website: only on the device itself.
 function TherapyControl({ status, applying, online, allowed = true, onRequest }) {
   const running = status === 'RUNNING';
   const stopped = status === 'STOPPED';
@@ -142,7 +143,7 @@ function TherapyControl({ status, applying, online, allowed = true, onRequest })
     : running ? 'Therapy is running' : stopped ? 'Therapy is stopped' : 'Therapy status unknown';
   const detail = busy
     ? 'Waiting for the device to confirm. Do not close this page.'
-    : running ? 'Settings are locked while therapy is running.'
+    : running ? 'Settings are locked while therapy is running. Therapy can only be stopped on the device.'
     : stopped ? 'Settings can be changed. Starting therapy locks them.'
     : 'Refresh to read the current state before sending a command.';
   const btn = (action, label) => (
@@ -173,7 +174,7 @@ function TherapyControl({ status, applying, online, allowed = true, onRequest })
         ) : (
           <>
             {(stopped || !known) && btn('start', busy && applying === 'start' ? 'Starting…' : 'Start therapy')}
-            {(running || !known) && btn('stop', busy && applying === 'stop' ? 'Stopping…' : 'Stop therapy')}
+            {running && <div className="therapy-offline" role="status">Stop therapy on the device.</div>}
           </>
         )}
       </div>
@@ -212,6 +213,19 @@ function TherapyConfirmDialog({ action, serial, onCancel, onConfirm }) {
     </div>,
     document.body
   );
+}
+
+/** Page buttons to show: the first, the last, two either side of the current one, "…" between. */
+function pageList(current, total) {
+  const pages = new Set([1, total]);
+  for (let p = current - 2; p <= current + 2; p += 1) if (p >= 1 && p <= total) pages.add(p);
+  const sorted = [...pages].sort((a, b) => a - b);
+  const out = [];
+  sorted.forEach((p, i) => {
+    if (i && p - sorted[i - 1] > 1) out.push(p - sorted[i - 1] === 2 ? p - 1 : '…');
+    out.push(p);
+  });
+  return out;
 }
 
 // Missing values read as "—", never as a 0 that looks like a measurement.
@@ -284,7 +298,13 @@ function DeviceDashboardView() {
     setCurrentPage(1);
   }, [serial]);
 
+  // The device settings the editable values were last loaded from. Anything
+  // different from these is the user's own edit; anything equal to them can
+  // follow the device when it changes.
+  const draftBase = useRef(null);
+
   const applyDeviceState = (data) => {
+    draftBase.current = data.settings;
     setMode(data.settings.therapy_mode);
     setPressure(data.settings.pressure);
     setMinPressure(data.settings.min_pressure);
@@ -306,7 +326,11 @@ function DeviceDashboardView() {
       const now = new Date();
       setLastPull(now);
       setLastServerPull(now);
-      if (!silent) applyDeviceState(data);
+      // A refresh (Refresh button, after a report sync) brings the device's
+      // values into the editable settings too, unless the user has unsaved
+      // edits or a command is in flight. The shared live refresh below can't
+      // do it for these: it skips data this page has already taken in.
+      if (!silent || !busyRef.current) applyDeviceState(data);
       return data;
     } catch (e) {
       if (id !== requestId.current) return;
@@ -392,7 +416,7 @@ function DeviceDashboardView() {
   };
 
   const requestTherapyAction = (action) => {
-    if (!access.controlTherapy || !isOnline || therapyAction) return;
+    if (action !== 'start' || !access.controlTherapy || !isOnline || therapyAction) return;
     setConfirmTherapyAction(action);
   };
 
@@ -435,7 +459,10 @@ function DeviceDashboardView() {
   // stop, settings) show up here. The editable settings follow too, unless the
   // user has unsaved edits or a save or therapy command is in flight.
   const busyRef = useRef(false);
-  busyRef.current = dirty || saving || Boolean(therapyAction);
+  const base = draftBase.current;
+  const edited = Boolean(base) && (mode !== base.therapy_mode || pressure !== base.pressure || minPressure !== base.min_pressure ||
+    maxPressure !== base.max_pressure || aflex !== base.aflex || ramp !== base.ramp);
+  busyRef.current = edited || saving || Boolean(therapyAction);
   useEffect(() => {
     if (!deviceData || !device || deviceData === device || deviceData.serial !== device.serial) return;
     setDevice(deviceData);
@@ -495,10 +522,12 @@ function DeviceDashboardView() {
       
       const res = await devicesAPI.updateDeviceSettings(serial, payload);
       // The draft becomes the device's settings only once the device has them.
-      const confirmed = () => setDevice((d) => (d ? {
-        ...d,
-        settings: { ...d.settings, therapy_mode: mode, pressure, min_pressure: minPressure, max_pressure: maxPressure, aflex, ramp },
-      } : d));
+      const confirmed = () => setDevice((d) => {
+        if (!d) return d;
+        const settings = { ...d.settings, therapy_mode: mode, pressure, min_pressure: minPressure, max_pressure: maxPressure, aflex, ramp };
+        draftBase.current = settings;
+        return { ...d, settings };
+      });
 
       if (res && res.status === 'NO_CHANGE') {
         confirmed();
@@ -785,7 +814,7 @@ function DeviceDashboardView() {
               <strong>{access.editTherapySettings ? 'Settings are locked.' : 'View only.'}</strong>{' '}
               {!access.editTherapySettings
                 ? 'Pressure, mode, ramp and A-Flex are set by Resprox admin. Comfort settings (mask, tube, humidifier, comfort ramp) can be changed on the Settings page.'
-                : therapyAction ? 'A therapy command is being applied.' : 'Stop therapy to change pressure, ramp or mode.'}
+                : therapyAction ? 'A therapy command is being applied.' : 'Stop therapy on the device to change pressure, ramp or mode.'}
             </div>
           )}
 
@@ -1130,7 +1159,7 @@ function DeviceDashboardView() {
               Showing {sortedSessions.length > 0 ? (currentPage - 1) * RECORDS_PER_PAGE + 1 : 0}–{Math.min(currentPage * RECORDS_PER_PAGE, sortedSessions.length)} of {sortedSessions.length} records
             </div>
             
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, minWidth: 0 }}>
               <button
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
@@ -1149,8 +1178,10 @@ function DeviceDashboardView() {
                 ← Previous
               </button>
               
-              <div style={{ display: 'flex', gap: 4 }}>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {pageList(currentPage, totalPages).map((page, i) => (page === '…' ? (
+                  <span key={`gap-${i}`} aria-hidden="true" style={{ width: 20, height: 28, display: 'grid', placeItems: 'center', color: 'var(--muted)', fontWeight: 800 }}>…</span>
+                ) : (
                   <button
                     key={page}
                     onClick={() => setCurrentPage(page)}
@@ -1170,7 +1201,7 @@ function DeviceDashboardView() {
                   >
                     {page}
                   </button>
-                ))}
+                )))}
               </div>
 
               <button

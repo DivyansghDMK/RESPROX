@@ -16,6 +16,7 @@ export const loaders = {
   deviceList:         () => import('./pages/DeviceList'),
   trends:             () => import('./pages/Trends'),
   reports:            () => import('./pages/Reports'),
+  activity:           () => import('./pages/ActivityLog'),
   devices:            () => import('./pages/Devices'),
   maskFit:            () => import('./pages/MaskFit'),
   settings:           () => import('./pages/Settings'),
@@ -50,6 +51,7 @@ export function routeKeyForPath(path = '') {
     '/device-info': 'devices',
     '/trends': 'trends',
     '/reports': 'reports',
+    '/activity': 'activity',
     '/mask-fit': 'maskFit',
     '/settings': 'settings',
     '/preferences': 'preferences',
@@ -98,6 +100,7 @@ export const DeviceDashboard    = lazy(loaders.deviceDashboard);
 export const DeviceList         = lazy(loaders.deviceList);
 export const Trends             = lazy(loaders.trends);
 export const Reports            = lazy(loaders.reports);
+export const ActivityLog        = lazy(loaders.activity);
 export const Devices            = lazy(loaders.devices);
 export const MaskFit            = lazy(loaders.maskFit);
 export const Settings           = lazy(loaders.settings);

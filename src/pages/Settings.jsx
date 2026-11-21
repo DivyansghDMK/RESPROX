@@ -420,7 +420,7 @@ export default function Settings() {
           <span className="live-dot" />
           <div>
             <strong>Therapy is running</strong>
-            <span>Stop therapy on the dashboard before changing device settings.</span>
+            <span>Stop therapy on the device before changing device settings.</span>
           </div>
         </div>
       )}

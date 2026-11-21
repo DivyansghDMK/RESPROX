@@ -251,7 +251,7 @@ export function TherapyProvider({ children }) {
     if (!adminActiveSerial) return;
     if (stateRef.current.deviceData?.therapy_running) {
       setShowToast(true);
-      setToastMessage('Therapy is running. Stop therapy before changing settings.');
+      setToastMessage('Therapy is running. Stop therapy on the device before changing settings.');
       return;
     }
     const current = stateRef.current.deviceData;
