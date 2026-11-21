@@ -215,6 +215,19 @@ function TherapyConfirmDialog({ action, serial, onCancel, onConfirm }) {
   );
 }
 
+/** Page buttons to show: the first, the last, two either side of the current one, "…" between. */
+function pageList(current, total) {
+  const pages = new Set([1, total]);
+  for (let p = current - 2; p <= current + 2; p += 1) if (p >= 1 && p <= total) pages.add(p);
+  const sorted = [...pages].sort((a, b) => a - b);
+  const out = [];
+  sorted.forEach((p, i) => {
+    if (i && p - sorted[i - 1] > 1) out.push(p - sorted[i - 1] === 2 ? p - 1 : '…');
+    out.push(p);
+  });
+  return out;
+}
+
 // Missing values read as "—", never as a 0 that looks like a measurement.
 const dash = (v, unit = '') => (v == null || Number.isNaN(Number(v)) ? '—' : `${v}${unit}`);
 
@@ -1146,7 +1159,7 @@ function DeviceDashboardView() {
               Showing {sortedSessions.length > 0 ? (currentPage - 1) * RECORDS_PER_PAGE + 1 : 0}–{Math.min(currentPage * RECORDS_PER_PAGE, sortedSessions.length)} of {sortedSessions.length} records
             </div>
             
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, minWidth: 0 }}>
               <button
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
@@ -1165,8 +1178,10 @@ function DeviceDashboardView() {
                 ← Previous
               </button>
               
-              <div style={{ display: 'flex', gap: 4 }}>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {pageList(currentPage, totalPages).map((page, i) => (page === '…' ? (
+                  <span key={`gap-${i}`} aria-hidden="true" style={{ width: 20, height: 28, display: 'grid', placeItems: 'center', color: 'var(--muted)', fontWeight: 800 }}>…</span>
+                ) : (
                   <button
                     key={page}
                     onClick={() => setCurrentPage(page)}
@@ -1186,7 +1201,7 @@ function DeviceDashboardView() {
                   >
                     {page}
                   </button>
-                ))}
+                )))}
               </div>
 
               <button
