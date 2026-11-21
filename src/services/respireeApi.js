@@ -114,7 +114,8 @@ function normalizeTelemetry(raw = {}) {
     min_pressure: autoObj?.minPressure ?? parsed.min_pressure ?? toNumber(firstDefined(raw.min_pressure, raw.minPressure)),
     max_pressure: autoObj?.maxPressure ?? parsed.max_pressure ?? toNumber(firstDefined(raw.max_pressure, raw.maxPressure)),
     aflex: autoObj?.aflex ?? parsed.aflex ?? toNumber(firstDefined(raw.aflex, raw.epr, raw.epr_level)),
-    ramp: cpapObj?.ramp ?? autoObj?.ramp ?? parsed.ramp ?? toNumber(firstDefined(raw.ramp, raw.ramp_time, raw.rampTime)),
+    // Ramp is one value on the device; read it from the active mode's group.
+    ramp: (/auto/i.test(String(therapyMode)) ? autoObj?.ramp ?? cpapObj?.ramp : cpapObj?.ramp ?? autoObj?.ramp) ?? parsed.ramp ?? toNumber(firstDefined(raw.ramp, raw.ramp_time, raw.rampTime)),
     timestamp: ts0,
     dateLabel: formatSessionLabel(ts0),
     displayDate: formatSessionDate(ts0),

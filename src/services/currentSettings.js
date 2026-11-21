@@ -59,6 +59,11 @@ export function currentSettingsRow(rows = []) {
     } else if (group) {
       modes = { ...modes, [group]: { ...(modes[group] || {}), ...row.decoded_payload } };
       if (THERAPY_MODES.has(group)) activeMode = group;
+      // CPAP and AUTO share one ramp on the device (FULL_SYNC byte 7).
+      const ramp = row.decoded_payload.ramp;
+      if (ramp !== undefined && (group === 'CPAP' || group === 'AUTO')) {
+        for (const g of ['CPAP', 'AUTO']) if (g !== group && modes[g]) modes = { ...modes, [g]: { ...modes[g], ramp } };
+      }
     }
     base = row;
   }
