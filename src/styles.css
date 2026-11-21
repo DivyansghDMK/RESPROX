@@ -6890,6 +6890,75 @@ tr.live-updated > td { animation: live-flash-bg 1.6s ease-out; }
   .mobile-device-card:hover, .kpi-card:hover { transform: none; }
 }
 
+/* Report sync progress card (SyncProgress.jsx) */
+.syncp {
+  position: fixed; right: 24px; bottom: 24px; z-index: 900;
+  width: 340px; max-width: calc(100vw - 32px);
+  padding: 16px 18px 18px; border-radius: 18px; overflow: hidden;
+  background: var(--panel-strong); border: 1px solid var(--line);
+  box-shadow: 0 24px 60px rgba(15, 42, 92, 0.18);
+  color: var(--text);
+  animation: syncp-in 0.35s cubic-bezier(.2,.9,.3,1.2) both;
+}
+.syncp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.syncp-eyebrow { font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.syncp-hide {
+  border: 0; background: transparent; color: var(--muted); font-size: 12px; font-weight: 700;
+  cursor: pointer; padding: 4px 6px; border-radius: 6px;
+}
+.syncp-hide:hover { background: #eef4fb; color: var(--text); }
+.syncp-scene { display: block; width: 100%; height: auto; margin: 6px 0 4px; }
+.syncp-title { font-size: 15px; font-weight: 800; letter-spacing: -0.01em; }
+.syncp-meta { margin-top: 3px; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.syncp-count { display: inline-block; color: var(--accent); font-weight: 800; animation: syncp-pop 0.4s ease both; }
+
+.syncp-steps { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.syncp-steps li { display: flex; flex-direction: column; gap: 6px; font-size: 10.5px; font-weight: 700; color: #9aa8c0; }
+.syncp-step-dot { height: 4px; border-radius: 4px; background: #e3eaf5; position: relative; overflow: hidden; }
+.syncp-steps li.is-done { color: var(--text); }
+.syncp-steps li.is-done .syncp-step-dot { background: var(--brand-gradient); }
+.syncp-steps li.is-active { color: var(--accent); }
+.syncp-steps li.is-active .syncp-step-dot::after {
+  content: ''; position: absolute; inset: 0; width: 45%;
+  background: var(--brand-gradient); border-radius: 4px;
+  animation: syncp-slide 1.3s ease-in-out infinite;
+}
+
+.syncp-tip {
+  margin: 14px 0 0; padding: 10px 12px; border-radius: 12px;
+  background: #f3f7fd; font-size: 12px; line-height: 1.45; color: #3b4a66;
+  animation: syncp-fade 0.5s ease both;
+}
+.syncp-tip span { font-weight: 800; color: var(--accent); }
+
+.syncp-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--brand-gradient); background-size: 200% 100%; animation: syncp-flow 2s linear infinite; }
+.syncp.done .syncp-bar { animation: none; }
+
+.syncp-wave { stroke-dasharray: 40; animation: syncp-trace 1.6s linear infinite; }
+.syncp-led { fill: #9fb4d6; }
+.syncp-led.requesting, .syncp-led.receiving { fill: #16E0B3; animation: syncp-blink 0.9s ease-in-out infinite; }
+.syncp-led.done { fill: #28b36d; }
+.syncp-cloud.requesting { animation: syncp-breathe 1.6s ease-in-out infinite; transform-origin: 214px 58px; transform-box: view-box; }
+.syncp-page { animation: syncp-drop 0.45s cubic-bezier(.2,.9,.3,1.3) both; }
+.syncp-done-tick { animation: syncp-pop 0.45s cubic-bezier(.2,.9,.3,1.4) both; transform-origin: 214px 58px; transform-box: view-box; }
+
+@keyframes syncp-in { from { opacity: 0; transform: translateY(16px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes syncp-pop { 0% { transform: scale(0.6); opacity: 0; } 70% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes syncp-slide { from { transform: translateX(-100%); } to { transform: translateX(230%); } }
+@keyframes syncp-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes syncp-flow { from { background-position: 0 0; } to { background-position: -200% 0; } }
+@keyframes syncp-trace { from { stroke-dashoffset: 80; } to { stroke-dashoffset: 0; } }
+@keyframes syncp-blink { 50% { opacity: 0.3; } }
+@keyframes syncp-breathe { 50% { transform: scale(1.04); } }
+@keyframes syncp-drop { from { opacity: 0; transform: translateY(-14px); } }
+
+@media (max-width: 640px) {
+  .syncp { left: 16px; right: 16px; bottom: 84px; width: auto; max-width: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .syncp, .syncp *, .syncp *::after { animation: none !important; }
+}
+
 /* Large monitors (2560×1440 and up): the whole UI is drawn at laptop scale and
    bunches into the top-left. Scale it up so it fills the screen the same way.
    Media queries read the real window width, so this can't feed back on itself. */

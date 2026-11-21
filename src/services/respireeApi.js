@@ -1,6 +1,7 @@
 import { clearCognitoSession, getCognitoSession, refreshCognitoSession, loginWithTeamKey, TEAM_KEY_STORAGE } from './respireeAuth';
 import { parseReportRows } from './reportFileParser';
 import { extractStatus } from './deviceStatus';
+import { currentSettingsRow, telemetryRows } from './currentSettings';
 
 const BASE_URL = import.meta.env.VITE_RESPIREE_API_BASE_URL
   || (import.meta.env.DEV ? '/api-proxy' : 'https://52ct9sbsu3.execute-api.us-east-1.amazonaws.com');
@@ -154,9 +155,12 @@ function normalizeSessions(history = []) {
     const rawBytes = entryPayload.raw || entry.raw;
     const hasRawBytes = Array.isArray(rawBytes) && rawBytes.length >= 20;
 
-    const autoObj = entryPayload.AUTO || entry.AUTO || entryPayload.settings?.AUTO;
-    const cpapObj = entryPayload.CPAP || entry.CPAP || entryPayload.settings?.CPAP;
-    const isSettingsFrame = (entryPayload.CONFIG || autoObj || cpapObj) && !hasRawBytes;
+    // An UPDATE carries one group's fields flat, without the group wrapper.
+    const isUpdate = entry?.packet_type === 'UPDATE';
+    const group = String(entry?.mode || '').toUpperCase();
+    const autoObj = entryPayload.AUTO || entry.AUTO || entryPayload.settings?.AUTO || (isUpdate && group === 'AUTO' ? entryPayload : null);
+    const cpapObj = entryPayload.CPAP || entry.CPAP || entryPayload.settings?.CPAP || (isUpdate && group === 'CPAP' ? entryPayload : null);
+    const isSettingsFrame = isUpdate || ((entryPayload.CONFIG || autoObj || cpapObj) && !hasRawBytes);
 
     const serverTs = entry?.server_timestamp || entry?.serverTimestamp || entry?.device_timestamp || entry?.deviceTimestamp
       || entry?.session_timestamp || entry?.sessionTimestamp || entry?.timestamp || entry?.date;
@@ -537,7 +541,10 @@ async function getDeviceDetail(serial, { force = false } = {}) {
     ]);
 
     const summary = devices.find((device) => device.serial === serial) || { serial, model: null, firmware: '—', patient_name: null, raw: {} };
-    return normalizeDeviceDetail(summary, latest, history, syncState, reports);
+    // Settings changed on the device arrive as partial UPDATEs; replay them
+    // over the last full sync so the screen shows the latest value of each.
+    const current = currentSettingsRow([...telemetryRows(latest), ...telemetryRows(history)]);
+    return normalizeDeviceDetail(summary, current || latest, history, syncState, reports);
   });
 }
 
@@ -579,8 +586,12 @@ async function updateDeviceSettings(serial, settings) {
   let baseline = {};
   let currentMode = null;
   try {
-    const latest = await request(`/devices/${encodeURIComponent(serial)}/telemetry/latest`);
-    const latestData = latest?.data || latest?.telemetry || latest || {};
+    const [latest, history] = await Promise.all([
+      request(`/devices/${encodeURIComponent(serial)}/telemetry/latest`),
+      request(`/devices/${encodeURIComponent(serial)}/telemetry/history?page=1&limit=20`).catch(() => null),
+    ]);
+    const current = currentSettingsRow([...telemetryRows(latest), ...telemetryRows(history)]);
+    const latestData = current || latest?.data || latest?.telemetry || latest || {};
     baseline = latestData.decoded_payload || latestData.modes || {};
     currentMode = latestData.mode || latestData.activeMode || null;
   } catch (err) {
@@ -701,9 +712,16 @@ async function setTherapy(serial, action) {
  * up-to-date device sends nothing). A 409 means a sync is already running:
  * follow that one instead of failing.
  */
-async function syncReports(serial, { timeoutMs = 180_000 } = {}) {
+async function syncReports(serial, { timeoutMs = 180_000, onProgress } = {}) {
+  // onProgress({ phase, received }): phase is 'requesting' until the device
+  // starts sending, then 'receiving'; received counts stored sessions added.
+  const report = (phase, received) => { try { onProgress?.({ phase, received }); } catch { /* display only */ } };
+  report('requesting', 0);
   await ensureDeviceReachable(serial);
-  const before = await getSyncState(serial).catch(() => ({}));
+  const [before, totalBefore] = await Promise.all([
+    getSyncState(serial).catch(() => ({})),
+    getReportTotal(serial),
+  ]);
   try {
     await triggerReportSync(serial);
   } catch (err) {
@@ -712,15 +730,30 @@ async function syncReports(serial, { timeoutMs = 180_000 } = {}) {
   const started = Date.now();
   let seenSyncing = false;
   let state = {};
+  let received = 0;
   while (Date.now() - started < timeoutMs) {
     await new Promise((r) => setTimeout(r, 3000));
-    state = await getSyncState(serial);
+    const [next, total] = await Promise.all([getSyncState(serial), getReportTotal(serial)]);
+    state = next;
+    if (total != null && totalBefore != null) received = Math.max(received, total - totalBefore);
+    if (state.syncing || received > 0) report('receiving', received);
     if (state.syncing) { seenSyncing = true; continue; }
     if (seenSyncing || state.progressMarker !== before.progressMarker || Date.now() - started > 15_000) break;
   }
   invalidate('devices');
   invalidate(`detail:${serial}`);
-  return { stillRunning: Boolean(state.syncing) };
+  return { stillRunning: Boolean(state.syncing), received };
+}
+
+/** How many session reports the server holds for a device; null if unknown. */
+async function getReportTotal(serial) {
+  try {
+    const json = await request(`/devices/${encodeURIComponent(serial)}/reports?limit=1&page=1`);
+    const total = Number((json?.data?.pagination || json?.pagination)?.total);
+    return Number.isFinite(total) ? total : null;
+  } catch {
+    return null;
+  }
 }
 
 /** POST /devices/{id}/reports/sync. Progress is read from getSyncState(). */

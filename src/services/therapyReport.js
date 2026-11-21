@@ -1,41 +1,42 @@
 // src/services/therapyReport.js
 //
-// Builds the DeckMount therapy report as a self-contained printable document.
+// Builds the DeckMount therapy report as a self-contained printable document,
+// laid out like the report the DeckMount Android app prints. Every number
+// comes from reportCalc.js, which uses the app's formulas.
+//
+//   CPAP / AUTO   page 1 summary, page 2 Pressure, Usage, Leak, AHI
+//   BiPAP S/ST/T  page 1 summary, page 2 Usage, Pressure, AHI, Leak,
+//                 page 3 Tidal Volume, Respiratory Rate, Minute Ventilation
 //
 // Charts are hand-rolled inline SVG rather than a charting library: the report
 // opens in a detached window that has no bundler, printing must not depend on
 // a JS runtime having finished laying anything out, and it keeps this module
 // free of the ~300 kB recharts chunk.
-//
-// Metrics that the CPAP telemetry frame does not carry (the AI/HI split, daily
-// median pressure, tidal volume, respiratory rate, minute ventilation) are
-// rendered as "—" and their sections are omitted entirely. This is a clinical
-// document: a blank is correct where an estimate would be invented.
 
-import { buildTherapyStatistics, buildComplianceCheck } from './therapyStatistics.js';
+import { buildReportData, fmtHM, MODE_NAMES } from './reportCalc.js';
 
-const ADDRESS = 'DeckMount - 683, Phase V, Udyog Vihar, Sector 19, Gurugram, Haryana 122016';
+const ADDRESS = 'DeckMount : 683, Udyog Vihar, Phase V, Gurugram, Haryana, 122016';
+
+const MASK_NAMES = { 1: 'Full Face', 2: 'Nasal', 3: 'Pillow' };
 
 const C = {
   heading: '#1E88E5',
-  panel: '#E4E4E4',
-  text: '#333333',
+  panel: '#E0E0E0',
+  text: '#222222',
   rule: '#CFCFCF',
   grid: '#E6E6E6',
   axis: '#888888',
-  threshold: '#3D6FD8',
-  usageOk: '#9CBF8E',
+  threshold: '#3D4FD8',
+  usageOk: '#A5CC94',
   usageLow: '#D0342C',
-  usagePurple: '#8B80B8',
-  usageGreen: '#A8C8A0',
-  pressureAuto: '#2196F3',
+  purple: '#9B59B6',
+  pink: '#D58FE0',
+  red: '#B03A2E',
+  pressure: '#1E6FD9',
   pressureBipap: '#8C99AC',
-  ahiBar: '#F2C94C',
-  ahiPink: '#C7527E',
-  ahiPinkLight: '#E4A3BE',
-  leak: '#F5A623',
+  ahi: '#8E44AD',
+  leak: '#F5C518',
   volume: '#8C99AC',
-  volumeLabel: '#7A8B9A',
 };
 
 // ── formatting helpers ────────────────────────────────────────────────────────
@@ -50,22 +51,11 @@ function num(value, digits = 1) {
   return Number.isFinite(value) ? value.toFixed(digits) : '—';
 }
 
-/** "05 Hours, 00 Minutes" — the report pads hours to two digits. */
-function hoursMinutes(totalHours) {
-  if (!Number.isFinite(totalHours)) return '—';
-  const h = Math.floor(totalHours);
-  const m = Math.round((totalHours - h) * 60);
-  const carry = m === 60;
-  return `${String(carry ? h + 1 : h).padStart(2, '0')} Hours, ${String(carry ? 0 : m).padStart(2, '0')} Minutes`;
-}
-
-/** "339 Hours, 44 Minutes" — totals are not zero-padded. */
-function longHoursMinutes(totalHours) {
-  if (!Number.isFinite(totalHours)) return '—';
-  const h = Math.floor(totalHours);
-  const m = Math.round((totalHours - h) * 60);
-  const carry = m === 60;
-  return `${carry ? h + 1 : h} Hours, ${carry ? 0 : m} Minutes`;
+/** Whole numbers without a decimal, others with one: 12 → "12", 8.5 → "8.5". */
+function trimF(value) {
+  const n = Number(value);
+  if (value == null || value === '' || !Number.isFinite(n)) return '—';
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
 function shortDate(date) {
@@ -73,145 +63,33 @@ function shortDate(date) {
   return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short' }).format(date);
 }
 
-function median(values) {
-  if (!values.length) return NaN;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+function longDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
 }
 
-function mean(values) {
-  return values.length ? values.reduce((a, b) => a + b, 0) / values.length : NaN;
+/** Mode name and BiPAP layout, from the report's mode code or the settings. */
+function modeOf(latest, settings) {
+  const code = Number(latest?.modeCode);
+  if (MODE_NAMES[code]) return { label: MODE_NAMES[code], bipap: code >= 3 && code <= 5 };
+  const text = String(settings.therapy_mode || '');
+  if (/bipap|bilevel/i.test(text)) return { label: 'BiPAP', bipap: true };
+  if (/auto/i.test(text)) return { label: 'AUTO', bipap: false };
+  return { label: 'CPAP', bipap: false };
 }
 
-function pct(part, whole) {
-  return whole ? Math.round((part / whole) * 100) : 0;
-}
-
-function sessionDate(session) {
-  const raw = session.timestamp ?? session.raw?.server_timestamp;
-  const date = typeof raw === 'number' ? new Date(raw) : new Date(raw);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-// ── metric derivation ─────────────────────────────────────────────────────────
-
-export function deriveReport({ deviceData, sessions = [], startDate, endDate, pressureSource = 'measured' }) {
-  const start = startDate ? new Date(`${startDate}T00:00:00`) : null;
-  const end = endDate ? new Date(`${endDate}T23:59:59.999`) : null;
-
-  // Settings frames are configuration echoes, not nights of therapy.
-  const nights = sessions
-    .filter((s) => s.type !== 'SETTINGS_UPDATE')
-    .map((s) => ({ ...s, when: sessionDate(s) }))
-    .filter((s) => s.when && (!start || s.when >= start) && (!end || s.when <= end))
-    .sort((a, b) => a.when - b.when);
-
-  // One row per calendar day; a later frame for the same day supersedes earlier ones.
-  const byDay = new Map();
-  for (const night of nights) {
-    byDay.set(night.when.toDateString(), night);
-  }
-  const days = [...byDay.values()];
-
-  const first = days[0]?.when ?? start;
-  const last = days[days.length - 1]?.when ?? end;
-
-  // Inclusive day count. `end` carries a 23:59:59 time component, so the
-  // difference is floored rather than rounded to avoid counting an extra day.
-  const spanDays = (a, b) => Math.floor((b - a) / 86400000) + 1;
-  const periodDays = start && end
-    ? spanDays(start, end)
-    : (first && last ? spanDays(first, last) : days.length);
-
-  const used = days.filter((d) => (d.usage_hours ?? 0) > 0);
-  const usageHours = used.map((d) => d.usage_hours);
-  const compliant = used.filter((d) => d.usage_hours >= 4);
-  const nonCompliant = used.filter((d) => d.usage_hours < 4);
-  const totalHours = usageHours.reduce((a, b) => a + b, 0);
-
-  const pressures = days.map((d) => d.pressure_95).filter(Number.isFinite);
-  const leaks = days.map((d) => d.mask_leak).filter(Number.isFinite);
-  const ahis = days.map((d) => d.ahi).filter(Number.isFinite);
-
-  // Device report records carry the CSA/OSA/HSA split (under `raw` for synced
-  // reports, top level for an uploaded file). Indices are pooled over hours and
-  // only given when every used night in the range has the split.
-  const splitOf = (d) => {
-    const src = d.raw && typeof d.raw === 'object' ? d.raw : d;
-    const parts = [src.csa, src.osa, src.hsa].map(Number);
-    return parts.every(Number.isFinite) ? parts : null;
-  };
-  const splitNights = used.map((d) => ({ hours: d.usage_hours, split: splitOf(d) }));
-  const splitHours = splitNights.every((n) => n.split) ? splitNights.reduce((a, n) => a + n.hours, 0) : 0;
-  const splitIndex = (i) => (splitHours > 0 ? splitNights.reduce((a, n) => a + n.split[i], 0) / splitHours : NaN);
-  const centralAi = splitIndex(0);
-  const obstructiveAi = splitIndex(1);
-  const hi = splitIndex(2);
-
-  const settings = deviceData?.settings || {};
-  const rawMode = String(settings.therapy_mode || days[days.length - 1]?.mode || 'CPAP');
-  const mode = /bipap/i.test(rawMode) ? 'bipap' : /auto/i.test(rawMode) ? 'auto' : 'cpap';
-
-  // A file export carries the pressure the device was *told* to deliver, not a
-  // measured trace. Reporting a set value under "median"/"95th percentile"
-  // would misstate it, so those stay blank and the set value is reported as
-  // exactly that.
-  const measured = pressureSource !== 'set';
-
-  return {
-    mode,
-    pressureSource,
-    modeLabel: mode === 'bipap' ? 'BiPAP (ST MODE)' : mode === 'auto' ? 'AUTO CPAP' : 'CPAP',
-    settings,
-    days,
-    periodStart: start || first,
-    periodEnd: end || last,
-
-    usage: {
-      periodDays,
-      usedDays: used.length,
-      usedPct: pct(used.length, periodDays),
-      compliantDays: compliant.length,
-      compliantPct: pct(compliant.length, periodDays),
-      shortDays: nonCompliant.length,
-      shortPct: pct(nonCompliant.length, periodDays),
-      totalHours,
-      avgTotalDays: periodDays ? totalHours / periodDays : NaN,
-      avgUsedDays: used.length ? totalHours / used.length : NaN,
-      medianUsedDays: median(usageHours),
-    },
-
-    // The telemetry frame reports a combined AHI only — the apnea/hypopnea
-    // split is not transmitted, so it is reported as unavailable.
-    therapy: {
-      ahi: splitHours > 0 ? centralAi + obstructiveAi + hi : mean(ahis),
-      hi,
-      ai: centralAi + obstructiveAi,
-      centralAi,
-      obstructiveAi,
-      unknownAi: NaN,
-      avgLeak: mean(leaks),
-      leakThreshold: 24,
-      pressureMedian: NaN,
-      pressure95: measured ? mean(pressures) : NaN,
-      pressureMax: measured && pressures.length ? Math.max(...pressures) : NaN,
-      pressureSet: measured ? NaN : mean(pressures),
-    },
-
-    // Not present in the CVT30 telemetry payload; sections stay hidden.
-    ventilation: { tidal: null, respiratoryRate: null, minuteVentilation: null },
-  };
+function maskName(value) {
+  if (value == null || value === '') return null;
+  return MASK_NAMES[Number(value)] || String(value);
 }
 
 // ── SVG chart ─────────────────────────────────────────────────────────────────
 
-const CHART = { w: 560, h: 215, left: 34, right: 8, top: 10, bottom: 52 };
+const CHART = { w: 400, h: 190, left: 26, right: 6, top: 8, bottom: 30 };
 
 /**
- * Axis scale for a series. Each chart has the reference report's fixed range as
- * its floor so a well-controlled patient's chart is not zoomed in to the point
- * of exaggerating tiny variations; it only grows past that if the data demands.
+ * Axis scale for a series: the app's fixed range, growing only when the data
+ * goes past it.
  */
 function scaleFor(values, refMax, refStep) {
   const peak = Math.max(0, ...values.filter(Number.isFinite));
@@ -225,7 +103,8 @@ function scaleFor(values, refMax, refStep) {
   return { max: Math.ceil(peak / step) * step, step };
 }
 
-function barChart({ days, valueKey, yMax, yStep, color, colorFor, threshold }) {
+function barChart({ days, valueKey, refMax, refStep, color, colorFor, threshold }) {
+  const { max: yMax, step: yStep } = scaleFor([...days.map((d) => d[valueKey]), threshold ?? 0], refMax, refStep);
   const plotW = CHART.w - CHART.left - CHART.right;
   const plotH = CHART.h - CHART.top - CHART.bottom;
   const baseY = CHART.top + plotH;
@@ -240,16 +119,8 @@ function barChart({ days, valueKey, yMax, yStep, color, colorFor, threshold }) {
       + `<text x="${CHART.left - 5}" y="${(y + 2.5).toFixed(1)}" text-anchor="end" font-size="6.5" fill="${C.axis}">${Number.isInteger(v) ? v : v.toFixed(1)}</text>`;
   }).join('');
 
-  // Vertical guides mirror the reference report's ruled plot area.
-  const columnGuides = n
-    ? Array.from({ length: Math.min(n, 40) + 1 }, (_, i) => {
-      const x = CHART.left + (plotW / Math.min(n, 40)) * i;
-      return `<line x1="${x.toFixed(1)}" y1="${CHART.top}" x2="${x.toFixed(1)}" y2="${baseY}" stroke="${C.grid}" stroke-width="0.4"/>`;
-    }).join('')
-    : '';
-
   const slot = n ? plotW / n : 0;
-  const barW = Math.max(1.2, Math.min(slot * 0.62, 9));
+  const barW = Math.max(1.2, Math.min(slot * 0.3, 6));
 
   const bars = days.map((day, i) => {
     const value = Number(day[valueKey]);
@@ -265,8 +136,7 @@ function barChart({ days, valueKey, yMax, yStep, color, colorFor, threshold }) {
   const labels = days.map((day, i) => {
     if (i % every !== 0) return '';
     const x = CHART.left + slot * i + slot / 2;
-    const text = shortDate(day.when) || esc(day.date || '');
-    return `<text x="${x.toFixed(1)}" y="${baseY + 6}" font-size="5.6" fill="${C.axis}" text-anchor="end" transform="rotate(-45 ${x.toFixed(1)} ${baseY + 6})">${esc(text)}</text>`;
+    return `<text x="${x.toFixed(1)}" y="${baseY + 6}" font-size="5.6" fill="${C.axis}" text-anchor="end" transform="rotate(-45 ${x.toFixed(1)} ${baseY + 6})">${esc(shortDate(day.date))}</text>`;
   }).join('');
 
   const thresholdLine = Number.isFinite(threshold) && threshold > 0 && threshold <= yMax
@@ -274,9 +144,8 @@ function barChart({ days, valueKey, yMax, yStep, color, colorFor, threshold }) {
     : '';
 
   return `<svg class="chart" viewBox="0 0 ${CHART.w} ${CHART.h}" role="img">
-    ${columnGuides}${gridlines}${bars}${thresholdLine}
+    ${gridlines}${bars}${thresholdLine}
     <line x1="${CHART.left}" y1="${baseY}" x2="${CHART.w - CHART.right}" y2="${baseY}" stroke="${C.axis}" stroke-width="0.7"/>
-    <line x1="${CHART.left}" y1="${CHART.top}" x2="${CHART.left}" y2="${baseY}" stroke="${C.axis}" stroke-width="0.7"/>
     ${labels}
   </svg>`;
 }
@@ -288,6 +157,14 @@ function kvRows(rows) {
     .filter(Boolean)
     .map(([label, value]) => `<div class="kv"><span>${esc(label)}</span><span>${esc(value)}</span></div>`)
     .join('');
+}
+
+function metricRow(name, pairs) {
+  return `
+    <div class="metric">
+      <span class="metric-name">${esc(name)}</span>
+      ${pairs.map(([label, value]) => `<span class="pair">${label ? `${esc(label)}: ` : ''}<b>${esc(value)}</b></span>`).join('')}
+    </div>`;
 }
 
 function statPanel(rows) {
@@ -307,68 +184,6 @@ function chartSection(title, panelRows, chartSvg) {
         <div class="chart-wrap">${chartSvg}</div>
       </div>
     </section>`;
-}
-
-/**
- * OSCAR-style statistics and the compliance check, over every night up to the
- * end of the report range — compliance is about the whole course of therapy,
- * not just the nights a clinician chose to print.
- */
-function statisticsSection(sessions, endDate) {
-  const end = endDate ? new Date(`${endDate}T23:59:59.999`) : null;
-  const rows = end ? sessions.filter((s) => !(s.timestamp > end.getTime())) : sessions;
-  const stats = buildTherapyStatistics(rows);
-  const check = buildComplianceCheck(rows);
-  if (!stats || !check) return '';
-
-  const date = (d) => new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(d);
-  const hm = (h) => {
-    if (!Number.isFinite(h)) return '—';
-    const whole = Math.floor(h);
-    const m = Math.round((h - whole) * 60);
-    return m === 60 ? `${whole + 1}h 00m` : `${whole}h ${String(m).padStart(2, '0')}m`;
-  };
-  const p100 = (v) => (Number.isFinite(v) ? `${Math.round(v)}%` : '—');
-  const n = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : '—');
-
-  const rowsSpec = [
-    ['Days in period', (p) => String(p.periodDays)],
-    ['Days used', (p) => `${p.usedDays} (${p100(p.usedPct)})`],
-    ['Compliance (>= 4 h)', (p) => p100(p.compliantPct)],
-    ['Average usage (days used)', (p) => hm(p.avgHoursUsed)],
-    ['AHI', (p) => n(p.ahi)],
-    ['Central apnea index (CSA)', (p) => n(p.csaIndex)],
-    ['Obstructive apnea index (OSA)', (p) => n(p.osaIndex)],
-    ['Hypopnea index (HSA)', (p) => n(p.hsaIndex)],
-    ['Average leak (L/min)', (p) => n(p.leak, 1)],
-    ['Average pressure (cmH2O)', (p) => n(p.pressure, 1)],
-  ];
-
-  const { initial, recent, rule } = check;
-  const verdict = { met: 'MET', 'not-met': 'NOT MET', 'in-progress': 'IN PROGRESS' }[initial.status];
-
-  return `
-<section class="chart-section">
-  <h2>Compliance</h2>
-  <div class="rule">
-    ${kvRows([
-      ['Rule', `>= 4 h on ${rule.requiredNights} of ${rule.windowDays} consecutive nights within the first ${rule.initialDays} days`],
-      ['Therapy start', `${date(initial.firstDay)} (day ${initial.daysElapsed} of ${rule.initialDays} recorded)`],
-      [`Best ${rule.windowDays}-night window`, `${initial.bestWindow.compliantNights}/${rule.windowDays} nights, ${date(initial.bestWindow.start)} - ${date(initial.bestWindow.end)}`],
-      ['Initial compliance', verdict],
-      [`Latest ${rule.windowDays} nights`, `${recent.compliantNights}/${rule.windowDays} (${Math.round(recent.pct)}%) - ${recent.met ? 'meets rule' : 'below rule'}`],
-    ])}
-  </div>
-</section>
-
-<section class="chart-section">
-  <h2>Statistics (up to ${esc(date(stats.lastDay))})</h2>
-  <table class="stats">
-    <thead><tr><th>Details</th>${stats.periods.map((p) => `<th>${esc(p.label)}${p.clipped ? '*' : ''}</th>`).join('')}</tr></thead>
-    <tbody>${rowsSpec.map(([label, get]) => `<tr><td>${esc(label)}</td>${stats.periods.map((p) => `<td>${esc(get(p))}</td>`).join('')}</tr>`).join('')}</tbody>
-  </table>
-  <p class="note">Indices are total events divided by total hours. Nights without a record count as not used. * Shorter period: therapy started ${esc(date(stats.firstDay))}.</p>
-</section>`;
 }
 
 // ── Brand mark ────────────────────────────────────────────────────────────────
@@ -419,84 +234,93 @@ function logoMarkup() {
 
 // ── main builder ──────────────────────────────────────────────────────────────
 
-export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDate, pressureSource }) {
-  const r = deriveReport({ deviceData, sessions, startDate, endDate, pressureSource });
-  const { usage, therapy, settings, days } = r;
+export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDate }) {
+  const r = buildReportData({ rows: sessions, startDate, endDate });
+  const { usage, events, days } = r;
+  const settings = deviceData?.settings || {};
+  const latest = r.latest;
+  const mode = modeOf(latest, settings);
 
   const patient = deviceData?.patient || {};
   const serial = deviceData?.serial || settings.serial || '—';
-  const period = `${shortDate(r.periodStart)} - ${shortDate(r.periodEnd)}`;
+  const period = `${longDate(r.from)} - ${longDate(r.to)}`;
 
   const dob = patient.dob ? new Date(patient.dob) : null;
   const age = dob && !Number.isNaN(dob.getTime())
     ? Math.floor((Date.now() - dob.getTime()) / (365.25 * 86400000))
     : null;
 
-  // Mode-specific settings block, mirroring the two reference layouts.
-  const settingsRows = r.mode === 'bipap'
+  const lastUsed = [...days].reverse().find((d) => d.maxPressure > 0);
+  const aflexLevel = Number(settings.aflex);
+  const aflexOn = Number.isFinite(aflexLevel) && settings.aflex != null ? aflexLevel > 0 : latest?.aflexOn;
+  const level = aflexOn ? (aflexLevel > 0 ? aflexLevel : latest?.aflexLevel) : null;
+
+  const settingsRows = mode.bipap
     ? [
       ['Serial number', serial],
       ['Device', deviceData?.model || '—'],
-      ['Mode', r.modeLabel],
-      ['IPAP', num(settings.max_pressure, 0)],
-      ['EPAP', num(settings.min_pressure, 0)],
-    ]
-    : r.mode === 'auto'
-      ? [
-        ['Serial number', serial],
-        ['Device', deviceData?.model || '—'],
-        ['Mode', r.modeLabel],
-        ['Min Pressure', num(settings.min_pressure, 0)],
-        ['Max Pressure', num(settings.max_pressure, 0)],
-        ['A-Flex', settings.aflex == null ? '—' : settings.aflex > 0 ? 'ON' : 'OFF'],
-        settings.aflex > 0 ? ['A-Flex Level', String(settings.aflex)] : null,
-      ]
-      : [
-        ['Serial number', serial],
-        ['Device', deviceData?.model || '—'],
-        ['Mode', r.modeLabel],
-        ['Pressure', num(settings.pressure, 1)],
-        ['Ramp', settings.ramp == null ? '—' : settings.ramp ? `${settings.ramp} min` : 'Off'],
-      ];
-
-  // Axis ranges default to the reference report's, growing only if data exceeds them.
-  const usageScale = scaleFor(days.map((d) => d.usage_hours), 24, 4);
-  const pressureScale = scaleFor(days.map((d) => d.pressure_95), r.mode === 'bipap' ? 36 : 24, 4);
-  const ahiScale = scaleFor(days.map((d) => d.ahi), 40, 4);
-  const leakScale = scaleFor([...days.map((d) => d.mask_leak), 24], 100, 20);
-
-  const usagePanel = [
-    ['Usage days', `${usage.usedDays}/${usage.periodDays} Days (${usage.usedPct}%)`, C.usagePurple],
-    ['>= 4 hour days', `${usage.compliantDays} (${usage.compliantPct}%)`, C.usageGreen],
-    ['< 4 hour days', `${usage.shortDays} (${usage.shortPct}%)`, C.usageLow],
-    ['Used Hours', longHoursMinutes(usage.totalHours), C.text],
-  ];
-
-  const setPressureRows = [
-    ['Mode', r.modeLabel, C.text],
-    r.mode === 'bipap' ? ['IPAP', num(settings.max_pressure, 0), C.text] : ['Set Max Pressure', num(settings.max_pressure, 0), C.text],
-    r.mode === 'bipap' ? ['EPAP', num(settings.min_pressure, 0), C.text] : ['Set Min Pressure', num(settings.min_pressure, 0), C.text],
-    ['Set Pressure (avg)', num(therapy.pressureSet), C.pressureAuto],
-  ];
-
-  const pressurePanel = r.pressureSource === 'set'
-    ? setPressureRows
-    : r.mode === 'bipap'
-    ? [
-      ['Mode', r.modeLabel, C.text],
-      ['IPAP', num(settings.max_pressure, 0), C.text],
-      ['EPAP', num(settings.min_pressure, 0), C.text],
+      ['Mode', mode.label],
+      ['IPAP', trimF(settings.max_pressure)],
+      ['EPAP', trimF(settings.min_pressure)],
     ]
     : [
-      ['Mode', r.modeLabel, C.text],
-      ['Set Max Pressure', num(settings.max_pressure, 0), C.text],
-      ['Set Min Pressure', num(settings.min_pressure, 0), C.text],
-      ['Max nightly 95th', num(therapy.pressureMax), C.text],
-      ['95th % (avg)', num(therapy.pressure95), C.pressureAuto],
-      ['Median (avg)', num(therapy.pressureMedian), C.text],
+      ['Serial number', serial],
+      ['Device', deviceData?.model || '—'],
+      ['Mode', mode.label],
+      ['Set Pressure', trimF(settings.pressure ?? lastUsed?.maxPressure)],
+      ['A-Flex', aflexOn == null ? '—' : aflexOn ? 'ON' : 'OFF'],
+      aflexOn ? ['A-Flex Level', trimF(level)] : null,
+      ['Mask Type', maskName(settings.mask_type) || latest?.maskType || '—'],
     ];
 
-  const pressureColor = r.mode === 'bipap' ? C.pressureBipap : C.pressureAuto;
+  const usagePanel = chartSection('Usage (Hours)', [
+    ['Usage days', `${usage.usedDays}/${usage.totalDays} Days (${usage.usedPct}%)`, C.purple],
+    ['>= 4 hour days', `${usage.over4hDays} (${usage.over4hPct}%)`, C.usageOk],
+    ['< 4 hour days', `${usage.under4hDays} (${usage.under4hPct}%)`, C.usageLow],
+    ['Used Hours', fmtHM(usage.totalMinutes), C.text],
+  ], barChart({
+    days, valueKey: 'hours', refMax: 24, refStep: 4,
+    colorFor: (v) => (v >= 4 ? C.usageOk : C.usageLow), threshold: 4,
+  }));
+
+  const pressurePanel = chartSection('Pressure (cmH2O)', [
+    ['Mode', mode.label, C.text],
+    ['Maximum (avg)', num(r.pressure.max), C.text],
+    ['95th % (avg)', num(r.pressure.p95), C.heading],
+    ['Median (avg)', num(r.pressure.median), C.text],
+  ], barChart({
+    days, valueKey: 'maxPressure', refMax: mode.bipap ? 36 : 24, refStep: 4,
+    color: mode.bipap ? C.pressureBipap : C.pressure,
+  }));
+
+  const leakPanel = chartSection('Leak', [
+    ['Set Threshold', `${r.leakThreshold.toFixed(1)} L/min`, C.purple],
+    ['Maximum (avg)', num(r.avgLeak), C.text],
+  ], barChart({ days, valueKey: 'leak', refMax: 100, refStep: 20, color: C.leak, threshold: r.leakThreshold }));
+
+  const ahiPanel = chartSection('AHI (Events/Hour)', [
+    ['AHI', num(events.ahi), C.purple],
+    ['HI', num(events.hi), C.pink],
+    ['AI', num(events.ai), C.red],
+  ], barChart({ days, valueKey: 'ahi', refMax: 40, refStep: 4, color: C.ahi }));
+
+  const chartPages = mode.bipap
+    ? `${usagePanel}${pressurePanel}${ahiPanel}${leakPanel}
+<div class="page-break"></div>
+${chartSection('Tidal Volume (mL)', [
+  ['Maximum', num(r.tidal.max, 0), C.text],
+  ['95th %', num(r.tidal.p95, 0), C.heading],
+  ['Median', num(r.tidal.median, 0), C.text],
+], barChart({ days, valueKey: 'tidal', refMax: 1000, refStep: 200, color: C.volume }))}
+${chartSection('Respiratory Rate (BPM)', [
+  ['Maximum', num(r.respMax), C.text],
+], barChart({ days, valueKey: 'resp', refMax: 100, refStep: 10, color: C.volume }))}
+${chartSection('Minute Ventilation (L/min)', [
+  ['Maximum', num(r.minuteVent.max), C.text],
+  ['95th %', num(r.minuteVent.p95), C.heading],
+  ['Median', num(r.minuteVent.median), C.text],
+], barChart({ days, valueKey: 'minuteVent', refMax: 50, refStep: 5, color: C.volume }))}`
+    : `${pressurePanel}${usagePanel}${leakPanel}${ahiPanel}`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -533,12 +357,11 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
     padding: 8px 16px; border-radius: 6px; font-weight: 700; cursor: pointer;
   }
 
-  .doc-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 26px; }
-  .logo { width: 186px; flex-shrink: 0; }
+  .logo { width: 186px; margin-bottom: 18px; }
   .logo-art { width: 100%; height: auto; display: block; }
-  .patient { text-align: right; line-height: 1.55; }
+  .patient { text-align: right; line-height: 1.6; margin-bottom: 24px; }
   .patient .name { font-size: 19px; color: #222; margin-bottom: 4px; }
-  .patient .meta { font-size: 11px; color: #444; }
+  .patient .meta { font-size: 10px; color: #555; }
 
   section { margin-bottom: 26px; }
 
@@ -551,25 +374,20 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
 
   .metric { display: flex; align-items: baseline; padding: 5px 2px; font-size: 11px; }
   .metric .metric-name { width: 168px; flex-shrink: 0; }
-  .metric .pair { display: inline-flex; gap: 7px; align-items: baseline; margin-right: 26px; }
+  .metric .pair { flex: 1; display: inline-flex; justify-content: space-between; gap: 7px; align-items: baseline; padding-right: 26px; }
+  .metric .pair:last-child { padding-right: 0; }
   .metric .pair b { font-weight: 700; }
 
   .chart-section { break-inside: avoid; page-break-inside: avoid; }
   .chart-row { display: flex; gap: 14px; align-items: stretch; }
   .stat-panel {
-    width: 205px; flex-shrink: 0; background: ${C.panel};
-    padding: 14px 14px; display: flex; flex-direction: column; justify-content: center; gap: 11px;
+    width: 42%; flex-shrink: 0; background: ${C.panel};
+    padding: 14px 18px; display: flex; flex-direction: column; justify-content: center; gap: 11px;
   }
-  .stat-row { display: flex; justify-content: space-between; gap: 10px; font-size: 10px; }
-  .stat-label { flex-shrink: 0; }
-  .stat-value { text-align: right; }
+  .stat-row { display: flex; gap: 10px; font-size: 10.5px; white-space: nowrap; }
+  .stat-label { width: 50%; flex-shrink: 0; }
   .chart-wrap { flex: 1; min-width: 0; }
   .chart { width: 100%; height: auto; display: block; }
-
-  table.stats { width: 100%; border-collapse: collapse; font-size: 10px; }
-  table.stats th, table.stats td { padding: 5px 6px; border-bottom: 1px solid ${C.rule}; text-align: right; }
-  table.stats th:first-child, table.stats td:first-child { text-align: left; }
-  table.stats th { background: ${C.panel}; font-weight: 700; }
 
   .page-break { page-break-before: always; break-before: page; }
 
@@ -578,10 +396,6 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
     text-align: center; font-size: 9.5px; font-style: italic; font-weight: 700;
     color: #222; padding-top: 6px; border-top: 1px solid #999;
     margin: 0 12mm;
-  }
-
-  .note {
-    margin-top: 10px; font-size: 9px; color: #777; line-height: 1.5;
   }
 
   @media print {
@@ -597,15 +411,13 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
   <button onclick="window.print()">Print or Save as PDF</button>
 </div>
 
-<div class="doc-head">
-  ${logoMarkup()}
-  <div class="patient">
-    <div class="name">${esc(patient.name || serial)}</div>
-    <div class="meta">Patient ID: ${esc(patient.id || '—')}</div>
-    ${patient.dob ? `<div class="meta">DOB: ${esc(patient.dob)}</div>` : ''}
-    ${age != null ? `<div class="meta">Age: ${age} Years</div>` : ''}
-    ${patient.gender ? `<div class="meta">Gender: ${esc(patient.gender)}</div>` : ''}
-  </div>
+${logoMarkup()}
+<div class="patient">
+  <div class="name">${esc(patient.name || 'Patient Name')}</div>
+  <div class="meta">Patient ID: ${esc(patient.id || '—')}</div>
+  <div class="meta">DOB: ${esc(patient.dob || '—')}</div>
+  <div class="meta">Age: ${age != null ? `${age} Years` : '—'}</div>
+  <div class="meta">Gender: ${esc(patient.gender || '—')}</div>
 </div>
 
 <section>
@@ -615,80 +427,28 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
 
 <section>
   <h2>Therapy</h2>
-  <div class="rule">
-    ${r.mode !== 'bipap' ? `
-    <div class="metric">
-      <span class="metric-name">Pressure-cmH2O</span>
-      <span class="pair">Median: <b>${num(therapy.pressureMedian)}</b></span>
-      <span class="pair">95th percentile: <b>${num(therapy.pressure95)}</b></span>
-      <span class="pair">Max nightly 95th: <b>${num(therapy.pressureMax)}</b></span>
-    </div>` : ''}
-    <div class="metric">
-      <span class="metric-name">Events per hour</span>
-      <span class="pair">AI: <b>${num(therapy.ai, 2)}</b></span>
-      <span class="pair">HI: <b>${num(therapy.hi, 2)}</b></span>
-      <span class="pair">AHI: <b>${num(therapy.ahi, 2)}</b></span>
-    </div>
-    <div class="metric">
-      <span class="metric-name">Apnea Index - Events/hr</span>
-      <span class="pair">Central: <b>${num(therapy.centralAi, 2)}</b></span>
-      <span class="pair">Obstructive: <b>${num(therapy.obstructiveAi, 2)}</b></span>
-      <span class="pair">Unknown: <b>${num(therapy.unknownAi, 2)}</b></span>
-    </div>
-    <div class="metric">
-      <span class="metric-name">Average Leak - L/Min</span>
-      <span class="pair"><b>${num(therapy.avgLeak)}</b></span>
-    </div>
-  </div>
+  ${metricRow('Events per hour', [['AI', num(events.ai)], ['HI', num(events.hi)], ['AHI', num(events.ahi)]])}
+  ${mode.bipap ? '' : `
+  ${metricRow('Apnea Index - Events/hr', [['Central', num(events.central, 2)], ['Obstructive', num(events.obstructive, 2)], ['Unknown', num(events.unknown, 2)]])}
+  ${metricRow('Average Leak - L/Min', [['', num(r.avgLeak)]])}`}
 </section>
 
 <section>
   <h2>Usage</h2>
-  <div class="rule">
-    ${kvRows([
-      ['Usage days', `${usage.usedDays}/${usage.periodDays} Days (${usage.usedPct}%)`],
-      ['>= 4 hours', `${usage.compliantDays} (${usage.compliantPct}%)`],
-      ['< 4 hours', `${usage.shortDays} (${usage.shortPct}%)`],
-      ['Usage hours', longHoursMinutes(usage.totalHours)],
-      ['Average usage (Total Days)', hoursMinutes(usage.avgTotalDays)],
-      ['Average usage (Days Used)', hoursMinutes(usage.avgUsedDays)],
-      ['Median usage (Days Used)', hoursMinutes(usage.medianUsedDays)],
-    ])}
-  </div>
+  ${kvRows([
+    ['Usage days', `${usage.usedDays}/${usage.totalDays} Days (${usage.usedPct}%)`],
+    ['>= 4 hours', `${usage.over4hDays} (${usage.over4hPct}%)`],
+    ['< 4 hours', `${usage.under4hDays} (${usage.under4hPct}%)`],
+    ['Usage hours', fmtHM(usage.totalMinutes)],
+    ['Average usage (Total Days)', fmtHM(usage.avgTotalDaysMin)],
+    ['Average usage (Days Used)', fmtHM(usage.avgUsedDaysMin)],
+    ['Median usage (Days Used)', fmtHM(usage.medianUsedDaysMin)],
+  ])}
 </section>
-
-${statisticsSection(sessions, endDate)}
 
 <div class="page-break"></div>
 
-${chartSection('Usage (Hours)', usagePanel, barChart({
-  days, valueKey: 'usage_hours', yMax: usageScale.max, yStep: usageScale.step,
-  colorFor: (v) => (v >= 4 ? C.usageOk : C.usageLow), threshold: 4,
-}))}
-
-${chartSection(r.pressureSource === 'set' ? 'Set Pressure (cmH2O)' : 'Pressure (cmH2O)', pressurePanel, barChart({
-  days, valueKey: 'pressure_95', yMax: pressureScale.max, yStep: pressureScale.step, color: pressureColor,
-}))}
-
-${chartSection('AHI (Events/Hour)', [
-  ['AHI', num(therapy.ahi), C.ahiPink],
-  ['HI', num(therapy.hi), C.ahiPinkLight],
-  ['AI', num(therapy.ai), C.text],
-], barChart({ days, valueKey: 'ahi', yMax: ahiScale.max, yStep: ahiScale.step, color: C.ahiBar }))}
-
-${chartSection('Leak', [
-  ['Reference threshold', `${therapy.leakThreshold.toFixed(1)} L/min`, C.leak],
-  ['Average', num(therapy.avgLeak), C.leak],
-], barChart({
-  days, valueKey: 'mask_leak', yMax: leakScale.max, yStep: leakScale.step,
-  color: C.leak, threshold: therapy.leakThreshold,
-}))}
-
-<p class="note">
-  Report generated from ${esc(deviceData?.sourceLabel || 'device telemetry')} for serial ${esc(serial)} over ${usage.periodDays} day(s).
-  ${r.pressureSource === 'set' ? 'Pressure is the value the device was set to deliver; this source carries no measured pressure trace, so median, 95th percentile and maximum are left blank.' : ''}
-  Values shown as “—” are not transmitted by this device and have been left blank rather than estimated.
-</p>
+${chartPages}
 
 <div class="footer">${esc(ADDRESS)}</div>
 

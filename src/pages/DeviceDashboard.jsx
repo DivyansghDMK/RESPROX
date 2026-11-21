@@ -4,6 +4,7 @@ import LiveValue from '../components/LiveValue';
 import BreathingLungs from '../components/BreathingLungs';
 import LiveBars from '../components/LiveBars';
 import SyncReportsButton from '../components/SyncReportsButton';
+import SyncProgress, { useSyncProgress } from '../components/SyncProgress';
 import { therapyLabel } from '../services/deviceStatus';
 import { DeviceDashboardSkeleton } from '../components/Skeleton';
 import { createPortal } from 'react-dom';
@@ -253,6 +254,7 @@ function DeviceDashboardView() {
   const [loading, setLoading]         = useState(true);
   const [refreshing, setRefreshing]   = useState(false);
   const [reportSyncing, setReportSyncing] = useState(false);
+  const sync = useSyncProgress();
   const [syncResult, setSyncResult] = useState(null);
   const syncResultTimer = useRef(null);
   useEffect(() => () => clearTimeout(syncResultTimer.current), []);
@@ -325,16 +327,20 @@ function DeviceDashboardView() {
   // Report sync is asynchronous; syncReports waits until the backend says it is done.
   const handleReportSync = async () => {
     setReportSyncing(true);
+    sync.begin();
     try {
       const reportsBefore = device?.reports?.length ?? 0;
-      const { stillRunning } = await devicesAPI.syncReports(serial);
+      const { stillRunning, received } = await devicesAPI.syncReports(serial, { onProgress: sync.progress });
 
+      sync.finishing();
       const data = await fetchDevice(true, true);
-      const added = Math.max(0, (data?.reports?.length ?? reportsBefore) - reportsBefore);
+      const added = Math.max(received || 0, (data?.reports?.length ?? reportsBefore) - reportsBefore);
       if (stillRunning) {
+        sync.clear();
         notify.info('Report sync is still running', { message: 'It continues in the background. Refresh later to see new sessions.' });
       } else {
         // The button shows the result for a few seconds, then goes back to idle.
+        sync.finish(added);
         setSyncResult({ added });
         clearTimeout(syncResultTimer.current);
         syncResultTimer.current = setTimeout(() => setSyncResult(null), 3000);
@@ -343,6 +349,7 @@ function DeviceDashboardView() {
         });
       }
     } catch (e) {
+      sync.clear();
       notify.fromError(e, { action: 'sync reports', subject: serial });
     } finally {
       setReportSyncing(false);
@@ -633,6 +640,7 @@ function DeviceDashboardView() {
               )}
             </div>
             <SyncReportsButton syncing={reportSyncing} result={syncResult} disabled={!isOnline} onClick={handleReportSync} />
+            {sync.view && !sync.view.hidden && <SyncProgress serial={serial} {...sync.view} onHide={sync.hide} />}
             <button onClick={handleRefresh} disabled={refreshing}
               style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 9, fontSize: 12, fontWeight: 700, color: 'var(--muted)', cursor: 'pointer', opacity: refreshing ? 0.6 : 1 }}>
               <RefreshIcon fontSize="small" style={{ animation: refreshing ? 'spin 0.8s linear infinite' : 'none' }}/>
