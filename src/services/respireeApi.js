@@ -537,7 +537,7 @@ async function getDeviceDetail(serial, { force = false } = {}) {
       request(`/devices/${encodeURIComponent(serial)}/sync-state`),
       // Older deployments may not expose stored reports yet; telemetry history
       // remains a safe fallback until that endpoint is available.
-      request(`/devices/${encodeURIComponent(serial)}/reports`).catch(() => []),
+      getAllReports(serial).catch(() => []),
     ]);
 
     const summary = devices.find((device) => device.serial === serial) || { serial, model: null, firmware: '—', patient_name: null, raw: {} };
@@ -763,7 +763,24 @@ async function triggerReportSync(serial) {
 }
 
 async function getReports(serial) {
-  return normalizeReportList(await request(`/devices/${encodeURIComponent(serial)}/reports`));
+  return getAllReports(serial);
+}
+
+// The reports route answers 20 rows unless asked, and at most 100 a page.
+const REPORT_PAGE = 100;
+const MAX_REPORT_PAGES = 50;
+
+/** Every stored session report of a device, fetched page by page. */
+async function getAllReports(serial) {
+  const rows = [];
+  for (let page = 1; page <= MAX_REPORT_PAGES; page += 1) {
+    const json = await request(`/devices/${encodeURIComponent(serial)}/reports?limit=${REPORT_PAGE}&page=${page}`);
+    const items = normalizeReportList(json);
+    rows.push(...items);
+    const totalPages = Number((json?.data?.pagination || json?.pagination)?.totalPages);
+    if (items.length < REPORT_PAGE || (Number.isFinite(totalPages) && page >= totalPages)) break;
+  }
+  return rows;
 }
 
 async function pollTherapyStatus(serial, expected, { intervalMs = 2000, timeoutMs = 60000 } = {}) {
