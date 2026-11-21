@@ -771,17 +771,28 @@ function DeviceDashboardView() {
             <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, fontWeight: 600 }}>Leak Rate · Target ≤ 24 L/min</div>
           </LiveValue>
 
-          {/* Pressure */}
-          <LiveValue style={card} scope={serial} watch={`${ld.pressure_95}|${device.settings.max_pressure}`}>
+          {/* Pressure: compared with the mode's own setting. CPAP runs at one
+              fixed pressure; only AUTO CPAP moves between a min and a max. */}
+          {(() => {
+            const s = device.settings;
+            const auto = /auto/i.test(String(s.therapy_mode || ''));
+            const ceiling = auto ? s.max_pressure : s.pressure;
+            const setLine = auto
+              ? (s.min_pressure != null && s.max_pressure != null ? `Range set: ${s.min_pressure}–${s.max_pressure} cmH₂O` : null)
+              : (s.pressure != null ? `Fixed pressure set: ${s.pressure} cmH₂O` : null);
+            return (
+          <LiveValue style={card} scope={serial} watch={`${ld.pressure_95}|${s.therapy_mode}|${ceiling}|${s.min_pressure}`}>
             <div style={cardEyebrow}>Pressure · latest session</div>
             <div style={{ fontSize: 36, fontWeight: 900, color: '#163257', lineHeight: 1, marginTop: 8 }}>
               {dash(ld.pressure_95)} {ld.pressure_95 != null && <span style={{ fontSize: 16, color: '#64748b' }}>cmH₂O</span>}
             </div>
-            {device.settings.max_pressure != null && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, fontWeight: 600 }}>Max set: {device.settings.max_pressure} cmH₂O</div>}
+            {setLine && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, fontWeight: 600 }}>{setLine}</div>}
             <div style={{ height: 4, background: '#e2e8f0', borderRadius: 2, marginTop: 10, overflow: 'hidden' }}>
-              <div style={{ height: '100%', borderRadius: 2, transition: 'width 0.5s', width: `${device.settings.max_pressure && ld.pressure_95 != null ? Math.min((ld.pressure_95 / device.settings.max_pressure) * 100, 100) : 0}%`, background: 'var(--brand-gradient)' }}/>
+              <div style={{ height: '100%', borderRadius: 2, transition: 'width 0.5s', width: `${ceiling && ld.pressure_95 != null ? Math.min((ld.pressure_95 / ceiling) * 100, 100) : 0}%`, background: 'var(--brand-gradient)' }}/>
             </div>
           </LiveValue>
+            );
+          })()}
         </div>
           </>
         ) : (
