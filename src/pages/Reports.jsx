@@ -9,6 +9,7 @@ import { FileIcon, InfoIcon } from '../components/Icons';
 import { useTherapy } from '../context/TherapyContext';
 
 import { devicesAPI } from '../services/respireeApi';
+import { parseReportRows } from '../services/reportFileParser';
 
 export default function Reports() {
   const notify = useNotify();
@@ -65,22 +66,56 @@ export default function Reports() {
 
 
 
+  // One row per session the device recorded, newest first, so two sessions
+  // on one day show as two rows. Compliance is the day's: at least 4 h in
+  // all of that day's sessions together.
   const reportEntries = useMemo(() => {
-    return [...sessions].reverse().map((s, idx) => {
-      const has = (v) => v != null && Number.isFinite(Number(v));
-      const hoursInt = Math.floor(s.usage_hours);
-      const minsInt = Math.round((s.usage_hours - hoursInt) * 60);
-      return {
-        id: idx.toString(),
+    const has = (v) => v != null && Number.isFinite(Number(v));
+    const hm = (minutes) => `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+    const records = parseReportRows(deviceData?.reports || []).records;
+
+    if (!records.length) {
+      // No stored session reports (older telemetry): one row per day as before.
+      return [...sessions].reverse().map((s, idx) => ({
+        id: String(idx),
         date: s.date,
-        usage: has(s.usage_hours) ? `${hoursInt}h ${minsInt}m` : '—',
+        time: null,
+        usage: has(s.usage_hours) ? hm(Math.round(s.usage_hours * 60)) : '—',
         ahi: has(s.ahi) ? `${s.ahi} / hr` : '—',
         leak: has(s.mask_leak) ? `${s.mask_leak} L/min` : '—',
         pressure: has(s.pressure_95) ? `${s.pressure_95} cmH₂O` : '—',
         compliance: has(s.usage_hours) ? (s.usage_hours >= 4.0 ? 'Yes' : 'No') : null,
-      };
-    });
-  }, [sessions]);
+      }));
+    }
+
+    const dayMinutes = new Map();
+    const dayCount = new Map();
+    for (const r of records) {
+      dayMinutes.set(r.dayKey, (dayMinutes.get(r.dayKey) || 0) + r.durationMinutes);
+      dayCount.set(r.dayKey, (dayCount.get(r.dayKey) || 0) + 1);
+    }
+    const seenInDay = new Map();
+    const label = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    return [...records]
+      .sort((a, b) => a.start - b.start)
+      .map((r) => {
+        const n = (seenInDay.get(r.dayKey) || 0) + 1;
+        seenInDay.set(r.dayKey, n);
+        const hours = r.durationMinutes / 60;
+        return {
+          id: `${r.dayKey}-${n}-${r.startClock}`,
+          date: label.format(r.start),
+          session: dayCount.get(r.dayKey) > 1 ? `Session ${n} of ${dayCount.get(r.dayKey)}` : null,
+          time: `${r.startClock} – ${r.endClock}`,
+          usage: hm(r.durationMinutes),
+          ahi: hours > 0 ? `${(r.events / hours).toFixed(1)} / hr` : '—',
+          leak: r.leakValid ? `${r.leak} L/min` : '—',
+          pressure: has(r.setPressure) ? `${r.setPressure} cmH₂O` : '—',
+          compliance: dayMinutes.get(r.dayKey) >= 240 ? 'Yes' : 'No',
+        };
+      })
+      .reverse();
+  }, [sessions, deviceData?.reports]);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -184,6 +219,9 @@ export default function Reports() {
         <GlassCard style={{ marginTop: '20px' }}>
           <div className="section-title table-title-row">
             <h2>Compliance &amp; Clinical History</h2>
+            <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>
+              {reportEntries.length} session{reportEntries.length === 1 ? '' : 's'} · compliance is the day's total (≥ 4 h)
+            </span>
             <span className="info-badge" style={{ fontFamily: 'monospace', fontWeight: 700 }}>
               <InfoIcon /> Device Serial: {activeSerial}
             </span>
@@ -195,6 +233,7 @@ export default function Reports() {
                   <thead>
                     <tr>
                       <th>Date</th>
+                      <th>Time</th>
                       <th>Usage</th>
                       <th>AHI</th>
                       <th>Leak Rate</th>
@@ -205,7 +244,11 @@ export default function Reports() {
                   <tbody>
                     {paginatedEntries.map((report) => (
                       <tr key={report.id}>
-                        <td><strong>{report.date}</strong></td>
+                        <td>
+                          <strong>{report.date}</strong>
+                          {report.session && <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>{report.session}</div>}
+                        </td>
+                        <td style={{ whiteSpace: 'nowrap' }}>{report.time || '—'}</td>
                         <td>{report.usage}</td>
                         <td>{report.ahi}</td>
                         <td>{report.leak}</td>
