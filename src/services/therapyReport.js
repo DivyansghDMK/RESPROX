@@ -85,7 +85,7 @@ function maskName(value) {
 
 // ── SVG chart ─────────────────────────────────────────────────────────────────
 
-const CHART = { w: 400, h: 190, left: 26, right: 6, top: 8, bottom: 30 };
+const CHART = { w: 400, h: 172, left: 24, right: 4, top: 6, bottom: 28 };
 
 /**
  * Axis scale for a series: the app's fixed range, growing only when the data
@@ -116,7 +116,7 @@ function barChart({ days, valueKey, refMax, refStep, color, colorFor, threshold 
   const gridlines = ticks.map((v) => {
     const y = baseY - (v / yMax) * plotH;
     return `<line x1="${CHART.left}" y1="${y.toFixed(1)}" x2="${CHART.w - CHART.right}" y2="${y.toFixed(1)}" stroke="${C.grid}" stroke-width="0.6"/>`
-      + `<text x="${CHART.left - 5}" y="${(y + 2.5).toFixed(1)}" text-anchor="end" font-size="6.5" fill="${C.axis}">${Number.isInteger(v) ? v : v.toFixed(1)}</text>`;
+      + `<text x="${CHART.left - 5}" y="${(y + 2.5).toFixed(1)}" text-anchor="end" font-size="7" fill="${C.axis}">${Number.isInteger(v) ? v : v.toFixed(1)}</text>`;
   }).join('');
 
   const slot = n ? plotW / n : 0;
@@ -132,11 +132,11 @@ function barChart({ days, valueKey, refMax, refStep, color, colorFor, threshold 
   }).join('');
 
   // Thin out date labels so they stay legible over long reporting periods.
-  const every = Math.max(1, Math.ceil(n / 26));
+  const every = Math.max(1, Math.ceil(n / 8));
   const labels = days.map((day, i) => {
     if (i % every !== 0) return '';
     const x = CHART.left + slot * i + slot / 2;
-    return `<text x="${x.toFixed(1)}" y="${baseY + 6}" font-size="5.6" fill="${C.axis}" text-anchor="end" transform="rotate(-45 ${x.toFixed(1)} ${baseY + 6})">${esc(shortDate(day.date))}</text>`;
+    return `<text x="${x.toFixed(1)}" y="${baseY + 6}" font-size="6.8" fill="${C.axis}" text-anchor="end" transform="rotate(-45 ${x.toFixed(1)} ${baseY + 6})">${esc(shortDate(day.date))}</text>`;
   }).join('');
 
   const thresholdLine = Number.isFinite(threshold) && threshold > 0 && threshold <= yMax
@@ -160,18 +160,20 @@ function kvRows(rows) {
 }
 
 function metricRow(name, pairs) {
+  // A lone value (Average Leak) sits in the last column, at the right edge.
+  const start = 5 - pairs.length;
   return `
     <div class="metric">
       <span class="metric-name">${esc(name)}</span>
-      ${pairs.map(([label, value]) => `<span class="pair">${label ? `${esc(label)}: ` : ''}<b>${esc(value)}</b></span>`).join('')}
+      ${pairs.map(([label, value], i) => `<span class="pair" style="grid-column:${start + i}"><span>${label ? `${esc(label)}:` : ''}</span><b>${esc(value)}</b></span>`).join('')}
     </div>`;
 }
 
 function statPanel(rows) {
-  return `<div class="stat-panel">${rows.filter(Boolean).map(([label, value, color]) => `
+  return `<div class="stat-panel">${rows.filter(Boolean).map(([label, value, color, small]) => `
     <div class="stat-row">
       <span class="stat-label" ${color ? `style="color:${color}"` : ''}>${esc(label)}</span>
-      <span class="stat-value" ${color ? `style="color:${color}"` : ''}>${esc(value)}</span>
+      <span class="stat-value${small ? ' small' : ''}" ${color ? `style="color:${color}"` : ''}>${esc(value)}</span>
     </div>`).join('')}</div>`;
 }
 
@@ -277,7 +279,7 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
     ['Usage days', `${usage.usedDays}/${usage.totalDays} Days (${usage.usedPct}%)`, C.purple],
     ['>= 4 hour days', `${usage.over4hDays} (${usage.over4hPct}%)`, C.usageOk],
     ['< 4 hour days', `${usage.under4hDays} (${usage.under4hPct}%)`, C.usageLow],
-    ['Used Hours', fmtHM(usage.totalMinutes), C.text],
+    ['Used Hours', `${Math.floor(usage.totalMinutes / 60)} Hours, ${String(usage.totalMinutes % 60).padStart(2, '0')} Minutes`, C.text, true],
   ], barChart({
     days, valueKey: 'hours', refMax: 24, refStep: 4,
     colorFor: (v) => (v >= 4 ? C.usageOk : C.usageLow), threshold: 4,
@@ -328,22 +330,22 @@ ${chartSection('Minute Ventilation (L/min)', [
 <meta charset="UTF-8"/>
 <title>Therapy Report — ${esc(patient.name || serial)}</title>
 <style>
-  @page { size: A4; margin: 12mm 12mm 20mm; }
+  @page { size: A4; margin: 12mm 12mm 15mm; }
   * { box-sizing: border-box; }
   body {
     margin: 0;
     padding: 14mm 12mm 22mm;
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    font-size: 10.5px;
+    font-size: 13px;
     color: ${C.text};
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
   h2 {
     color: ${C.heading};
-    font-size: 13px;
+    font-size: 17px;
     font-weight: 700;
-    margin: 0 0 10px;
+    margin: 0 0 12px;
   }
 
   .toolbar {
@@ -357,50 +359,55 @@ ${chartSection('Minute Ventilation (L/min)', [
     padding: 8px 16px; border-radius: 6px; font-weight: 700; cursor: pointer;
   }
 
-  .logo { width: 186px; margin-bottom: 18px; }
+  .logo { width: 200px; margin-bottom: 16px; }
   .logo-art { width: 100%; height: auto; display: block; }
-  .patient { text-align: right; line-height: 1.6; margin-bottom: 24px; }
-  .patient .name { font-size: 19px; color: #222; margin-bottom: 4px; }
-  .patient .meta { font-size: 10px; color: #555; }
+  .patient { text-align: right; line-height: 1.75; margin-bottom: 26px; }
+  .patient .name { font-size: 22px; color: #222; line-height: 1.3; margin-bottom: 4px; }
+  .patient .meta { font-size: 11.5px; color: #555; }
 
   section { margin-bottom: 26px; }
+  section.therapy { margin-bottom: 64px; }
 
   .kv {
     display: flex; justify-content: space-between; align-items: baseline;
-    padding: 5px 2px; font-size: 11px;
+    padding: 6.5px 0; font-size: 13px;
   }
   .kv span:last-child { text-align: right; }
-  .rule { border-bottom: 1px solid ${C.rule}; padding-bottom: 8px; }
+  .rule { border-bottom: 1px solid ${C.rule}; padding-bottom: 12px; }
 
-  .metric { display: flex; align-items: baseline; padding: 5px 2px; font-size: 11px; }
-  .metric .metric-name { width: 168px; flex-shrink: 0; }
-  .metric .pair { flex: 1; display: inline-flex; justify-content: space-between; gap: 7px; align-items: baseline; padding-right: 26px; }
-  .metric .pair:last-child { padding-right: 0; }
+  .metric {
+    display: grid; grid-template-columns: 38.5% 1fr 1fr 1fr; align-items: baseline;
+    padding: 6.5px 0; font-size: 13px;
+  }
+  .metric .metric-name { grid-column: 1; }
+  .metric .pair { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
   .metric .pair b { font-weight: 700; }
 
-  .chart-section { break-inside: avoid; page-break-inside: avoid; }
-  .chart-row { display: flex; gap: 14px; align-items: stretch; }
+  .chart-section { break-inside: avoid; page-break-inside: avoid; margin-bottom: 22px; }
+  .chart-row { display: flex; gap: 12px; align-items: stretch; }
   .stat-panel {
     width: 42%; flex-shrink: 0; background: ${C.panel};
-    padding: 14px 18px; display: flex; flex-direction: column; justify-content: center; gap: 11px;
+    padding: 18px 24px; display: flex; flex-direction: column; justify-content: center; gap: 20px;
   }
-  .stat-row { display: flex; gap: 10px; font-size: 10.5px; white-space: nowrap; }
-  .stat-label { width: 50%; flex-shrink: 0; }
-  .chart-wrap { flex: 1; min-width: 0; }
+  .stat-row { display: flex; align-items: baseline; font-size: 13px; white-space: nowrap; }
+  .stat-label { width: 47%; flex-shrink: 0; }
+  .stat-value.small { font-size: 10.5px; }
+  .chart-wrap { flex: 1; min-width: 0; display: flex; align-items: center; }
   .chart { width: 100%; height: auto; display: block; }
 
   .page-break { page-break-before: always; break-before: page; }
 
   .footer {
     position: fixed; left: 0; right: 0; bottom: 6mm;
-    text-align: center; font-size: 9.5px; font-style: italic; font-weight: 700;
-    color: #222; padding-top: 6px; border-top: 1px solid #999;
+    text-align: center; font-size: 10.5px; font-style: italic; font-weight: 700;
+    color: #222; padding-top: 8px; border-top: 1px solid #bbb;
     margin: 0 12mm;
   }
 
   @media print {
     .toolbar { display: none; }
     body { padding: 0; }
+    .footer { margin: 0; bottom: 0; }
   }
 </style>
 </head>
@@ -425,7 +432,7 @@ ${logoMarkup()}
   <div class="rule">${kvRows(settingsRows)}</div>
 </section>
 
-<section>
+<section class="therapy">
   <h2>Therapy</h2>
   ${metricRow('Events per hour', [['AI', num(events.ai)], ['HI', num(events.hi)], ['AHI', num(events.ahi)]])}
   ${mode.bipap ? '' : `
