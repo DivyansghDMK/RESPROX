@@ -3518,11 +3518,11 @@ textarea:focus-visible,
    ADMIN PATIENTS AND DETAIL PANEL STYLING
    ========================================================================== */
 
-/* Full width and flush with the greeting header above: a centred 1200px
-   column left a wide empty gap on large screens and sat out of line with it. */
+/* Full width and flush with the greeting header above, on every screen size:
+   a capped column left empty space beside it on large monitors. */
 .admin-patients-page, .admin-detail-page {
   padding: 8px 0 24px;
-  max-width: 1680px;
+  max-width: none;
   margin: 0;
   animation: fadeIn 0.4s ease-out;
 }
@@ -6889,3 +6889,9 @@ tr.live-updated > td { animation: live-flash-bg 1.6s ease-out; }
   .upload-drop .upload-drop-icon { animation: none !important; }
   .mobile-device-card:hover, .kpi-card:hover { transform: none; }
 }
+
+/* Large monitors (2560×1440 and up): the whole UI is drawn at laptop scale and
+   bunches into the top-left. Scale it up so it fills the screen the same way.
+   Media queries read the real window width, so this can't feed back on itself. */
+@media (min-width: 2200px) { html { zoom: 1.2; } }
+@media (min-width: 3000px) { html { zoom: 1.35; } }
