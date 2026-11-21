@@ -781,7 +781,17 @@ async function getAllTelemetry(serial) {
   return rows;
 }
 
+// Set once the commands list has failed, so the log stops asking this visit.
+let commandsUnavailable = false;
+
+/**
+ * Settings the website sent, or null when the server can't list them. The
+ * route isn't deployed yet, and API Gateway's own 404 for an unknown route
+ * has no CORS headers, so the browser reports it as a network failure rather
+ * than a 404. Any failure here means "not available", never a page error.
+ */
 async function getCommands(serial) {
+  if (commandsUnavailable) return null;
   const rows = [];
   try {
     for (let page = 1; page <= MAX_ACTIVITY_PAGES; page += 1) {
@@ -791,10 +801,9 @@ async function getCommands(serial) {
       const totalPages = Number((json?.data?.pagination || json?.pagination)?.totalPages);
       if (items.length < ACTIVITY_PAGE || (Number.isFinite(totalPages) && page >= totalPages)) break;
     }
-  } catch (err) {
-    // Not deployed yet (or not allowed): the log shows the device's side only.
-    if (err?.status === 404 || err?.status === 403) return null;
-    throw err;
+  } catch {
+    commandsUnavailable = true;
+    return null;
   }
   return rows;
 }
