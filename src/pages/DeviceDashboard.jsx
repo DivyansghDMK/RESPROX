@@ -919,8 +919,8 @@ function DeviceDashboardView() {
                 </div>
                 <div className="dashboard-two-col" style={{ gap: 20, marginBottom: 16 }}>
                   {[
-                    { label: 'Min Pressure', val: Math.min(minPressure, maxPressure), changed: device.settings.min_pressure !== minPressure, was: device.settings.min_pressure, dec: () => setMinPressure(v => Math.max(4, +(v - 0.1).toFixed(1))), inc: () => setMinPressure(v => Math.min(maxPressure, +(v + 0.1).toFixed(1))), sliderMax: maxPressure, onChange: setMinPressure },
-                    { label: 'Max Pressure', val: Math.min(maxPressure, maxLimit), changed: device.settings.max_pressure !== maxPressure, was: device.settings.max_pressure, dec: () => setMaxPressure(v => Math.max(minPressure, +(v - 0.1).toFixed(1))), inc: () => setMaxPressure(v => Math.min(maxLimit, +(v + 0.1).toFixed(1))), sliderMax: maxLimit, onChange: setMaxPressure },
+                    { label: 'Min Pressure', val: Math.min(minPressure, maxPressure), changed: device.settings.min_pressure !== minPressure, was: device.settings.min_pressure, dec: () => setMinPressure(v => Math.max(4, +(v - 0.1).toFixed(1))), inc: () => setMinPressure(v => Math.min(maxPressure, +(v + 0.1).toFixed(1))), sliderMax: maxLimit, onChange: (v) => setMinPressure(Math.min(v, maxPressure)) },
+                    { label: 'Max Pressure', val: Math.min(maxPressure, maxLimit), changed: device.settings.max_pressure !== maxPressure, was: device.settings.max_pressure, dec: () => setMaxPressure(v => Math.max(minPressure, +(v - 0.1).toFixed(1))), inc: () => setMaxPressure(v => Math.min(maxLimit, +(v + 0.1).toFixed(1))), sliderMax: maxLimit, onChange: (v) => setMaxPressure(Math.max(v, minPressure)) },
                   ].map(({ label, val, changed, was, dec, inc, sliderMax, onChange }) => (
                     <div key={label}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>{label}</div>
