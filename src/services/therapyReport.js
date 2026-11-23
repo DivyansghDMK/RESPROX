@@ -17,7 +17,7 @@ import { buildReportData, fmtHM, MODE_NAMES } from './reportCalc.js';
 
 const ADDRESS = 'DeckMount : 683, Udyog Vihar, Phase V, Gurugram, Haryana, 122016';
 
-const MASK_NAMES = { 1: 'Full Face', 2: 'Nasal', 3: 'Pillow' };
+const MASK_NAMES = { 1: 'Full Face Mask', 2: 'Nasal Mask', 3: 'Pillow Mask' };
 
 const C = {
   heading: '#1E88E5',
@@ -51,6 +51,11 @@ function num(value, digits = 1) {
   return Number.isFinite(value) ? value.toFixed(digits) : '—';
 }
 
+/** Leak is read in whole L/min, so its average is shown that way too: 43.7 → "44". */
+function whole(value) {
+  return Number.isFinite(value) ? String(Math.round(value)) : '—';
+}
+
 /** Whole numbers without a decimal, others with one: 12 → "12", 8.5 → "8.5". */
 function trimF(value) {
   const n = Number(value);
@@ -74,13 +79,16 @@ function modeOf(latest, settings) {
   if (MODE_NAMES[code]) return { label: MODE_NAMES[code], bipap: code >= 3 && code <= 5 };
   const text = String(settings.therapy_mode || '');
   if (/bipap|bilevel/i.test(text)) return { label: 'BiPAP', bipap: true };
-  if (/auto/i.test(text)) return { label: 'AUTO', bipap: false };
+  if (/auto/i.test(text)) return { label: 'AUTO CPAP', bipap: false };
   return { label: 'CPAP', bipap: false };
 }
 
 function maskName(value) {
   if (value == null || value === '') return null;
-  return MASK_NAMES[Number(value)] || String(value);
+  if (MASK_NAMES[Number(value)]) return MASK_NAMES[Number(value)];
+  // Names from a file or the settings screen ("Pillow", "Full Face") read as the report names them.
+  const text = String(value);
+  return /mask$/i.test(text) ? text : `${text} Mask`;
 }
 
 // ── SVG chart ─────────────────────────────────────────────────────────────────
@@ -245,7 +253,10 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
 
   const patient = deviceData?.patient || {};
   const serial = deviceData?.serial || settings.serial || '—';
-  const period = `${longDate(r.from)} - ${longDate(r.to)}`;
+  // "15 Mar - 21 Apr"; the year only when the range crosses into another year.
+  const sameYear = r.from && r.to && r.from.getFullYear() === r.to.getFullYear();
+  const period = sameYear ? `${shortDate(r.from)} - ${shortDate(r.to)}` : `${longDate(r.from)} - ${longDate(r.to)}`;
+  const auto = /auto/i.test(mode.label);
 
   const dob = patient.dob ? new Date(patient.dob) : null;
   const age = dob && !Number.isNaN(dob.getTime())
@@ -269,10 +280,13 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
       ['Serial number', serial],
       ['Device', deviceData?.model || '—'],
       ['Mode', mode.label],
-      ['Set Pressure', trimF(settings.pressure ?? lastUsed?.maxPressure)],
+      // AUTO CPAP moves between a set min and max; CPAP holds one pressure.
+      ...(auto
+        ? [['Min Pressure', trimF(settings.min_pressure)], ['Max Pressure', trimF(settings.max_pressure)]]
+        : [['Set Pressure', trimF(settings.pressure ?? lastUsed?.maxPressure)]]),
       ['A-Flex', aflexOn == null ? '—' : aflexOn ? 'ON' : 'OFF'],
       aflexOn ? ['A-Flex Level', trimF(level)] : null,
-      ['Mask Type', maskName(settings.mask_type) || latest?.maskType || '—'],
+      ['Mask Type', maskName(settings.mask_type) || maskName(latest?.maskType) || '—'],
     ];
 
   const usagePanel = chartSection('Usage (Hours)', [
@@ -287,6 +301,9 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
 
   const pressurePanel = chartSection('Pressure (cmH2O)', [
     ['Mode', mode.label, C.text],
+    ...(mode.bipap ? [] : auto
+      ? [['Set Max Pressure', trimF(settings.max_pressure), C.text], ['Set Min Pressure', trimF(settings.min_pressure), C.text]]
+      : [['Set Pressure', trimF(settings.pressure ?? lastUsed?.maxPressure), C.text]]),
     ['Maximum (avg)', num(r.pressure.max), C.text],
     ['95th % (avg)', num(r.pressure.p95), C.heading],
     ['Median (avg)', num(r.pressure.median), C.text],
@@ -297,7 +314,7 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
 
   const leakPanel = chartSection('Leak', [
     ['Set Threshold', `${r.leakThreshold.toFixed(1)} L/min`, C.purple],
-    ['Maximum (avg)', num(r.avgLeak), C.text],
+    ['Maximum (avg)', whole(r.avgLeak), C.text],
   ], barChart({ days, valueKey: 'leak', refMax: 100, refStep: 20, color: C.leak, threshold: r.leakThreshold }));
 
   const ahiPanel = chartSection('AHI (Events/Hour)', [
@@ -434,10 +451,11 @@ ${logoMarkup()}
 
 <section class="therapy">
   <h2>Therapy</h2>
-  ${metricRow('Events per hour', [['AI', num(events.ai)], ['HI', num(events.hi)], ['AHI', num(events.ahi)]])}
+  ${mode.bipap ? '' : metricRow('Pressure-cmH2O', [['Median', num(r.pressure.median)], ['95th percentile', num(r.pressure.p95)], ['Maximum', num(r.pressure.max)]])}
+  ${metricRow('Events per hour', [['AI', num(events.ai, 2)], ['HI', num(events.hi, 2)], ['AHI', num(events.ahi, 2)]])}
   ${mode.bipap ? '' : `
   ${metricRow('Apnea Index - Events/hr', [['Central', num(events.central, 2)], ['Obstructive', num(events.obstructive, 2)], ['Unknown', num(events.unknown, 2)]])}
-  ${metricRow('Average Leak - L/Min', [['', num(r.avgLeak)]])}`}
+  ${metricRow('Average Leak - L/Min', [['', whole(r.avgLeak)]])}`}
 </section>
 
 <section>

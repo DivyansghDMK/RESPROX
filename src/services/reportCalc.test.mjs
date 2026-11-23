@@ -21,6 +21,9 @@ test('helpers follow the app', () => {
   assert.equal(fmtHM(450), '07 Hours, 30 Minutes');
   assert.equal(pct(15, 30), 50);
   assert.equal(pct(3, 13), 23);
+  // Rounded to the nearest, as in the Rajinder Kaur Ghai sample: 31/38 → 82 %, 6/38 → 16 %.
+  assert.equal(pct(31, 38), 82);
+  assert.equal(pct(6, 38), 16);
   assert.equal(percentile([10.8, 14.2, 19.1], 0.95), 14.2);
   assert.ok(Number.isNaN(percentile([], 0.5)));
 });
@@ -35,8 +38,8 @@ test('usage statistics', () => {
   assert.equal(u.under4hDays, 0);
   assert.equal(u.totalMinutes, 1919);
   assert.equal(fmtHM(u.totalMinutes), '31 Hours, 59 Minutes');
-  assert.equal(fmtHM(u.avgTotalDaysMin), '02 Hours, 27 Minutes');
-  assert.equal(fmtHM(u.avgUsedDaysMin), '10 Hours, 39 Minutes');
+  assert.equal(fmtHM(u.avgTotalDaysMin), '02 Hours, 28 Minutes'); // 147.6 min, to the nearest
+  assert.equal(fmtHM(u.avgUsedDaysMin), '10 Hours, 40 Minutes'); // 639.7 min, to the nearest
   assert.equal(fmtHM(u.medianUsedDaysMin), '07 Hours, 50 Minutes');
 });
 
@@ -92,12 +95,17 @@ test('the parser adds each day as the report counts it', () => {
 });
 
 test('the report follows the app layout', () => {
-  const html = buildTherapyReportHTML({ deviceData: { serial: 'CVT1', settings: { pressure: 10.8, aflex: 3, mask_type: 1 } }, sessions: rows, startDate: '2022-03-06', endDate: '2022-03-18' });
-  assert.match(html, /Therapy Report \(06 Mar 2022 - 18 Mar 2022\)/);
-  assert.match(html, /<span>Mode<\/span><span>AUTO<\/span>/);
-  assert.match(html, /<span>Set Pressure<\/span><span>10\.8<\/span>/);
+  const html = buildTherapyReportHTML({ deviceData: { serial: 'CVT1', settings: { min_pressure: 4, max_pressure: 11, aflex: 3, mask_type: 3 } }, sessions: rows, startDate: '2022-03-06', endDate: '2022-03-18' });
+  assert.match(html, /Therapy Report \(06 Mar - 18 Mar\)/);
+  assert.match(html, /<span>Mode<\/span><span>AUTO CPAP<\/span>/);
+  assert.match(html, /<span>Min Pressure<\/span><span>4<\/span>/);
+  assert.match(html, /<span>Max Pressure<\/span><span>11<\/span>/);
+  assert.doesNotMatch(html, /<span>Set Pressure<\/span>/);
   assert.match(html, /<span>A-Flex Level<\/span><span>3<\/span>/);
-  assert.match(html, /<span>Mask Type<\/span><span>Full Face<\/span>/);
+  assert.match(html, /<span>Mask Type<\/span><span>Pillow Mask<\/span>/);
+  assert.match(html, /Pressure-cmH2O/);
+  assert.match(html, /<span>AI:<\/span><b>1\.63<\/b>/);
+  assert.match(html, /Set Max Pressure/);
   assert.match(html, /Usage days<\/span><span>3\/13 Days \(23%\)/);
   assert.doesNotMatch(html, /Compliance|Statistics/);
   const order = ['Pressure (cmH2O)', 'Usage (Hours)', '<h2>Leak', 'AHI (Events/Hour)'].map((t) => html.indexOf(t));
@@ -113,4 +121,24 @@ test('a BiPAP report adds the ventilation page', () => {
   assert.doesNotMatch(html, /Apnea Index/);
   assert.equal((html.match(/<svg class="chart"/g) || []).length, 7);
   assert.ok(html.indexOf('Usage (Hours)') < html.indexOf('Pressure (cmH2O)'));
+});
+
+test('usage figures of the Rajinder Kaur Ghai sample (15 Mar - 21 Apr 2026)', () => {
+  // 37 used days out of 38, 31 of them 4 h or more, 11,961 minutes in all.
+  // 6 short days of 200 min; the other 31 share the rest (347 min each, the remainder on one).
+  const mins = [...Array(31).fill(347), ...Array(6).fill(200)];
+  mins[0] += 11961 - mins.reduce((a, b) => a + b, 0);
+  const start = new Date('2026-03-15T00:00:00');
+  const rows = mins.map((m, i) => {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return day(key, rep(m, 10, 0, 1, 1, [44]));
+  });
+  const u = buildReportData({ rows, startDate: '2026-03-15', endDate: '2026-04-21' }).usage;
+  assert.equal(`${u.usedDays}/${u.totalDays} (${u.usedPct}%)`, '37/38 (97%)');
+  assert.equal(`${u.over4hDays} (${u.over4hPct}%)`, '31 (82%)');
+  assert.equal(`${u.under4hDays} (${u.under4hPct}%)`, '6 (16%)');
+  assert.equal(fmtHM(u.totalMinutes), '199 Hours, 21 Minutes');
+  assert.equal(fmtHM(u.avgTotalDaysMin), '05 Hours, 15 Minutes');
+  assert.equal(fmtHM(u.avgUsedDaysMin), '05 Hours, 23 Minutes');
 });
