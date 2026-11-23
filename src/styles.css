@@ -7095,6 +7095,38 @@ a.icon-text-button { text-decoration: none; }
   }
 }
 
+/* Selected device bar (DeviceBar.jsx) and "Select a device first" (DeviceDataState.jsx) */
+.device-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+  margin: 0 0 18px; padding: 10px 14px; border-radius: 14px;
+  background: var(--panel-strong); border: 1px solid var(--line); box-shadow: 0 6px 20px rgba(28, 50, 87, 0.05);
+}
+.device-bar-id { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.device-bar-label { font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.device-bar-id b { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 15px; color: var(--accent); }
+.device-bar-model { font-size: 12px; color: var(--muted); font-weight: 700; }
+.device-bar-state { display: flex; flex-wrap: wrap; gap: 6px; }
+.device-bar-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: #f1f5f9; color: #475569; }
+.device-bar-chip.online { background: #e6f9f0; color: #0f6e56; }
+.device-bar-chip.phone { background: #e8f1fd; color: #1d5fb8; }
+.device-bar-chip.offline { background: #f1efe8; color: #5f5e5a; }
+.device-bar-chip.bad { background: #fde8e8; color: #b42318; }
+.device-bar-actions { display: flex; gap: 8px; margin-left: auto; }
+.device-bar-actions button {
+  padding: 6px 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel);
+  font-size: 12.5px; font-weight: 700; color: var(--text); cursor: pointer;
+}
+.device-bar-actions button:hover { border-color: #c7d6ee; color: var(--accent); }
+@media (max-width: 640px) { .device-bar-actions { margin-left: 0; width: 100%; } .device-bar-actions button { flex: 1; } }
+
+.select-device-first {
+  max-width: 520px; margin: 48px auto; padding: 32px 28px; text-align: center;
+  background: var(--panel-strong); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow);
+}
+.select-device-icon { width: 56px; height: 56px; margin: 0 auto 14px; border-radius: 16px; display: grid; place-items: center; background: #eef4ff; color: var(--accent); }
+.select-device-first h2 { margin: 0; font-size: 20px; font-weight: 800; color: var(--text); }
+.select-device-first p { margin: 8px 0 20px; font-size: 14px; line-height: 1.6; color: var(--muted); }
+
 /* Large monitors (2560×1440 and up): the whole UI is drawn at laptop scale and
    bunches into the top-left. Scale it up so it fills the screen the same way.
    Media queries read the real window width, so this can't feed back on itself. */

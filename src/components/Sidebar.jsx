@@ -21,7 +21,7 @@ import {
 
 function Sidebar() {
   const { sidebarOpen, setSidebarOpen, adminActiveSerial } = useTherapy();
-  const activeSerial = adminActiveSerial || localStorage.getItem('adminActiveSerial') || '';
+  const activeSerial = adminActiveSerial || '';
   const { logout, loginPath } = useAuth();
   const access = useAccess();
   const navigate = useNavigate();

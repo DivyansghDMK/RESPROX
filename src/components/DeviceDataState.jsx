@@ -1,6 +1,5 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import GlassCard from './GlassCard';
 import { PageSkeleton } from './Skeleton';
 import { useTherapy } from '../context/TherapyContext';
 import ErrorPanel from './ErrorPanel';
@@ -26,14 +25,13 @@ export default function DeviceDataState({ what = 'this page', skeleton: Shape = 
   }
 
   return (
-    <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-      <GlassCard>
-        <h2 style={{ color: 'var(--accent)', fontWeight: 800 }}>No device selected</h2>
-        <p style={{ color: 'var(--muted)', marginTop: 8 }}>Choose a device from the Devices list to see {what}.</p>
-        <button className="icon-text-button" style={{ marginTop: 18 }} onClick={() => navigate('/devices')}>
-          Go to Devices
-        </button>
-      </GlassCard>
+    <div className="select-device-first" role="status">
+      <div className="select-device-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="28" height="28"><rect x="3" y="6" width="18" height="12" rx="3" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M7 10h6M7 14h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><circle cx="17" cy="12" r="1.6" fill="currentColor" /></svg>
+      </div>
+      <h2>Select a device first</h2>
+      <p>{what.charAt(0).toUpperCase() + what.slice(1)} {what.endsWith('s') ? 'are' : 'is'} shown for one device at a time. Pick a device from the Devices list, then come back here.</p>
+      <button className="admin-page-btn primary" onClick={() => navigate('/devices')}>Choose a device</button>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import BottomNavbar from './components/BottomNavbar';
 import RouteFallback from './components/RouteFallback';
 import ErrorBoundary from './components/ErrorBoundary';
 import ErrorPanel from './components/ErrorPanel';
+import DeviceBar from './components/DeviceBar';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ConnectionBanner from './components/ConnectionBanner';
 import { NotifyProvider } from './context/NotifyContext';
@@ -42,6 +43,10 @@ import {
 // Authentication is always required; there is no demo/bypass mode.
 const SKIP_LOGIN = false;
 
+// Pages that show one device: they carry the device bar, and ask for a device
+// when none is selected.
+const DEVICE_PAGES = new Set(['/reports', '/trends', '/mask-fit', '/settings', '/calibration', '/device-info']);
+
 function AppContent() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -61,7 +66,7 @@ function AppContent() {
   }, [logout, navigate, teamSignIn, loginPath]);
 
   const { adminActiveSerial } = useTherapy();
-  const activeSerial = adminActiveSerial || localStorage.getItem('adminActiveSerial') || '';
+  const activeSerial = adminActiveSerial || '';
   const isAuthPage = !SKIP_LOGIN && (location.pathname === '/login' || location.pathname === '/forgot-password' || location.pathname === '/'
   || location.pathname === '/doctor/login' || location.pathname === '/doctor/signup');
 
@@ -180,6 +185,7 @@ function AppContent() {
 
         {/* The shell above renders immediately; only the route body suspends.
             A page that throws is caught here, so the shell stays usable. */}
+        {DEVICE_PAGES.has(location.pathname) && <DeviceBar />}
         {accountError && (
           <ErrorPanel
             error={accountError}

@@ -19,6 +19,26 @@ const FULL_REFRESH_MS = 60_000;
 const SYNC_CHECK_EVERY = 3;
 const MAX_DEVICE_EVENTS = 20;
 
+const SELECTED_KEY = 'resproxSelectedSerial';
+
+/** The device chosen in this tab, or null. */
+export function readSelectedSerial() {
+  try {
+    // The old permanent key made every new session open on a stale device.
+    localStorage.removeItem('adminActiveSerial');
+    return sessionStorage.getItem(SELECTED_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSelectedSerial(serial) {
+  try {
+    if (serial) sessionStorage.setItem(SELECTED_KEY, serial);
+    else sessionStorage.removeItem(SELECTED_KEY);
+  } catch { /* storage blocked: the choice lasts until reload */ }
+}
+
 export function TherapyProvider({ children }) {
   const notify = useNotify();
   const { isAuthenticated } = useAuth();
@@ -36,7 +56,9 @@ export function TherapyProvider({ children }) {
   const [toastMessage, setToastMessage] = useState('');
 
   // Admin selected device states
-  const [adminActiveSerial, setAdminActiveSerial] = useState(localStorage.getItem('adminActiveSerial') || null);
+  // The selected device lasts for this tab only (survives a reload). A new tab
+  // or a new sign-in starts on Devices with nothing selected.
+  const [adminActiveSerial, setAdminActiveSerial] = useState(() => readSelectedSerial());
   const [deviceData, setDeviceData] = useState(null);
   // Why the last device load failed, so pages can show it instead of loading forever.
   const [deviceLoadError, setDeviceLoadError] = useState(null);
@@ -138,7 +160,7 @@ export function TherapyProvider({ children }) {
 
   useEffect(() => {
     if (!adminActiveSerial) {
-      localStorage.removeItem('adminActiveSerial');
+      writeSelectedSerial(null);
       latestSerial.current = null;
       return;
     }
@@ -147,7 +169,7 @@ export function TherapyProvider({ children }) {
     // is mounted above the router — so without this guard a signed-out visitor
     // on /login pulled the previous session's device, and any failure surfaced
     // as an error card on the login screen.
-    localStorage.setItem('adminActiveSerial', adminActiveSerial);
+    writeSelectedSerial(adminActiveSerial);
     if (!isAuthenticated) return;
     fetchDeviceData(adminActiveSerial);
   }, [adminActiveSerial, fetchDeviceData, isAuthenticated]);
@@ -157,6 +179,7 @@ export function TherapyProvider({ children }) {
   // kept on purpose; AccessContext clears it if the new account can't see it.)
   useEffect(() => {
     if (isAuthenticated) return;
+    setAdminActiveSerial(null);
     setDeviceData(null);
     setDeviceEvents([]);
     setDeviceLoadError(null);
