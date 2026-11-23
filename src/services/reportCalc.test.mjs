@@ -196,3 +196,18 @@ test('values the data cannot give read N/A on the report', () => {
   assert.match(html, /<td class="ml">Unknown:<\/td><td class="mv">N\/A<\/td>/);
   assert.match(html, /Median \(avg\)<\/span>\s*<span class="stat-value"[^>]*>N\/A</);
 });
+
+test('session median and 95th from the pressure change count, as the PHP report', async () => {
+  const { sessionPressure } = await import('./reportFileParser.js');
+  // AUTO 4–20, count 60: reached 10; steps 10..4 (7 of them) → median 7; 95th 9.5.
+  assert.deepEqual(sessionPressure('auto', { minPressure: 4, maxPressure: 20, pressureChangeCount: 60 }), { reached: 10, median: 7, p95: 9.5 });
+  // Even number of steps: 4..9 → (7 + 6) / 2.
+  assert.equal(sessionPressure('auto', { minPressure: 4, maxPressure: 20, pressureChangeCount: 50 }).median, 6.5);
+  // Capped at the set max.
+  assert.equal(sessionPressure('auto', { minPressure: 4, maxPressure: 12, pressureChangeCount: 200 }).reached, 12);
+  // CPAP: fixed pressure, all three the set pressure.
+  assert.deepEqual(sessionPressure('cpap', { minPressure: 0, maxPressure: 8, pressureChangeCount: 0 }), { reached: 8, median: 8, p95: 8 });
+  // BiPAP, or AUTO without a count: not worked out.
+  assert.equal(sessionPressure('bipap', { minPressure: 0, maxPressure: 0, pressureChangeCount: 5 }).median, null);
+  assert.equal(sessionPressure('auto', { minPressure: 4, maxPressure: 20, pressureChangeCount: NaN }).median, null);
+});

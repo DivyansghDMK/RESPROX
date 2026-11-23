@@ -159,10 +159,10 @@ export function buildReportData({ rows = [], startDate, endDate } = {}) {
   const meanOf = (pick) => (pressureDays.length
     ? pressureDays.reduce((a, d) => a + pick([...d.pressures].sort((x, y) => x - y)), 0) / pressureDays.length
     : NaN);
-  // A session record carries one pressure, so a real median or 95th
-  // percentile of the night's pressure can't be worked out from it. They are
-  // NaN (shown "N/A") until sessions carry medianPressure / p95Pressure,
-  // which the firmware has been asked for; then each is averaged over days.
+  // Median and 95th: each day's (the average of its sessions', worked out
+  // from the pressure change count, see sessionPressure in the file parser),
+  // averaged over days. NaN (shown "N/A") when no session gives them: BiPAP,
+  // or rows without the count.
   const meanField = (key) => {
     const vals = days.map((d) => Number(d[key])).filter((v) => Number.isFinite(v) && v > 0);
     return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : NaN;
