@@ -52,6 +52,8 @@ export function dayValues(row) {
       pressures: r.pressures || (r.maxPressure > 0 ? [r.maxPressure] : []),
       setMax: r.setMax,
       setMin: r.setMin,
+      medianPressure: r.medianPressure,
+      p95Pressure: r.p95Pressure,
       csa: r.csa, osa: r.osa, hsa: r.hsa, hasSplit: true,
       events: r.csa + r.osa + r.hsa,
       leak: r.leak,
@@ -157,10 +159,18 @@ export function buildReportData({ rows = [], startDate, endDate } = {}) {
   const meanOf = (pick) => (pressureDays.length
     ? pressureDays.reduce((a, d) => a + pick([...d.pressures].sort((x, y) => x - y)), 0) / pressureDays.length
     : NaN);
+  // A session record carries one pressure, so a real median or 95th
+  // percentile of the night's pressure can't be worked out from it. They are
+  // NaN (shown "N/A") until sessions carry medianPressure / p95Pressure,
+  // which the firmware has been asked for; then each is averaged over days.
+  const meanField = (key) => {
+    const vals = days.map((d) => Number(d[key])).filter((v) => Number.isFinite(v) && v > 0);
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : NaN;
+  };
   const pressure = {
     max: meanOf((s) => s[s.length - 1]),
-    p95: meanOf((s) => percentile(s, 0.95)),
-    median: meanOf((s) => percentile(s, 0.5)),
+    p95: meanField('p95Pressure'),
+    median: meanField('medianPressure'),
   };
   // The settings in force during the range: the last session that recorded them.
   const lastSet = [...days].reverse().find((d) => Number(d.setMax) > 0) || null;
@@ -189,7 +199,8 @@ export function buildReportData({ rows = [], startDate, endDate } = {}) {
       ahi: split ? ai + hi : per(sum('events')),
       central,
       obstructive,
-      unknown: 0,
+      // The device doesn't count unknown apneas: not available, not zero.
+      unknown: NaN,
     },
     avgLeak: leaks.length ? leaks.reduce((a, b) => a + b, 0) / leaks.length : NaN,
     leakThreshold: LEAK_THRESHOLD,

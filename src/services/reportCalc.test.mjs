@@ -51,15 +51,16 @@ test('event indices are events over total hours, AHI = AI + HI', () => {
   assert.equal(e.hi.toFixed(3), (33 / hours).toFixed(3));
   assert.equal(e.ai, e.central + e.obstructive);
   assert.equal(e.ahi, e.ai + e.hi);
-  assert.equal(e.unknown, 0);
+  assert.ok(Number.isNaN(e.unknown)); // not counted by the device: N/A, not 0
 });
 
 test('pressure percentiles, leak average and empty days', () => {
   // One session a day: each day's max, 95th and median are that session's
   // pressure, averaged over the 3 days: (19.1 + 14.2 + 10.8) / 3.
   assert.equal(data.pressure.max.toFixed(2), '14.70');
-  assert.equal(data.pressure.p95.toFixed(2), '14.70');
-  assert.equal(data.pressure.median.toFixed(2), '14.70');
+  // One pressure per session: no real median or 95th yet.
+  assert.ok(Number.isNaN(data.pressure.p95));
+  assert.ok(Number.isNaN(data.pressure.median));
   assert.equal(data.avgLeak.toFixed(1), '9.7');
   const empty = data.days.find((d) => d.key === '2022-03-07');
   assert.equal(empty.hours, 0);
@@ -158,8 +159,8 @@ test('pressure (avg): per-day max, 95th and median of its sessions, averaged ove
     ],
   });
   assert.equal(d.pressure.max, 9);      // (12 + 6) / 2
-  assert.equal(d.pressure.median, 8);   // (10 + 6) / 2
-  assert.equal(d.pressure.p95, 8);      // nearest rank of [8,10,12] is 10; (10 + 6) / 2
+  assert.ok(Number.isNaN(d.pressure.median));
+  assert.ok(Number.isNaN(d.pressure.p95));
   // Settings come from the range's last session, not today's device settings.
   assert.deepEqual(d.set, { max: 12, min: 5 });
 });
@@ -170,4 +171,23 @@ test('the report shows the settings recorded in the range', () => {
   assert.match(html, /<span>Min Pressure<\/span><span>4<\/span>/);
   assert.match(html, /<span>Max Pressure<\/span><span>11<\/span>/);
   assert.match(html, /Set Max Pressure<\/span>\s*<span class="stat-value"[^>]*>11</);
+});
+
+test('once sessions carry median and 95th pressure, they are averaged over days', () => {
+  const d = buildReportData({
+    rows: [
+      day('2026-04-01', rep(400, 12, 0, 1, 1, [30], { medianPressure: 7, p95Pressure: 10 })),
+      day('2026-04-02', rep(300, 11, 0, 1, 1, [30], { medianPressure: 6.8, p95Pressure: 8.8 })),
+    ],
+  });
+  assert.equal(d.pressure.median.toFixed(1), '6.9');
+  assert.equal(d.pressure.p95.toFixed(1), '9.4');
+});
+
+test('values the data cannot give read N/A on the report', () => {
+  const html = buildTherapyReportHTML({ deviceData: { serial: 'CVT1', settings: { min_pressure: 4, max_pressure: 11 } }, sessions: rows, startDate: '2022-03-06', endDate: '2022-03-18' });
+  assert.match(html, /<td class="ml">Median:<\/td><td class="mv">N\/A<\/td>/);
+  assert.match(html, /<td class="ml">95th percentile:<\/td><td class="mv">N\/A<\/td>/);
+  assert.match(html, /<td class="ml">Unknown:<\/td><td class="mv">N\/A<\/td>/);
+  assert.match(html, /Median \(avg\)<\/span>\s*<span class="stat-value"[^>]*>N\/A</);
 });

@@ -51,6 +51,11 @@ function num(value, digits = 1) {
   return Number.isFinite(value) ? value.toFixed(digits) : '—';
 }
 
+/** For values the device's data can't give (pressure median/95th, unknown apnea): "N/A", not "—" or a guess. */
+function na(value, digits = 1) {
+  return Number.isFinite(value) ? value.toFixed(digits) : 'N/A';
+}
+
 /** Leak is read in whole L/min, so its average is shown that way too: 43.7 → "44". */
 function whole(value) {
   return Number.isFinite(value) ? String(Math.round(value)) : '—';
@@ -317,8 +322,8 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
       ? [['Set Max Pressure', trimF(setMax), C.text], ['Set Min Pressure', trimF(setMin), C.text]]
       : [['Set Pressure', trimF(setFixed), C.text]]),
     ['Maximum (avg)', num(r.pressure.max), C.text],
-    ['95th % (avg)', num(r.pressure.p95), C.heading],
-    ['Median (avg)', num(r.pressure.median), C.text],
+    ['95th % (avg)', na(r.pressure.p95), C.heading],
+    ['Median (avg)', na(r.pressure.median), C.text],
   ], barChart({
     days, valueKey: 'maxPressure', refMax: mode.bipap ? 36 : 24, refStep: 4,
     color: mode.bipap ? C.pressureBipap : C.pressure,
@@ -463,10 +468,10 @@ ${logoMarkup()}
 <section class="therapy">
   <h2>Therapy</h2>
   <table class="metrics"><tbody>
-  ${mode.bipap ? '' : metricRow('Pressure-cmH2O', [['Median', num(r.pressure.median)], ['95th percentile', num(r.pressure.p95)], ['Maximum', num(r.pressure.max)]])}
+  ${mode.bipap ? '' : metricRow('Pressure-cmH2O', [['Median', na(r.pressure.median)], ['95th percentile', na(r.pressure.p95)], ['Maximum', num(r.pressure.max)]])}
   ${metricRow('Events per hour', [['AI', num(events.ai, 2)], ['HI', num(events.hi, 2)], ['AHI', num(events.ahi, 2)]])}
   ${mode.bipap ? '' : `
-  ${metricRow('Apnea Index - L/Min', [['Central', num(events.central, 2)], ['Obstructive', num(events.obstructive, 2)], ['Unknown', num(events.unknown, 2)]])}
+  ${metricRow('Apnea Index - L/Min', [['Central', num(events.central, 2)], ['Obstructive', num(events.obstructive, 2)], ['Unknown', na(events.unknown, 2)]])}
   ${metricRow('Average Leak - L/Min', [['', whole(r.avgLeak)]])}`}
   </tbody></table>
 </section>
