@@ -126,8 +126,8 @@ const MODE_LABELS = { bipap: 'BiPAP (ST MODE)', auto: 'AUTO CPAP', cpap: 'CPAP' 
 
 /**
  * A session's pressure figures. The record carries no pressure trace, so they
- * are worked out the way DeckMount's earlier report (downloadreportaspdf.php)
- * did, from the pressure change count (field 13):
+ * are worked out the way DeckMount's earlier therapy report did, from the
+ * pressure change count (field 13):
  *   AUTO   reached = min + count / 10, capped at the set max;
  *          median  = the middle of the 1 cmH₂O steps from min up to reached;
  *          95th    = reached × 0.95.
@@ -142,7 +142,7 @@ export function sessionPressure(mode, { minPressure, maxPressure, pressureChange
   }
   if (mode !== 'auto' || !Number.isFinite(pressureChangeCount) || !(minPressure > 0)) return none;
   const reached = Math.min(minPressure + pressureChangeCount / 10, maxPressure);
-  // PHP's range(min, round(reached)), sorted high to low.
+  // Every 1 cmH₂O step from min up to the rounded reached pressure, high to low.
   const top = Math.round(reached);
   const steps = [];
   for (let v = minPressure; v <= top + 1e-9; v += 1) steps.push(Math.round(v * 10) / 10);
@@ -410,7 +410,7 @@ function reportDay(all) {
     usageMinutes: all.reduce((sum, r) => sum + r.durationMinutes, 0),
     maxPressure: Math.max(0, ...all.map(ran)),
     pressures: all.map(ran).filter((v) => v > 0),
-    // The day's median and 95th: the average of its sessions' (as the PHP report).
+    // The day's median and 95th: the average of its sessions' (as DeckMount's earlier report).
     medianPressure: mean('medianPressure'),
     p95Pressure: mean('p95Pressure'),
     // What the device was set to in the day's last session (BiPAP: IPAP / EPAP).

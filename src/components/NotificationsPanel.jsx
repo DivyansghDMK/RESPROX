@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { CloseIcon } from './Icons';
 
 const SEVERITY = {
-  critical: { label: 'Critical', color: '#b91c1c', bg: '#fee2e2' },
-  warning: { label: 'Warning', color: '#b45309', bg: '#fef3c7' },
-  info: { label: 'Info', color: '#1d4ed8', bg: '#dbeafe' },
-  success: { label: 'All clear', color: '#15803d', bg: '#dcfce7' },
+  critical: { label: 'Critical', color: 'var(--fg-b91c1c)', bg: 'var(--bg-fee2e2)' },
+  warning: { label: 'Warning', color: 'var(--fg-b45309)', bg: 'var(--bg-fef3c7)' },
+  info: { label: 'Info', color: 'var(--fg-1d4ed8)', bg: 'var(--bg-dbeafe)' },
+  success: { label: 'All clear', color: 'var(--fg-15803d)', bg: 'var(--bg-dcfce7)' },
 };
 
 export default function NotificationsPanel({ notifications, onClose, onDismiss, onClearAll }) {

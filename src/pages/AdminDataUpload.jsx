@@ -36,13 +36,13 @@ function hm(hours) {
 function StatTile({ label, value, sub, tone = 'default' }) {
   const tones = {
     default: { color: 'var(--text)' },
-    good: { color: '#0f6e56' },
-    warn: { color: '#854f0b' },
-    bad: { color: '#a32d2d' },
+    good: { color: 'var(--fg-0f6e56)' },
+    warn: { color: 'var(--fg-854f0b)' },
+    bad: { color: 'var(--fg-a32d2d)' },
   };
   return (
     <div style={{
-      background: 'rgba(255,255,255,0.6)', border: '1px solid var(--line)',
+      background: 'var(--bg-rgba25525525506)', border: '1px solid var(--line)',
       borderRadius: 12, padding: '14px 16px', minWidth: 0,
     }}>
       <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--muted)' }}>
@@ -56,10 +56,10 @@ function StatTile({ label, value, sub, tone = 'default' }) {
 
 function Notice({ tone = 'info', title, children }) {
   const palette = {
-    info: { bg: '#eff6ff', border: '#bfdbfe', color: '#1e40af' },
-    warn: { bg: '#fffbeb', border: '#fde68a', color: '#854d0e' },
-    error: { bg: '#fef2f2', border: '#fecaca', color: '#b91c1c' },
-    good: { bg: '#f0fdf4', border: '#bbf7d0', color: '#166534' },
+    info: { bg: 'var(--bg-eff6ff)', border: 'var(--bd-bfdbfe)', color: 'var(--fg-1e40af)' },
+    warn: { bg: 'var(--bg-fffbeb)', border: 'var(--bd-fde68a)', color: 'var(--fg-854d0e)' },
+    error: { bg: 'var(--bg-fef2f2)', border: 'var(--bd-fecaca)', color: 'var(--fg-b91c1c)' },
+    good: { bg: 'var(--bg-f0fdf4)', border: 'var(--bd-bbf7d0)', color: 'var(--fg-166534)' },
   }[tone];
   return (
     <div style={{
@@ -90,7 +90,7 @@ function DropZone({ accept, busy, title, hint, icon, label, onFile }) {
       aria-label={label}
       style={{
         border: `2px dashed ${dragging ? 'var(--accent)' : 'var(--line)'}`,
-        background: dragging ? '#eff6ff' : 'rgba(255,255,255,0.45)',
+        background: dragging ? 'var(--bg-eff6ff)' : 'var(--bg-rgba255255255045)',
         borderRadius: 14, padding: '30px 20px', textAlign: 'center',
         cursor: 'pointer', transition: 'all .15s ease',
       }}
@@ -275,9 +275,9 @@ export default function AdminDataUpload() {
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       gap: 12, marginTop: 14, padding: '10px 14px', flexWrap: 'wrap',
-      background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10,
+      background: 'var(--bg-f0fdf4)', border: '1px solid var(--bd-bbf7d0)', borderRadius: 10,
     }}>
-      <span style={{ color: '#166534', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ color: 'var(--fg-166534)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
         <CheckIcon />
         <strong>{fileName}</strong>
         <span style={{ opacity: 0.75 }}>
@@ -561,7 +561,7 @@ export default function AdminDataUpload() {
                       <td>
                         {d.sessionCount}
                         {d.suspectSessions > 0 && (
-                          <span title="Excluded: impossible duration" style={{ color: '#a32d2d', marginLeft: 6, fontSize: 12 }}>
+                          <span title="Excluded: impossible duration" style={{ color: 'var(--fg-a32d2d)', marginLeft: 6, fontSize: 12 }}>
                             −{d.suspectSessions}
                           </span>
                         )}

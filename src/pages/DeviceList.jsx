@@ -55,9 +55,9 @@ const LIST_REFRESH_MS = 5_000;
 const rowSignature = (d) => [d.status, d.therapy_status, d.compliance_pct, d.ahi, d.usage_hours, d.firmware].join('|');
 
 const STATUS_COLOR = {
-  online:  { bg: '#e6f9f0', text: '#0f6e56', dot: '#1d9e75' },
-  offline: { bg: '#f1efe8', text: '#5f5e5a', dot: '#888780' },
-  phone:   { bg: '#e8f1fd', text: '#1d5fb8', dot: '#3b82f6' },
+  online:  { bg: 'var(--bg-e6f9f0)', text: '#0f6e56', dot: '#1d9e75' },
+  offline: { bg: 'var(--abg-f1efe8)', text: '#5f5e5a', dot: '#888780' },
+  phone:   { bg: 'var(--abg-e8f1fd)', text: '#1d5fb8', dot: '#3b82f6' },
 };
 const STATUS_LABEL = { online: 'online', offline: 'offline', phone: 'connected to app' };
 const statusLabel = (s) => STATUS_LABEL[s] || s;
@@ -297,8 +297,8 @@ export default function DeviceList() {
         boxShadow: '0 2px 12px rgba(13,125,230,0.06)'
       }}>
         <div>
-          <div style={{ fontSize: 13, color: '#6366f1', fontWeight: 700, letterSpacing: '0.5px', marginBottom: 4 }}>ADMIN PORTAL · Resprox</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: '#163257', lineHeight: 1.2 }}>
+          <div style={{ fontSize: 13, color: 'var(--fg-6366f1)', fontWeight: 700, letterSpacing: '0.5px', marginBottom: 4 }}>ADMIN PORTAL · Resprox</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--fg-163257)', lineHeight: 1.2 }}>
             Device Management
           </div>
           <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>
@@ -306,12 +306,12 @@ export default function DeviceList() {
           </div>
         </div>
         <div style={{ textAlign: 'right', fontSize: 12, color: 'var(--muted)' }}>
-          <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#94a3b8', marginBottom: 2 }}>Last pulled from server</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: lastServerPull ? 'var(--accent)' : '#94a3b8' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--fg-94a3b8)', marginBottom: 2 }}>Last pulled from server</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: lastServerPull ? 'var(--accent)' : 'var(--fg-94a3b8)' }}>
             {formatLastPulled(lastServerPull)}
           </div>
           {lastServerPull && (
-            <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 1 }}>
+            <div style={{ fontSize: 10, color: 'var(--fg-94a3b8)', marginTop: 1 }}>
               {lastServerPull.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </div>
           )}
@@ -323,8 +323,8 @@ export default function DeviceList() {
         {[
           { label: 'Total Devices', value: totalCount, icon: <DevicesIcon style={{ color: 'var(--accent)', width: 28, height: 28 }} /> },
           { label: 'Devices Online', value: onlineCount, icon: <BoltIcon style={{ color: '#10b981', width: 28, height: 28 }} /> },
-          { label: 'Elevated AHI (>5.0)', value: criticalCount, icon: <WarningIcon style={{ color: '#e24b4a', width: 28, height: 28 }} />, danger: criticalCount > 0 },
-          { label: 'Avg Compliance', value: fmt(complianceAvg, '%'), icon: <CheckCircleIcon style={{ color: '#1d9e75', width: 28, height: 28 }} /> }
+          { label: 'Elevated AHI (>5.0)', value: criticalCount, icon: <WarningIcon style={{ color: 'var(--afg-e24b4a)', width: 28, height: 28 }} />, danger: criticalCount > 0 },
+          { label: 'Avg Compliance', value: fmt(complianceAvg, '%'), icon: <CheckCircleIcon style={{ color: 'var(--afg-1d9e75)', width: 28, height: 28 }} /> }
         ].map(s => (
           <div key={s.label} className={`admin-stat-card ${s.danger ? 'danger' : ''}`}>
             <span className="admin-stat-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{s.icon}</span>
@@ -356,7 +356,7 @@ export default function DeviceList() {
                 flex: 1,
                 padding: '10px 14px',
                 borderRadius: '10px',
-                border: '1px solid #cbd5e1',
+                border: '1px solid var(--bd-cbd5e1)',
                 fontSize: 14,
                 fontFamily: 'monospace',
                 letterSpacing: '0.5px'
@@ -485,8 +485,8 @@ export default function DeviceList() {
                       </td>
                       <td>
                         <span className="admin-badge" style={{
-                          background: !hasValue(d.ahi) ? '#f1f5f9' : d.ahi <= 5.0 ? '#e6f9f0' : '#faece7',
-                          color: !hasValue(d.ahi) ? '#64748b' : d.ahi <= 5.0 ? '#0f6e56' : '#993c1d'
+                          background: !hasValue(d.ahi) ? 'var(--bg-f1f5f9)' : d.ahi <= 5.0 ? 'var(--bg-e6f9f0)' : 'var(--abg-faece7)',
+                          color: !hasValue(d.ahi) ? 'var(--fg-64748b)' : d.ahi <= 5.0 ? 'var(--fg-0f6e56)' : 'var(--afg-993c1d)'
                         }}>
                           {fmt(d.ahi)}
                         </span>
@@ -556,7 +556,7 @@ export default function DeviceList() {
                   <div className="mobile-device-card-metrics">
                     <div className="mobile-device-metric-pill">
                       <div className="mobile-device-metric-label">AHI</div>
-                      <div className="mobile-device-metric-value" style={{ color: !hasValue(d.ahi) ? undefined : d.ahi <= 5.0 ? '#1d9e75' : '#e24b4a' }}>
+                      <div className="mobile-device-metric-value" style={{ color: !hasValue(d.ahi) ? undefined : d.ahi <= 5.0 ? 'var(--afg-1d9e75)' : 'var(--afg-e24b4a)' }}>
                         {fmt(d.ahi)}
                       </div>
                     </div>

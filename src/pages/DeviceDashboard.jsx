@@ -99,14 +99,14 @@ const MiniBarChart = React.memo(function MiniBarChart({ sessions = [], valueKey,
         return (
           <div key={i} title={`${s.date || '—'}: ${known ? val : 'no data'}`}
             style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-            <span className="bar-chart-val" style={{ fontSize: 9, color: '#64748b', fontWeight: 700 }}>{known ? val : '—'}</span>
+            <span className="bar-chart-val" style={{ fontSize: 9, color: 'var(--fg-64748b)', fontWeight: 700 }}>{known ? val : '—'}</span>
             <div style={{
               width: '100%', height: `${Math.max(pct * 0.44, 6)}px`,
               background: `linear-gradient(180deg, ${clr}dd, ${clr})`,
               borderRadius: '4px 4px 2px 2px', minHeight: 6,
               boxShadow: `0 2px 8px ${clr}44`, transition: 'height 0.5s ease'
             }}/>
-            <span className="bar-chart-date" style={{ fontSize: 9, color: '#94a3b8' }}>{s.date}</span>
+            <span className="bar-chart-date" style={{ fontSize: 9, color: 'var(--fg-94a3b8)' }}>{s.date}</span>
           </div>
         );
       })}
@@ -125,7 +125,7 @@ const StyledSlider = React.memo(function StyledSlider({ value, min, max, step, o
         style={{ '--progress': `${pct}%`, width: '100%' }}
         aria-label={label}
       />
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#94a3b8', marginTop: 1 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--fg-94a3b8)', marginTop: 1 }}>
         <span>{min}</span>
         <span>Range: {min}–{max} cmH₂O</span>
         <span>{max}</span>
@@ -659,7 +659,7 @@ function DeviceDashboardView() {
               <ArrowLeft /> Back
             </button>
             <div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#6366f1', letterSpacing: '0.8px', textTransform: 'uppercase', marginBottom: 1 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--fg-6366f1)', letterSpacing: '0.8px', textTransform: 'uppercase', marginBottom: 1 }}>
                 Admin Device Panel
               </div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
@@ -671,8 +671,8 @@ function DeviceDashboardView() {
                 )}
               </div>
               <div style={{ display: 'flex', gap: 5, marginTop: 3 }}>
-                {device.device_type && <span style={{ fontSize: 10, background: '#e8f4fd', color: 'var(--accent)', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>{device.device_type}</span>}
-                <span style={{ fontSize: 10, background: '#f0f4ff', color: '#6366f1', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>FW: {device.firmware}</span>
+                {device.device_type && <span style={{ fontSize: 10, background: 'var(--bg-e8f4fd)', color: 'var(--accent)', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>{device.device_type}</span>}
+                <span style={{ fontSize: 10, background: 'var(--bg-f0f4ff)', color: 'var(--fg-6366f1)', padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>FW: {device.firmware}</span>
               </div>
             </div>
           </div>
@@ -696,14 +696,14 @@ function DeviceDashboardView() {
               <RefreshIcon fontSize="small" style={{ animation: refreshing ? 'spin 0.8s linear infinite' : 'none' }}/>
               Refresh
             </button>
-            <LiveValue as="span" scope={serial} watch={therapyStatus || ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '7px 12px', borderRadius: 20, background: isTherapyRunning ? '#e0f2fe' : '#f1f5f9', color: isTherapyRunning ? '#0369a1' : '#64748b', fontSize: 12, fontWeight: 800 }}>
+            <LiveValue as="span" scope={serial} watch={therapyStatus || ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '7px 12px', borderRadius: 20, background: isTherapyRunning ? 'var(--bg-e0f2fe)' : 'var(--bg-f1f5f9)', color: isTherapyRunning ? 'var(--fg-0369a1)' : 'var(--fg-64748b)', fontSize: 12, fontWeight: 800 }}>
               {therapyLabel(therapyStatus) || 'Therapy status unknown'}
               {isTherapyRunning && <LiveBars className="small" />}
             </LiveValue>
             <LiveValue as="span" scope={serial} watch={isOnline ? 'online' : withPhone ? 'phone' : 'offline'} title={withPhone ? 'The phone app is connected over Bluetooth, so the device has left Wi-Fi.' : undefined} style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
-              background: isOnline ? '#dcfce7' : withPhone ? '#dbeafe' : '#f1f5f9',
-              color: isOnline ? '#15803d' : withPhone ? '#1d4ed8' : '#64748b',
+              background: isOnline ? 'var(--bg-dcfce7)' : withPhone ? 'var(--bg-dbeafe)' : 'var(--bg-f1f5f9)',
+              color: isOnline ? 'var(--fg-15803d)' : withPhone ? 'var(--fg-1d4ed8)' : 'var(--fg-64748b)',
               padding: '7px 13px', borderRadius: 20, fontWeight: 700, fontSize: 12,
               border: `1px solid ${isOnline ? '#86efac' : withPhone ? '#93c5fd' : '#e2e8f0'}`,
             }}>
@@ -731,17 +731,17 @@ function DeviceDashboardView() {
         )}
 
         {!loading && device && !isOnline && therapyStatus !== 'RUNNING' && offlineNoticeClosedFor !== serial && createPortal((
-          <div role="presentation" onClick={() => setOfflineNoticeClosedFor(serial)} style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'grid', placeItems: 'center', padding: 20, background: 'rgba(15, 23, 42, 0.48)' }}>
-            <div role="dialog" aria-modal="true" aria-labelledby="offline-therapy-title" onClick={(event) => event.stopPropagation()} style={{ width: 'min(460px, 100%)', padding: 28, borderRadius: 18, background: '#fff', boxShadow: '0 24px 70px rgba(15,23,42,0.28)' }}>
-              <div style={{ width: 52, height: 52, display: 'grid', placeItems: 'center', borderRadius: 16, background: '#fff7ed', color: '#c2410c', fontSize: 27, marginBottom: 14 }}>!</div>
-              <h2 id="offline-therapy-title" style={{ margin: 0, color: '#163257', fontSize: 21, fontWeight: 900 }}>{withPhone ? 'Device is connected to the phone app' : 'Device is offline'}</h2>
-              <p style={{ margin: '10px 0 22px', color: '#64748b', fontSize: 14, lineHeight: 1.55 }}>
+          <div role="presentation" onClick={() => setOfflineNoticeClosedFor(serial)} style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'grid', placeItems: 'center', padding: 20, background: 'var(--abg-rgba1523420p48)' }}>
+            <div role="dialog" aria-modal="true" aria-labelledby="offline-therapy-title" onClick={(event) => event.stopPropagation()} style={{ width: 'min(460px, 100%)', padding: 28, borderRadius: 18, background: 'var(--bg-fff)', boxShadow: '0 24px 70px rgba(15,23,42,0.28)' }}>
+              <div style={{ width: 52, height: 52, display: 'grid', placeItems: 'center', borderRadius: 16, background: 'var(--bg-fff7ed)', color: 'var(--fg-c2410c)', fontSize: 27, marginBottom: 14 }}>!</div>
+              <h2 id="offline-therapy-title" style={{ margin: 0, color: 'var(--fg-163257)', fontSize: 21, fontWeight: 900 }}>{withPhone ? 'Device is connected to the phone app' : 'Device is offline'}</h2>
+              <p style={{ margin: '10px 0 22px', color: 'var(--fg-64748b)', fontSize: 14, lineHeight: 1.55 }}>
                 {withPhone
                   ? 'The phone app is connected to this device over Bluetooth, so the device has left Wi-Fi. Therapy and settings commands from the website cannot reach it until the app disconnects; the device then rejoins Wi-Fi by itself.'
                   : 'This device is not connected to the server, so therapy and settings commands cannot reach it. They become available again when the device reconnects.'}
               </p>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                <button type="button" onClick={() => setOfflineNoticeClosedFor(serial)} style={{ padding: '10px 18px', borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 800, cursor: 'pointer' }}>Close</button>
+                <button type="button" onClick={() => setOfflineNoticeClosedFor(serial)} style={{ padding: '10px 18px', borderRadius: 10, border: '1px solid var(--bd-cbd5e1)', background: 'var(--bg-fff)', color: 'var(--fg-475569)', fontWeight: 800, cursor: 'pointer' }}>Close</button>
                 <button type="button" onClick={() => { setOfflineNoticeClosedFor(serial); handleRefresh(); }} style={{ padding: '10px 18px', borderRadius: 10, border: 0, background: '#2563eb', color: '#fff', fontWeight: 900, cursor: 'pointer' }}>Refresh device</button>
               </div>
             </div>
@@ -758,8 +758,8 @@ function DeviceDashboardView() {
             <div style={cardEyebrow}>Usage</div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
               <div>
-                <div style={{ fontSize: 30, fontWeight: 900, color: '#163257', lineHeight: 1 }}>{ld.usage_hours == null ? '—' : `${hoursInt}h ${minsInt}m`}</div>
-                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, fontWeight: 600 }}>Last night usage</div>
+                <div style={{ fontSize: 30, fontWeight: 900, color: 'var(--fg-163257)', lineHeight: 1 }}>{ld.usage_hours == null ? '—' : `${hoursInt}h ${minsInt}m`}</div>
+                <div style={{ fontSize: 11, color: 'var(--fg-94a3b8)', marginTop: 6, fontWeight: 600 }}>Last night usage</div>
                 <div style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 700, marginTop: 2 }}>{ld.usage_hours == null ? 'Not reported' : `${usagePct}% of goal`}</div>
               </div>
               {ld.usage_hours != null && <RingProgress pct={usagePct} size={68} stroke={6} color="var(--accent)"/>}
@@ -770,26 +770,26 @@ function DeviceDashboardView() {
           <LiveValue style={card} scope={serial} watch={`${ld.ahi}`}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={cardEyebrow}>AHI</div>
-              <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: ld.ahi == null ? '#f1f5f9' : ld.ahi <= 5 ? '#dcfce7' : '#fef3c7', color: ld.ahi == null ? '#64748b' : ld.ahi <= 5 ? '#15803d' : '#92400e' }}>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: ld.ahi == null ? 'var(--bg-f1f5f9)' : ld.ahi <= 5 ? 'var(--bg-dcfce7)' : 'var(--bg-fef3c7)', color: ld.ahi == null ? 'var(--fg-64748b)' : ld.ahi <= 5 ? 'var(--fg-15803d)' : 'var(--fg-92400e)' }}>
                 {ld.ahi == null ? 'No data' : ld.ahi <= 5 ? 'Normal' : 'Elevated'}
               </span>
             </div>
-            <div style={{ fontSize: 36, fontWeight: 900, color: ld.ahi == null ? '#94a3b8' : ld.ahi <= 5 ? '#15803d' : '#b45309', lineHeight: 1, marginTop: 8 }}>{dash(ld.ahi)}</div>
-            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, fontWeight: 600 }}>Events per hour · Target ≤ 5.0</div>
+            <div style={{ fontSize: 36, fontWeight: 900, color: ld.ahi == null ? 'var(--fg-94a3b8)' : ld.ahi <= 5 ? 'var(--fg-15803d)' : 'var(--fg-b45309)', lineHeight: 1, marginTop: 8 }}>{dash(ld.ahi)}</div>
+            <div style={{ fontSize: 11, color: 'var(--fg-94a3b8)', marginTop: 6, fontWeight: 600 }}>Events per hour · Target ≤ 5.0</div>
           </LiveValue>
 
           {/* Mask Seal */}
           <LiveValue style={card} scope={serial} watch={`${ld.mask_leak}`}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={cardEyebrow}>Mask Seal</div>
-              <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: ld.mask_leak == null ? '#f1f5f9' : ld.mask_leak <= 24 ? '#dcfce7' : '#fee2e2', color: ld.mask_leak == null ? '#64748b' : ld.mask_leak <= 24 ? '#15803d' : '#b91c1c' }}>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: ld.mask_leak == null ? 'var(--bg-f1f5f9)' : ld.mask_leak <= 24 ? 'var(--bg-dcfce7)' : 'var(--bg-fee2e2)', color: ld.mask_leak == null ? 'var(--fg-64748b)' : ld.mask_leak <= 24 ? 'var(--fg-15803d)' : 'var(--fg-b91c1c)' }}>
                 {ld.mask_leak == null ? 'No data' : ld.mask_leak <= 24 ? 'Good' : 'High Leak'}
               </span>
             </div>
-            <div style={{ fontSize: 36, fontWeight: 900, color: '#163257', lineHeight: 1, marginTop: 8 }}>
-              {dash(ld.mask_leak)} {ld.mask_leak != null && <span style={{ fontSize: 16, color: '#64748b' }}>L/min</span>}
+            <div style={{ fontSize: 36, fontWeight: 900, color: 'var(--fg-163257)', lineHeight: 1, marginTop: 8 }}>
+              {dash(ld.mask_leak)} {ld.mask_leak != null && <span style={{ fontSize: 16, color: 'var(--fg-64748b)' }}>L/min</span>}
             </div>
-            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, fontWeight: 600 }}>Leak Rate · Target ≤ 24 L/min</div>
+            <div style={{ fontSize: 11, color: 'var(--fg-94a3b8)', marginTop: 6, fontWeight: 600 }}>Leak Rate · Target ≤ 24 L/min</div>
           </LiveValue>
 
           {/* Pressure: compared with the mode's own setting. CPAP runs at one
@@ -804,11 +804,11 @@ function DeviceDashboardView() {
             return (
           <LiveValue style={card} scope={serial} watch={`${ld.pressure_95}|${s.therapy_mode}|${ceiling}|${s.min_pressure}`}>
             <div style={cardEyebrow}>Pressure · latest session</div>
-            <div style={{ fontSize: 36, fontWeight: 900, color: '#163257', lineHeight: 1, marginTop: 8 }}>
-              {dash(ld.pressure_95)} {ld.pressure_95 != null && <span style={{ fontSize: 16, color: '#64748b' }}>cmH₂O</span>}
+            <div style={{ fontSize: 36, fontWeight: 900, color: 'var(--fg-163257)', lineHeight: 1, marginTop: 8 }}>
+              {dash(ld.pressure_95)} {ld.pressure_95 != null && <span style={{ fontSize: 16, color: 'var(--fg-64748b)' }}>cmH₂O</span>}
             </div>
-            {setLine && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, fontWeight: 600 }}>{setLine}</div>}
-            <div style={{ height: 4, background: '#e2e8f0', borderRadius: 2, marginTop: 10, overflow: 'hidden' }}>
+            {setLine && <div style={{ fontSize: 11, color: 'var(--fg-94a3b8)', marginTop: 6, fontWeight: 600 }}>{setLine}</div>}
+            <div style={{ height: 4, background: 'var(--bg-e2e8f0)', borderRadius: 2, marginTop: 10, overflow: 'hidden' }}>
               <div style={{ height: '100%', borderRadius: 2, transition: 'width 0.5s', width: `${ceiling && ld.pressure_95 != null ? Math.min((ld.pressure_95 / ceiling) * 100, 100) : 0}%`, background: 'var(--brand-gradient)' }}/>
             </div>
           </LiveValue>
@@ -831,9 +831,9 @@ function DeviceDashboardView() {
               marginBottom: 14,
               padding: '10px 12px',
               borderRadius: 10,
-              background: '#eff6ff',
-              border: '1px solid #bfdbfe',
-              color: '#1d4ed8',
+              background: 'var(--bg-eff6ff)',
+              border: '1px solid var(--bd-bfdbfe)',
+              color: 'var(--fg-1d4ed8)',
               fontSize: 12,
               fontWeight: 600,
             }}>
@@ -912,7 +912,7 @@ function DeviceDashboardView() {
                     <button aria-label="Decrease pressure" onClick={() => setPressure(v => Math.max(4, +(v - 0.1).toFixed(1)))} style={stepBtn}><MinusIcon/></button>
                     <div style={{ textAlign: 'center', minWidth: 110 }}>
                       <span style={{ fontSize: 32, fontWeight: 900, color: 'var(--accent)' }}>{fmt1(pressure)}</span>
-                      <span style={{ fontSize: 14, color: '#64748b', marginLeft: 4 }}>cmH₂O</span>
+                      <span style={{ fontSize: 14, color: 'var(--fg-64748b)', marginLeft: 4 }}>cmH₂O</span>
                       {device.settings.pressure !== pressure && <div style={{ ...changedTag, display: 'block', margin: '2px auto 0' }}>was {fmt1(device.settings.pressure)}</div>}
                     </div>
                     <button aria-label="Increase pressure" onClick={() => setPressure(v => Math.min(maxLimit, +(v + 0.1).toFixed(1)))} style={stepBtn}><PlusIcon/></button>
@@ -925,7 +925,7 @@ function DeviceDashboardView() {
                   <span style={fieldLabel}>Ramp Time</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <button aria-label="Decrease ramp time" onClick={() => setRamp(v => stepRampDown(v))} style={stepBtn}><MinusIcon/></button>
-                    <span style={{ fontWeight: 800, fontSize: 16, color: '#163257', minWidth: 110, textAlign: 'center' }}>{formatRampDisplay(ramp)}</span>
+                    <span style={{ fontWeight: 800, fontSize: 16, color: 'var(--fg-163257)', minWidth: 110, textAlign: 'center' }}>{formatRampDisplay(ramp)}</span>
                     <button aria-label="Increase ramp time" onClick={() => setRamp(v => stepRampUp(v))} style={stepBtn}><PlusIcon/></button>
                   </div>
                   <span style={{ fontSize: 12, color: 'var(--muted)' }}>Range: Off (0) to 45 min · Auto (30 min)</span>
@@ -936,7 +936,7 @@ function DeviceDashboardView() {
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                   <div style={fieldLabel}>{mode === 'BiPAP' ? 'BiPAP Settings' : 'Auto CPAP Settings'}</div>
-                  <span style={{ ...modeBadge, background: '#e0f2fe', color: '#0369a1' }}>Auto Adjusting (Range: 4–{maxLimit} cmH₂O)</span>
+                  <span style={{ ...modeBadge, background: 'var(--bg-e0f2fe)', color: 'var(--fg-0369a1)' }}>Auto Adjusting (Range: 4–{maxLimit} cmH₂O)</span>
                 </div>
                 <div className="dashboard-two-col" style={{ gap: 20, marginBottom: 16 }}>
                   {[
@@ -947,8 +947,8 @@ function DeviceDashboardView() {
                       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>{label}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
                         <button aria-label={`Decrease ${label}`} onClick={dec} style={stepBtn}><MinusIcon/></button>
-                        <span style={{ fontSize: 26, fontWeight: 900, color: '#163257' }}>{fmt1(val)}</span>
-                        <span style={{ fontSize: 12, color: '#64748b' }}>cmH₂O</span>
+                        <span style={{ fontSize: 26, fontWeight: 900, color: 'var(--fg-163257)' }}>{fmt1(val)}</span>
+                        <span style={{ fontSize: 12, color: 'var(--fg-64748b)' }}>cmH₂O</span>
                         <button aria-label={`Increase ${label}`} onClick={inc} style={stepBtn}><PlusIcon/></button>
                         {changed && <span style={changedTag}>was {fmt1(was)}</span>}
                       </div>
@@ -970,7 +970,7 @@ function DeviceDashboardView() {
                     <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>Ramp Time</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       <button aria-label="Decrease ramp time" onClick={() => setRamp(v => stepRampDown(v))} style={stepBtn}><MinusIcon/></button>
-                      <span style={{ fontWeight: 800, fontSize: 15, color: '#163257', minWidth: 100, textAlign: 'center' }}>{formatRampDisplay(ramp)}</span>
+                      <span style={{ fontWeight: 800, fontSize: 15, color: 'var(--fg-163257)', minWidth: 100, textAlign: 'center' }}>{formatRampDisplay(ramp)}</span>
                       <button aria-label="Increase ramp time" onClick={() => setRamp(v => stepRampUp(v))} style={stepBtn}><PlusIcon/></button>
                       {device.settings.ramp !== ramp && <span style={changedTag}>was {device.settings.ramp}</span>}
                     </div>
@@ -989,7 +989,7 @@ function DeviceDashboardView() {
               Discard Changes
             </button>
             <button onClick={saveSettings} disabled={isReadOnly || settingsLocked || !dirty || saving || !isOnline}
-              style={{ flex: 1, padding: '11px 22px', borderRadius: 10, fontWeight: 800, fontSize: 14, background: dirty && isOnline ? 'var(--brand-gradient)' : '#e2e8f0', color: dirty && isOnline ? '#fff' : '#94a3b8', border: 'none', cursor: dirty && isOnline ? 'pointer' : 'not-allowed', boxShadow: dirty && isOnline ? '0 4px 16px rgba(0,71,204,0.3)' : 'none', transition: 'all 0.25s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              style={{ flex: 1, padding: '11px 22px', borderRadius: 10, fontWeight: 800, fontSize: 14, background: dirty && isOnline ? 'var(--brand-gradient)' : 'var(--bg-e2e8f0)', color: dirty && isOnline ? '#fff' : 'var(--fg-94a3b8)', border: 'none', cursor: dirty && isOnline ? 'pointer' : 'not-allowed', boxShadow: dirty && isOnline ? '0 4px 16px rgba(0,71,204,0.3)' : 'none', transition: 'all 0.25s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               {isReadOnly
                 ? <><SaveIcon fontSize="small"/> Read-only</>
                 : saving
@@ -1015,7 +1015,7 @@ function DeviceDashboardView() {
               <div key={key} style={{ background: 'var(--panel-strong)', borderRadius: 12, padding: '14px 16px', border: '1px solid var(--line)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                   <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)' }}>{label}</span>
-                  <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>{target}</span>
+                  <span style={{ fontSize: 10, color: 'var(--fg-94a3b8)', fontWeight: 600 }}>{target}</span>
                 </div>
                 <MiniBarChart sessions={trend.sessions} valueKey={key} maxVal={maxVal} goodFn={goodFn} goodColor={goodColor} badColor={badColor}/>
               </div>
@@ -1082,7 +1082,7 @@ function DeviceDashboardView() {
                         <td><strong>{s.date}</strong></td>
                         <td>
                           {isSettings ? (
-                            <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: 6, fontWeight: 700, fontSize: 11 }}>
+                            <span style={{ background: 'var(--bg-e0f2fe)', color: 'var(--fg-0369a1)', padding: '2px 8px', borderRadius: 6, fontWeight: 700, fontSize: 11 }}>
                               ⚙ Settings
                             </span>
                           ) : (
@@ -1091,8 +1091,8 @@ function DeviceDashboardView() {
                         </td>
                         <td>
                           <span className="admin-badge" style={{
-                            background: isSettings ? '#f0f4ff' : s.ahi == null ? '#f1f5f9' : (s.ahi <= 5 ? '#dcfce7' : '#fef3c7'),
-                            color: isSettings ? '#4338ca' : s.ahi == null ? '#64748b' : (s.ahi <= 5 ? '#15803d' : '#92400e'),
+                            background: isSettings ? 'var(--bg-f0f4ff)' : s.ahi == null ? 'var(--bg-f1f5f9)' : (s.ahi <= 5 ? 'var(--bg-dcfce7)' : 'var(--bg-fef3c7)'),
+                            color: isSettings ? 'var(--afg-4338ca)' : s.ahi == null ? 'var(--fg-64748b)' : (s.ahi <= 5 ? 'var(--fg-15803d)' : 'var(--fg-92400e)'),
                           }}>
                             {isSettings ? (s.mode || '—') : dash(s.ahi)}
                           </span>
@@ -1114,15 +1114,15 @@ function DeviceDashboardView() {
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             {isSettings ? (
-                              <span className="admin-status-pill" style={{ background: '#dbeafe', color: '#1e40af' }}>
+                              <span className="admin-status-pill" style={{ background: 'var(--bg-dbeafe)', color: 'var(--fg-1e40af)' }}>
                                 <span className="admin-status-dot" style={{ background: '#2563eb' }}/>
                                 Settings frame
                               </span>
                             ) : (
                               s.usage_hours == null ? (
-                                <span className="admin-status-pill" style={{ background: '#f1f5f9', color: '#64748b' }}>No usage data</span>
+                                <span className="admin-status-pill" style={{ background: 'var(--bg-f1f5f9)', color: 'var(--fg-64748b)' }}>No usage data</span>
                               ) : (
-                              <span className="admin-status-pill" style={{ background: compliant ? '#dcfce7' : '#fee2e2', color: compliant ? '#15803d' : '#b91c1c' }}>
+                              <span className="admin-status-pill" style={{ background: compliant ? 'var(--bg-dcfce7)' : 'var(--bg-fee2e2)', color: compliant ? 'var(--fg-15803d)' : 'var(--fg-b91c1c)' }}>
                                 <span className="admin-status-dot" style={{ background: compliant ? '#16a34a' : '#dc2626' }}/>
                                 {compliant ? 'Compliant' : 'Non-compliant'}
                               </span>
@@ -1135,12 +1135,12 @@ function DeviceDashboardView() {
                         </td>
                       </tr>
                       {isExpanded && (
-                        <tr className="session-log-detail" style={{ background: 'var(--panel-deep, #f8fafc)' }}>
+                        <tr className="session-log-detail" style={{ background: 'var(--panel-deep, var(--abg-f8fafc))' }}>
                           <td colSpan={6} style={{ padding: '16px 20px', borderBottom: '1px solid var(--line)' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
                               <div>
                                 <strong style={{ color: 'var(--text-strong)' }}>Packet ID:</strong>{' '}
-                                <code style={{ background: 'rgba(0,0,0,0.05)', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>
+                                <code style={{ background: 'var(--abg-rgba0000p05)', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>
                                   {s.raw?.id || '—'}
                                 </code>
                               </div>
@@ -1205,7 +1205,7 @@ function DeviceDashboardView() {
                   borderRadius: '7px',
                   border: '1px solid var(--line)',
                   background: 'var(--panel)',
-                  color: currentPage === 1 ? '#cbd5e1' : 'var(--text)',
+                  color: currentPage === 1 ? 'var(--fg-cbd5e1)' : 'var(--text)',
                   fontWeight: 700,
                   cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
                   fontSize: '12px',
@@ -1249,7 +1249,7 @@ function DeviceDashboardView() {
                   borderRadius: '7px',
                   border: '1px solid var(--line)',
                   background: 'var(--panel)',
-                  color: currentPage === totalPages ? '#cbd5e1' : 'var(--text)',
+                  color: currentPage === totalPages ? 'var(--fg-cbd5e1)' : 'var(--text)',
                   fontWeight: 700,
                   cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
                   fontSize: '12px',
@@ -1269,31 +1269,31 @@ function DeviceDashboardView() {
 
 // ── Shared styles ──────────────────────────────────────────────────────────────
 const card = {
-  background: 'var(--panel-strong, #fff)',
-  border: '1px solid var(--line, #e2e8f0)',
+  background: 'var(--panel-strong, var(--abg-fff))',
+  border: '1px solid var(--line, var(--bd-e2e8f0))',
   borderRadius: 16,
   padding: '18px 20px',
   boxShadow: '0 1px 8px rgba(0,0,0,0.05)',
 };
 const sectionCard = {
-  background: 'var(--panel-strong, #fff)',
-  border: '1px solid var(--line, #e2e8f0)',
+  background: 'var(--panel-strong, var(--abg-fff))',
+  border: '1px solid var(--line, var(--bd-e2e8f0))',
   borderRadius: 16,
   padding: '20px 24px',
   boxShadow: '0 1px 8px rgba(0,0,0,0.05)',
 };
 const sectionLabel = { fontSize: 12, fontWeight: 800, color: 'var(--muted)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.6px' };
-const cardEyebrow  = { fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' };
+const cardEyebrow  = { fontSize: 11, fontWeight: 700, color: 'var(--fg-94a3b8)', textTransform: 'uppercase', letterSpacing: '0.5px' };
 const fieldLabel   = { fontSize: 13, fontWeight: 800, color: 'var(--text)' };
-const modeBadge    = { fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: '#e8f4fd', color: 'var(--accent)' };
+const modeBadge    = { fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'var(--bg-e8f4fd)', color: 'var(--accent)' };
 const stepBtn      = {
-  width: 34, height: 34, borderRadius: 8, border: '1px solid var(--line, #e2e8f0)',
-  background: 'var(--panel, #f8fafc)', color: 'var(--text)', cursor: 'pointer',
+  width: 34, height: 34, borderRadius: 8, border: '1px solid var(--line, var(--bd-e2e8f0))',
+  background: 'var(--panel, var(--abg-f8fafc))', color: 'var(--text)', cursor: 'pointer',
   display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s',
   flexShrink: 0,
 };
 const changedTag   = {
   display: 'inline-block', fontSize: 10, fontWeight: 700,
-  background: '#fef9c3', color: '#a16207',
+  background: 'var(--bg-fef9c3)', color: 'var(--afg-a16207)',
   padding: '2px 7px', borderRadius: 6, marginLeft: 4,
 };

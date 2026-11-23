@@ -197,7 +197,7 @@ test('values the data cannot give read N/A on the report', () => {
   assert.match(html, /Median \(avg\)<\/span>\s*<span class="stat-value"[^>]*>N\/A</);
 });
 
-test('session median and 95th from the pressure change count, as the PHP report', async () => {
+test('session median and 95th from the pressure change count, as in DeckMount\'s earlier report', async () => {
   const { sessionPressure } = await import('./reportFileParser.js');
   // AUTO 4–20, count 60: reached 10; steps 10..4 (7 of them) → median 7; 95th 9.5.
   assert.deepEqual(sessionPressure('auto', { minPressure: 4, maxPressure: 20, pressureChangeCount: 60 }), { reached: 10, median: 7, p95: 9.5 });

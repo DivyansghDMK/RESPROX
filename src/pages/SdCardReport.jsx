@@ -14,6 +14,7 @@ import { parseReportFile, parseTd1File, isTd1Data, dateRangeOf } from '../servic
 // window opened after an await is blocked as a pop-up on most phones.
 import { buildTherapyReportHTML, openTherapyReport } from '../services/therapyReport';
 import { RANGE_PRESETS as PRESETS, presetRange } from '../services/reportRange';
+import ThemeToggle from '../components/ThemeToggle';
 
 const MAX_BYTES = 8 * 1024 * 1024;
 const today = () => localKeyNow(new Date());
@@ -140,6 +141,7 @@ export default function SdCardReport() {
 
   return (
     <div className="sdr-page">
+      <ThemeToggle className="sdr-theme" />
       <header className="sdr-head">
         <img src="/deckmount-logo.png" alt="DeckMount" className="sdr-logo" />
         <h1>Therapy report from your SD card</h1>

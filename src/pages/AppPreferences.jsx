@@ -8,6 +8,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
+import ThemeToggle from '../components/ThemeToggle';
 import { useAuth } from '../context/AuthContext';
 import { useAccess } from '../context/AccessContext';
 
@@ -49,6 +50,16 @@ export default function AppPreferences() {
             </Link>
           ))}
         </nav>
+      </GlassCard>
+
+      <GlassCard>
+        <div className="section-title">
+          <h2>Appearance</h2>
+        </div>
+        <div className="theme-row">
+          <p>Light or dark, for the whole site. Saved in this browser.</p>
+          <ThemeToggle className="theme-switch-btn" withLabel />
+        </div>
       </GlassCard>
 
       <GlassCard>
