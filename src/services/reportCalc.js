@@ -49,6 +49,11 @@ export function dayValues(row) {
     return {
       usageMinutes: r.usageMinutes,
       maxPressure: r.maxPressure,
+      pressures: r.pressures || (r.maxPressure > 0 ? [r.maxPressure] : []),
+      setMax: r.setMax,
+      setMin: r.setMin,
+      medianPressure: r.medianPressure,
+      p95Pressure: r.p95Pressure,
       csa: r.csa, osa: r.osa, hsa: r.hsa, hasSplit: true,
       events: r.csa + r.osa + r.hsa,
       leak: r.leak,
@@ -74,6 +79,7 @@ export function dayValues(row) {
     events: hasSplit ? csa + osa + hsa : (ahi !== null ? ahi * hours : 0),
     leak: leak ?? 0,
     leaks: leak !== null ? [leak] : [],
+    pressures: finite(row.pressure_95) > 0 ? [finite(row.pressure_95)] : [],
     tidal: 0,
     resp: 0,
     minuteVent: 0,
@@ -88,7 +94,7 @@ function rowKey(row) {
   return Number.isNaN(when.getTime()) ? null : localKey(when);
 }
 
-const EMPTY_DAY = { usageMinutes: 0, maxPressure: 0, events: 0, csa: 0, osa: 0, hsa: 0, hasSplit: true, leak: 0, leaks: [], tidal: 0, resp: 0, minuteVent: 0 };
+const EMPTY_DAY = { usageMinutes: 0, maxPressure: 0, pressures: [], events: 0, csa: 0, osa: 0, hsa: 0, hasSplit: true, leak: 0, leaks: [], tidal: 0, resp: 0, minuteVent: 0 };
 
 /**
  * Everything the report prints, over the calendar days from `startDate` to
@@ -146,6 +152,29 @@ export function buildReportData({ rows = [], startDate, endDate } = {}) {
 
   const latest = [...days].reverse().find((d) => d.modeCode != null) || null;
 
+  // Pressure "(avg)": each used day's highest, 95th-percentile and median
+  // session pressure, averaged over those days (DeckMount's report: its
+  // "Maximum (avg)" is the mean of the daily bars).
+  const pressureDays = days.filter((d) => d.pressures?.length);
+  const meanOf = (pick) => (pressureDays.length
+    ? pressureDays.reduce((a, d) => a + pick([...d.pressures].sort((x, y) => x - y)), 0) / pressureDays.length
+    : NaN);
+  // A session record carries one pressure, so a real median or 95th
+  // percentile of the night's pressure can't be worked out from it. They are
+  // NaN (shown "N/A") until sessions carry medianPressure / p95Pressure,
+  // which the firmware has been asked for; then each is averaged over days.
+  const meanField = (key) => {
+    const vals = days.map((d) => Number(d[key])).filter((v) => Number.isFinite(v) && v > 0);
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : NaN;
+  };
+  const pressure = {
+    max: meanOf((s) => s[s.length - 1]),
+    p95: meanField('p95Pressure'),
+    median: meanField('medianPressure'),
+  };
+  // The settings in force during the range: the last session that recorded them.
+  const lastSet = [...days].reverse().find((d) => Number(d.setMax) > 0) || null;
+
   return {
     days,
     from: from ? dateOf(from) : null,
@@ -170,11 +199,13 @@ export function buildReportData({ rows = [], startDate, endDate } = {}) {
       ahi: split ? ai + hi : per(sum('events')),
       central,
       obstructive,
-      unknown: 0,
+      // The device doesn't count unknown apneas: not available, not zero.
+      unknown: NaN,
     },
     avgLeak: leaks.length ? leaks.reduce((a, b) => a + b, 0) / leaks.length : NaN,
     leakThreshold: LEAK_THRESHOLD,
-    pressure: stats3(ascending('maxPressure')),
+    pressure,
+    set: lastSet ? { max: lastSet.setMax, min: lastSet.setMin } : null,
     tidal: stats3(ascending('tidal')),
     respMax: resps.length ? resps[resps.length - 1] : NaN,
     minuteVent: stats3(ascending('minuteVent')),

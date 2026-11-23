@@ -51,6 +51,11 @@ function num(value, digits = 1) {
   return Number.isFinite(value) ? value.toFixed(digits) : '—';
 }
 
+/** For values the device's data can't give (pressure median/95th, unknown apnea): "N/A", not "—" or a guess. */
+function na(value, digits = 1) {
+  return Number.isFinite(value) ? value.toFixed(digits) : 'N/A';
+}
+
 /** Leak is read in whole L/min, so its average is shown that way too: 43.7 → "44". */
 function whole(value) {
   return Number.isFinite(value) ? String(Math.round(value)) : '—';
@@ -128,7 +133,7 @@ function barChart({ days, valueKey, refMax, refStep, color, colorFor, threshold 
   }).join('');
 
   const slot = n ? plotW / n : 0;
-  const barW = Math.max(1.2, Math.min(slot * 0.3, 6));
+  const barW = Math.max(1.2, Math.min(slot * 0.55, 8));
 
   const bars = days.map((day, i) => {
     const value = Number(day[valueKey]);
@@ -140,19 +145,26 @@ function barChart({ days, valueKey, refMax, refStep, color, colorFor, threshold 
   }).join('');
 
   // Thin out date labels so they stay legible over long reporting periods.
-  const every = Math.max(1, Math.ceil(n / 8));
+  const every = Math.max(1, Math.ceil(n / 45));
   const labels = days.map((day, i) => {
     if (i % every !== 0) return '';
     const x = CHART.left + slot * i + slot / 2;
-    return `<text x="${x.toFixed(1)}" y="${baseY + 6}" font-size="6.8" fill="${C.axis}" text-anchor="end" transform="rotate(-45 ${x.toFixed(1)} ${baseY + 6})">${esc(shortDate(day.date))}</text>`;
+    return `<text x="${x.toFixed(1)}" y="${baseY + 6}" font-size="${n > 25 ? 5.4 : 6.8}" fill="${C.axis}" text-anchor="end" transform="rotate(-45 ${x.toFixed(1)} ${baseY + 6})">${esc(shortDate(day.date))}</text>`;
   }).join('');
 
   const thresholdLine = Number.isFinite(threshold) && threshold > 0 && threshold <= yMax
     ? `<line x1="${CHART.left}" y1="${(baseY - (threshold / yMax) * plotH).toFixed(1)}" x2="${CHART.w - CHART.right}" y2="${(baseY - (threshold / yMax) * plotH).toFixed(1)}" stroke="${C.threshold}" stroke-width="0.9" stroke-dasharray="4 3"/>`
     : '';
 
+  const dayLines = n && n <= 90
+    ? days.map((_, i) => {
+      const x = (CHART.left + slot * (i + 1)).toFixed(1);
+      return `<line x1="${x}" y1="${CHART.top}" x2="${x}" y2="${baseY}" stroke="${C.grid}" stroke-width="0.35"/>`;
+    }).join('')
+    : '';
+
   return `<svg class="chart" viewBox="0 0 ${CHART.w} ${CHART.h}" role="img">
-    ${gridlines}${bars}${thresholdLine}
+    ${dayLines}${gridlines}${bars}${thresholdLine}
     <line x1="${CHART.left}" y1="${baseY}" x2="${CHART.w - CHART.right}" y2="${baseY}" stroke="${C.axis}" stroke-width="0.7"/>
     ${labels}
   </svg>`;
@@ -168,13 +180,11 @@ function kvRows(rows) {
 }
 
 function metricRow(name, pairs) {
-  // A lone value (Average Leak) sits in the last column, at the right edge.
-  const start = 5 - pairs.length;
-  return `
-    <div class="metric">
-      <span class="metric-name">${esc(name)}</span>
-      ${pairs.map(([label, value], i) => `<span class="pair" style="grid-column:${start + i}"><span>${label ? `${esc(label)}:` : ''}</span><b>${esc(value)}</b></span>`).join('')}
-    </div>`;
+  // One table row: name, then label | value cells. A lone value (Average Leak)
+  // sits under the first label, as on DeckMount's report.
+  return `<tr><td class="metric-name">${esc(name)}</td>${pairs.map(([label, value]) => (label
+    ? `<td class="ml">${esc(label)}:</td><td class="mv">${esc(value)}</td>`
+    : `<td class="mv">${esc(value)}</td>`)).join('')}</tr>`;
 }
 
 function statPanel(rows) {
@@ -213,16 +223,15 @@ export const LOGO_FILE = '/deckmount-logo.png';
 // 0→133 and "MOUNT" needs ~172, so the bolt occupies the gap between them and
 // the box is wide enough that neither the wordmark nor the ® is clipped.
 const LOGO_SVG = `
-<svg viewBox="0 0 400 108" class="logo-art" role="img" aria-label="DeckMount Electronics">
-  <text x="0" y="62" font-family="Helvetica, Arial, sans-serif" font-size="47"
-        font-weight="800" letter-spacing="-0.5" fill="#111111">DECK</text>
-  <polygon points="172,4 140,44 154,44 136,80 176,38 160,38 178,4" fill="#FFD200"/>
-  <text x="186" y="62" font-family="Helvetica, Arial, sans-serif" font-size="47"
-        font-weight="800" letter-spacing="-0.5" fill="#111111">MOUNT</text>
-  <text x="362" y="32" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#111111">®</text>
-  <text x="3" y="98" font-family="Helvetica, Arial, sans-serif" font-size="15"
-        font-weight="500" letter-spacing="20" fill="#3A3A3A">ELECTRONICS</text>
+<svg viewBox="0 0 400 80" class="logo-art" role="img" aria-label="DeckMount">
+  <text x="0" y="64" font-family="Verdana, Helvetica, Arial, sans-serif" font-size="46"
+        font-weight="900" font-style="italic" letter-spacing="-2" fill="#111111">DECK</text>
+  <polygon points="176,2 150,44 162,44 140,80 184,30 170,30 190,2" fill="#FFD200"/>
+  <text x="192" y="64" font-family="Verdana, Helvetica, Arial, sans-serif" font-size="46"
+        font-weight="900" font-style="italic" letter-spacing="-2" fill="#111111">MOUNT</text>
 </svg>`;
+
+const TAGLINE = '<div class="tagline">Saving Millions of lives</div>';
 
 // The report renders in a detached about:blank window, which has no base URL —
 // a root-relative src would not resolve there, so it is made absolute first.
@@ -231,14 +240,15 @@ function logoMarkup() {
     ? new URL(LOGO_FILE, window.location.origin).href
     : null;
 
-  if (!src) return `<div class="logo">${LOGO_SVG}</div>`;
+  if (!src) return `<div class="logo">${LOGO_SVG}${TAGLINE}</div>`;
 
   // The <img> is preferred; on error it hides itself and reveals the vector twin.
   return `
 <div class="logo">
-  <img src="${esc(src)}" alt="DeckMount Electronics" class="logo-art"
+  <img src="${esc(src)}" alt="DeckMount" class="logo-art"
        onerror="this.style.display='none';this.nextElementSibling.style.display='block';"/>
   <span style="display:none">${LOGO_SVG}</span>
+  ${TAGLINE}
 </div>`;
 }
 
@@ -264,6 +274,11 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
     : null;
 
   const lastUsed = [...days].reverse().find((d) => d.maxPressure > 0);
+  // Pressure settings as recorded by the sessions in this range; the device's
+  // current settings only when the sessions don't carry them.
+  const setMax = r.set?.max ?? settings.max_pressure;
+  const setMin = r.set?.min ?? settings.min_pressure;
+  const setFixed = r.set?.max ?? settings.pressure ?? lastUsed?.maxPressure;
   const aflexLevel = Number(settings.aflex);
   const aflexOn = Number.isFinite(aflexLevel) && settings.aflex != null ? aflexLevel > 0 : latest?.aflexOn;
   const level = aflexOn ? (aflexLevel > 0 ? aflexLevel : latest?.aflexLevel) : null;
@@ -273,8 +288,8 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
       ['Serial number', serial],
       ['Device', deviceData?.model || '—'],
       ['Mode', mode.label],
-      ['IPAP', trimF(settings.max_pressure)],
-      ['EPAP', trimF(settings.min_pressure)],
+      ['IPAP', trimF(setMax)],
+      ['EPAP', trimF(setMin)],
     ]
     : [
       ['Serial number', serial],
@@ -282,8 +297,8 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
       ['Mode', mode.label],
       // AUTO CPAP moves between a set min and max; CPAP holds one pressure.
       ...(auto
-        ? [['Min Pressure', trimF(settings.min_pressure)], ['Max Pressure', trimF(settings.max_pressure)]]
-        : [['Set Pressure', trimF(settings.pressure ?? lastUsed?.maxPressure)]]),
+        ? [['Min Pressure', trimF(setMin)], ['Max Pressure', trimF(setMax)]]
+        : [['Set Pressure', trimF(setFixed)]]),
       ['A-Flex', aflexOn == null ? '—' : aflexOn ? 'ON' : 'OFF'],
       aflexOn ? ['A-Flex Level', trimF(level)] : null,
       ['Mask Type', maskName(settings.mask_type) || maskName(latest?.maskType) || '—'],
@@ -295,18 +310,20 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
     ['< 4 hour days', `${usage.under4hDays} (${usage.under4hPct}%)`, C.usageLow],
     ['Used Hours', `${Math.floor(usage.totalMinutes / 60)} Hours, ${String(usage.totalMinutes % 60).padStart(2, '0')} Minutes`, C.text, true],
   ], barChart({
-    days, valueKey: 'hours', refMax: 24, refStep: 4,
+    days, valueKey: 'hours', refStep: 4,
+    // At least 0-16 h, then up in 4 h steps to clear the longest day (DeckMount's scale).
+    refMax: Math.max(16, Math.ceil(Math.max(0, ...days.map((d) => d.hours)) / 4) * 4),
     colorFor: (v) => (v >= 4 ? C.usageOk : C.usageLow), threshold: 4,
   }));
 
   const pressurePanel = chartSection('Pressure (cmH2O)', [
     ['Mode', mode.label, C.text],
     ...(mode.bipap ? [] : auto
-      ? [['Set Max Pressure', trimF(settings.max_pressure), C.text], ['Set Min Pressure', trimF(settings.min_pressure), C.text]]
-      : [['Set Pressure', trimF(settings.pressure ?? lastUsed?.maxPressure), C.text]]),
+      ? [['Set Max Pressure', trimF(setMax), C.text], ['Set Min Pressure', trimF(setMin), C.text]]
+      : [['Set Pressure', trimF(setFixed), C.text]]),
     ['Maximum (avg)', num(r.pressure.max), C.text],
-    ['95th % (avg)', num(r.pressure.p95), C.heading],
-    ['Median (avg)', num(r.pressure.median), C.text],
+    ['95th % (avg)', na(r.pressure.p95), C.heading],
+    ['Median (avg)', na(r.pressure.median), C.text],
   ], barChart({
     days, valueKey: 'maxPressure', refMax: mode.bipap ? 36 : 24, refStep: 4,
     color: mode.bipap ? C.pressureBipap : C.pressure,
@@ -352,7 +369,7 @@ ${chartSection('Minute Ventilation (L/min)', [
   body {
     margin: 0;
     padding: 14mm 12mm 22mm;
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-family: 'DejaVu Sans', Verdana, Geneva, 'Helvetica Neue', Arial, sans-serif;
     font-size: 13px;
     color: ${C.text};
     -webkit-print-color-adjust: exact;
@@ -376,29 +393,28 @@ ${chartSection('Minute Ventilation (L/min)', [
     padding: 8px 16px; border-radius: 6px; font-weight: 700; cursor: pointer;
   }
 
-  .logo { width: 200px; margin-bottom: 16px; }
+  .logo { width: 220px; margin-bottom: 4px; }
   .logo-art { width: 100%; height: auto; display: block; }
-  .patient { text-align: right; line-height: 1.75; margin-bottom: 26px; }
+  .tagline { margin: 2px 0 0 72px; font-size: 13px; color: ${C.heading}; white-space: nowrap; }
+  .patient { text-align: right; line-height: 1.6; margin-bottom: 18px; }
   .patient .name { font-size: 22px; color: #222; line-height: 1.3; margin-bottom: 4px; }
   .patient .meta { font-size: 11.5px; color: #555; }
 
   section { margin-bottom: 26px; }
-  section.therapy { margin-bottom: 64px; }
+  section.therapy { margin-bottom: 34px; }
 
   .kv {
     display: flex; justify-content: space-between; align-items: baseline;
-    padding: 6.5px 0; font-size: 13px;
+    padding: 5.5px 0; font-size: 12.5px;
   }
   .kv span:last-child { text-align: right; }
   .rule { border-bottom: 1px solid ${C.rule}; padding-bottom: 12px; }
 
-  .metric {
-    display: grid; grid-template-columns: 38.5% 1fr 1fr 1fr; align-items: baseline;
-    padding: 6.5px 0; font-size: 13px;
-  }
-  .metric .metric-name { grid-column: 1; }
-  .metric .pair { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
-  .metric .pair b { font-weight: 700; }
+  table.metrics { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.metrics td { padding: 5.5px 0; vertical-align: baseline; white-space: nowrap; }
+  table.metrics td.metric-name { width: 32%; }
+  table.metrics td.ml { padding-right: 10px; }
+  table.metrics td.mv { font-weight: 700; padding-right: 18px; }
 
   .chart-section { break-inside: avoid; page-break-inside: avoid; margin-bottom: 22px; }
   .chart-row { display: flex; gap: 12px; align-items: stretch; }
@@ -407,7 +423,7 @@ ${chartSection('Minute Ventilation (L/min)', [
     padding: 18px 24px; display: flex; flex-direction: column; justify-content: center; gap: 20px;
   }
   .stat-row { display: flex; align-items: baseline; font-size: 13px; white-space: nowrap; }
-  .stat-label { width: 47%; flex-shrink: 0; }
+  .stat-label { width: 54%; flex-shrink: 0; padding-right: 8px; }
   .stat-value.small { font-size: 10.5px; }
   .chart-wrap { flex: 1; min-width: 0; display: flex; align-items: center; }
   .chart { width: 100%; height: auto; display: block; }
@@ -451,11 +467,13 @@ ${logoMarkup()}
 
 <section class="therapy">
   <h2>Therapy</h2>
-  ${mode.bipap ? '' : metricRow('Pressure-cmH2O', [['Median', num(r.pressure.median)], ['95th percentile', num(r.pressure.p95)], ['Maximum', num(r.pressure.max)]])}
+  <table class="metrics"><tbody>
+  ${mode.bipap ? '' : metricRow('Pressure-cmH2O', [['Median', na(r.pressure.median)], ['95th percentile', na(r.pressure.p95)], ['Maximum', num(r.pressure.max)]])}
   ${metricRow('Events per hour', [['AI', num(events.ai, 2)], ['HI', num(events.hi, 2)], ['AHI', num(events.ahi, 2)]])}
   ${mode.bipap ? '' : `
-  ${metricRow('Apnea Index - L/Min', [['Central', num(events.central, 2)], ['Obstructive', num(events.obstructive, 2)], ['Unknown', num(events.unknown, 2)]])}
+  ${metricRow('Apnea Index - L/Min', [['Central', num(events.central, 2)], ['Obstructive', num(events.obstructive, 2)], ['Unknown', na(events.unknown, 2)]])}
   ${metricRow('Average Leak - L/Min', [['', whole(r.avgLeak)]])}`}
+  </tbody></table>
 </section>
 
 <section>
