@@ -13,27 +13,9 @@ import { parseReportFile, parseTd1File, isTd1Data, dateRangeOf } from '../servic
 // Imported up front, not on click: the report opens in a new window, and a
 // window opened after an await is blocked as a pop-up on most phones.
 import { buildTherapyReportHTML, openTherapyReport } from '../services/therapyReport';
+import { RANGE_PRESETS as PRESETS, presetRange } from '../services/reportRange';
 
 const MAX_BYTES = 8 * 1024 * 1024;
-const PRESETS = [[1, 'Single day'], [7, 'Last 7 days'], [30, 'Last 30 days'], [90, 'Last 90 days'], ['all', 'All data']];
-
-function localKey(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-/**
- * The dates a quick range covers. Like the portal's Reports page, ranges end
- * on the last day in the file, so "Last 7 days" is never empty for a card
- * that was read a while after the last night.
- */
-export function presetRange(days, dataRange) {
-  if (!dataRange?.end) return null;
-  if (days === 'all') return { start: dataRange.start, end: dataRange.end };
-  const end = new Date(`${dataRange.end}T00:00:00`);
-  const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - (days - 1));
-  return { start: localKey(start), end: dataRange.end };
-}
-
 const label = (key) => (key
   ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(`${key}T00:00:00`))
   : '…');
