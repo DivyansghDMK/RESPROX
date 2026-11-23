@@ -834,15 +834,74 @@ const REPORT_PAGE = 100;
 const MAX_REPORT_PAGES = 50;
 
 /** Every stored session report of a device, fetched page by page. */
+// Session reports already downloaded, per device, newest first as the server
+// sends them. A device can hold over a thousand; fetching them all on every
+// refresh made the dashboard wait ~30 s.
+const reportCache = new Map();
+const REPORT_PARALLEL = 4;
+
+const reportKey = (r) => (r?.id != null ? `id:${r.id}`
+  : [r?.device_id, r?.start_year, r?.start_month, r?.start_day, r?.start_hour, r?.start_minute, r?.session_counter].join('|'));
+
+function reportsPage(serial, page) {
+  return request(`/devices/${encodeURIComponent(serial)}/reports?limit=${REPORT_PAGE}&page=${page}`);
+}
+
+const pagination = (json) => json?.data?.pagination || json?.pagination || {};
+
+/**
+ * Every stored session report of a device. The first load asks for page 1,
+ * then the remaining pages a few at a time instead of one after another.
+ * Later loads fetch only the newest pages until they reach reports already
+ * held, and fall back to a full load if the count doesn't add up.
+ */
 async function getAllReports(serial) {
-  const rows = [];
-  for (let page = 1; page <= MAX_REPORT_PAGES; page += 1) {
-    const json = await request(`/devices/${encodeURIComponent(serial)}/reports?limit=${REPORT_PAGE}&page=${page}`);
-    const items = normalizeReportList(json);
-    rows.push(...items);
-    const totalPages = Number((json?.data?.pagination || json?.pagination)?.totalPages);
-    if (items.length < REPORT_PAGE || (Number.isFinite(totalPages) && page >= totalPages)) break;
+  const cached = reportCache.get(serial);
+  const first = await reportsPage(serial, 1);
+  const firstItems = normalizeReportList(first);
+  const total = Number(pagination(first).total);
+  const totalPages = Math.min(Number(pagination(first).totalPages) || 1, MAX_REPORT_PAGES);
+
+  if (cached) {
+    const known = new Set(cached.map(reportKey));
+    const fresh = [];
+    let page = 1;
+    let items = firstItems;
+    let reachedKnown = false;
+    while (items.length) {
+      for (const r of items) {
+        if (known.has(reportKey(r))) { reachedKnown = true; break; }
+        fresh.push(r);
+      }
+      if (reachedKnown || items.length < REPORT_PAGE || page >= totalPages) break;
+      page += 1;
+      items = normalizeReportList(await reportsPage(serial, page));
+    }
+    const merged = [...fresh, ...cached];
+    // A report that arrived with an older date, or one removed on the server,
+    // shows up as a count mismatch; reload everything then.
+    if (reachedKnown && (!Number.isFinite(total) || merged.length === total)) {
+      reportCache.set(serial, merged);
+      return merged;
+    }
   }
+
+  const rows = [...firstItems];
+  if (firstItems.length >= REPORT_PAGE && totalPages > 1) {
+    const pages = [];
+    for (let p = 2; p <= totalPages; p += 1) pages.push(p);
+    const results = new Array(pages.length);
+    let next = 0;
+    const worker = async () => {
+      while (next < pages.length) {
+        const i = next++;
+        results[i] = normalizeReportList(await reportsPage(serial, pages[i]));
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(REPORT_PARALLEL, pages.length) }, worker));
+    for (const items of results) rows.push(...items);
+  }
+  reportCache.set(serial, rows);
   return rows;
 }
 
@@ -884,7 +943,14 @@ export const devicesAPI = {
   commandedRecently,
 };
 
+/** Forget every cached read, e.g. on sign-out, so the next account starts clean. */
+function clearApiCaches() {
+  cache.clear();
+  reportCache.clear();
+}
+
 export {
+  clearApiCaches,
   normalizeDeviceSummary,
   normalizeDeviceDetail,
   normalizeTelemetry,

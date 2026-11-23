@@ -4,6 +4,7 @@ import {
   clearCognitoSession, forgetRefreshToken, getCognitoSession, loginWithAlias, loginWithCognito, loginWithTeamKey,
   readTokenClaims, TEAM_KEY_STORAGE,
 } from '../services/respireeAuth';
+import { clearApiCaches } from '../services/respireeApi';
 
 // Which sign-in page the user came through, so sign-out and expiry return there.
 const LOGIN_PATH_KEY = 'resproxLoginPath';
@@ -109,6 +110,7 @@ export function AuthProvider({ children }) {
 
   const logout = () => {
     clearCognitoSession();
+    clearApiCaches();
     // Nothing about the last account stays behind on a shared computer.
     ['adminToken', 'adminUsername', 'adminEmail', 'adminActiveSerial', 'resproxPreviewRole']
       .forEach((key) => localStorage.removeItem(key));
