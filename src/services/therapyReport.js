@@ -269,9 +269,11 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
   const auto = /auto/i.test(mode.label);
 
   const dob = patient.dob ? new Date(patient.dob) : null;
+  // Worked out from the date of birth; an age typed in is used when there is none.
+  const typedAge = Number(patient.age);
   const age = dob && !Number.isNaN(dob.getTime())
     ? Math.floor((Date.now() - dob.getTime()) / (365.25 * 86400000))
-    : null;
+    : patient.age !== '' && patient.age != null && Number.isInteger(typedAge) && typedAge >= 0 ? typedAge : null;
 
   const lastUsed = [...days].reverse().find((d) => d.maxPressure > 0);
   // Pressure settings as recorded by the sessions in this range; the device's

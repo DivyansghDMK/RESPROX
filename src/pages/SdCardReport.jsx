@@ -16,6 +16,21 @@ import { buildTherapyReportHTML, openTherapyReport } from '../services/therapyRe
 import { RANGE_PRESETS as PRESETS, presetRange } from '../services/reportRange';
 
 const MAX_BYTES = 8 * 1024 * 1024;
+const today = () => localKeyNow(new Date());
+function localKeyNow(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Whole years from a YYYY-MM-DD birth date to today; '' when it isn't one. */
+export function ageFrom(dob) {
+  const d = new Date(`${dob}T00:00:00`);
+  if (!dob || Number.isNaN(d.getTime())) return '';
+  const now = new Date();
+  let years = now.getFullYear() - d.getFullYear();
+  if (now.getMonth() < d.getMonth() || (now.getMonth() === d.getMonth() && now.getDate() < d.getDate())) years -= 1;
+  return years >= 0 ? String(years) : '';
+}
+
 const label = (key) => (key
   ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(`${key}T00:00:00`))
   : '…');
@@ -37,6 +52,9 @@ export default function SdCardReport() {
   const [singleDay, setSingleDay] = useState(false);
   const [preset, setPreset] = useState('all');
   const [name, setName] = useState('');
+  const [dob, setDob] = useState('');
+  const [age, setAge] = useState('');
+  const [gender, setGender] = useState('');
   const [fallbackUrl, setFallbackUrl] = useState(null);
   const inputRef = useRef(null);
 
@@ -89,9 +107,9 @@ export default function SdCardReport() {
     model: '—',
     sourceLabel: `the device's SD card (${fileName})`,
     settings: { ...parsed.settings, serial: parsed.serial || parsed.settings?.serial },
-    patient: { name: name.trim(), id: parsed.serial || '' },
+    patient: { name: name.trim(), id: parsed.serial || '', dob, age: age.trim(), gender },
     sessions: parsed.days,
-  } : null), [parsed, fileName, name]);
+  } : null), [parsed, fileName, name, dob, age, gender]);
 
   const openReport = () => {
     if (!parsed || rangeInvalid) return;
@@ -190,8 +208,35 @@ export default function SdCardReport() {
         </section>
 
         <section className={`sdr-step${parsed ? '' : ' off'}`}>
-          <h2><span className="sdr-num">3</span> Your name <small>(optional, printed on the report)</small></h2>
-          <input className="sdr-name" type="text" value={name} onChange={(e) => setName(e.target.value)} disabled={!parsed} placeholder="Patient name" maxLength={80} autoComplete="name" />
+          <h2><span className="sdr-num">3</span> Patient details <small>(optional, printed on the report)</small></h2>
+          <div className="sdr-dates">
+            <label className="sdr-wide">
+              <span>Name</span>
+              <input className="sdr-name" type="text" value={name} onChange={(e) => setName(e.target.value)} disabled={!parsed} placeholder="Patient name" maxLength={80} autoComplete="name" />
+            </label>
+          </div>
+          <div className="sdr-dates" style={{ marginTop: 12 }}>
+            <label>
+              <span>Date of birth</span>
+              <input type="date" value={dob} max={today()} disabled={!parsed}
+                onChange={(e) => { setDob(e.target.value); setAge(ageFrom(e.target.value)); }} />
+            </label>
+            <label>
+              <span>Age (years)</span>
+              <input type="number" inputMode="numeric" min="0" max="120" step="1" value={age} disabled={!parsed || Boolean(dob)}
+                title={dob ? 'Worked out from the date of birth' : undefined}
+                onChange={(e) => setAge(e.target.value.replace(/\D/g, '').slice(0, 3))} placeholder="e.g. 54" />
+            </label>
+            <label>
+              <span>Gender</span>
+              <select value={gender} onChange={(e) => setGender(e.target.value)} disabled={!parsed}>
+                <option value="">Not stated</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
+            </label>
+          </div>
         </section>
 
         {error && <div className="sdr-error-box" role="alert">{error}</div>}
