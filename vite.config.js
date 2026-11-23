@@ -13,10 +13,11 @@ function buildId() {
   }
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [react()],
   define: {
-    __APP_BUILD__: JSON.stringify(buildId()),
+    // The dev server keeps running across commits, so its id is only where it started.
+    __APP_BUILD__: JSON.stringify(command === 'serve' ? `dev server, started at ${buildId()}` : buildId()),
     __APP_BUILT_AT__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC'),
   },
   server: {
@@ -49,4 +50,4 @@ export default defineConfig({
     // Chunks are deliberately small now; warn only on genuine regressions.
     chunkSizeWarningLimit: 400,
   },
-});
+}));
