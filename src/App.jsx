@@ -173,6 +173,7 @@ function AppContent() {
               <Route path="/trends" element={<Trends />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/activity" element={<ActivityLog />} />
+              <Route path="/activity/:serial" element={<ActivityLog />} />
               <Route path="/devices" element={<DeviceList />} /> {/* Admin devices page */}
               <Route path="/device/:serial" element={<DeviceDashboard />} />
               <Route path="/device-info" element={<Devices />} /> {/* Patient device page */}

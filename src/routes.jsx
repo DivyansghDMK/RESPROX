@@ -45,6 +45,7 @@ export function prefetch(key) {
 /** Map a nav destination to the chunk that renders it. */
 export function routeKeyForPath(path = '') {
   if (path.startsWith('/device/')) return 'deviceDashboard';
+  if (path.startsWith('/activity')) return 'activity';
   return {
     '/dashboard': 'deviceDashboard',
     '/devices': 'deviceList',

@@ -766,6 +766,39 @@ async function getDeviceActivity(serial) {
   return { telemetry, records: parseReportRows(reports).records, commands };
 }
 
+/**
+ * Recent activity of every device the account can see, for the all-devices
+ * log: each device's latest 50 settings packets and 20 sessions, four devices
+ * at a time. Cached for a minute; a device whose reads fail is marked, not fatal.
+ */
+function getFleetActivity({ force = false } = {}) {
+  if (force) invalidate('fleet-activity');
+  return dedupe('fleet-activity', 60_000, async () => {
+    const devices = await getDevices();
+    const out = new Array(devices.length);
+    let next = 0;
+    const worker = async () => {
+      while (next < devices.length) {
+        const i = next++;
+        const device = devices[i];
+        const enc = encodeURIComponent(device.serial);
+        const [tel, rep] = await Promise.all([
+          request(`/devices/${enc}/telemetry/history?page=1&limit=50`).catch(() => null),
+          request(`/devices/${enc}/reports?limit=20&page=1`).catch(() => null),
+        ]);
+        out[i] = {
+          device,
+          telemetry: telemetryRows(tel),
+          records: parseReportRows(normalizeReportList(rep || [])).records,
+          failed: !tel && !rep,
+        };
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, devices.length) }, worker));
+    return out;
+  });
+}
+
 const ACTIVITY_PAGE = 100;
 const MAX_ACTIVITY_PAGES = 10;
 
@@ -938,6 +971,7 @@ export const devicesAPI = {
   triggerReportSync,
   syncReports,
   getDeviceActivity,
+  getFleetActivity,
   getReports,
   pollTherapyStatus,
   commandedRecently,

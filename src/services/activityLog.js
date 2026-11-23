@@ -210,3 +210,50 @@ export function buildActivity({ telemetry = [], records = [], commands = null } 
     hasCommands: commands !== null,
   };
 }
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * The all-devices view: per device its recent counts and latest event, one
+ * feed of every device's recent events (each tagged with its serial), and
+ * totals. Counts cover the last 7 days; the feed is whatever was fetched.
+ * entries: [{ device, telemetry, records, failed }] from getFleetActivity.
+ */
+export function buildFleetActivity(entries = [], now = Date.now()) {
+  const since = now - WEEK_MS;
+  const feed = [];
+  const devices = entries.map(({ device, telemetry, records, failed }) => {
+    const { events } = buildActivity({ telemetry, records, commands: null });
+    const tagged = events.map((e) => ({ ...e, id: `${device.serial}:${e.id}`, serial: device.serial }));
+    feed.push(...tagged);
+    const recent = events.filter((e) => e.at >= since && e.at <= now + 60_000);
+    const count = (kind) => recent.filter((e) => e.kind === kind).length;
+    const latest = events.find((e) => e.at <= now + 60_000) || null;
+    return {
+      serial: device.serial,
+      model: device.model,
+      status: device.status,
+      therapyStatus: device.therapy_status,
+      lastSeen: device.raw?.last_seen || device.raw?.lastSeen || null,
+      latest,
+      lastActivityAt: latest?.at || 0,
+      week: { therapy: count('therapy'), deviceChanges: count('settings'), fullSyncs: count('full-sync') },
+      failed: Boolean(failed),
+    };
+  });
+  devices.sort((a, b) => b.lastActivityAt - a.lastActivityAt || a.serial.localeCompare(b.serial));
+  feed.sort((a, b) => b.at - a.at);
+  const sum = (k) => devices.reduce((n, d) => n + d.week[k], 0);
+  return {
+    devices,
+    feed,
+    totals: {
+      devices: devices.length,
+      online: devices.filter((d) => d.status === 'online').length,
+      activeThisWeek: devices.filter((d) => d.lastActivityAt >= since).length,
+      therapy: sum('therapy'),
+      deviceChanges: sum('deviceChanges'),
+      fullSyncs: sum('fullSyncs'),
+    },
+  };
+}

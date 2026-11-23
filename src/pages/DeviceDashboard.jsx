@@ -669,6 +669,10 @@ function DeviceDashboardView() {
               )}
             </div>
             <SyncReportsButton syncing={reportSyncing} result={syncResult} disabled={!isOnline} onClick={handleReportSync} />
+            <button onClick={() => navigate(`/activity/${encodeURIComponent(serial)}`)} title="Everything this device did"
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 9, fontSize: 12, fontWeight: 700, color: 'var(--muted)', cursor: 'pointer' }}>
+              Activity log
+            </button>
             {sync.view && !sync.view.hidden && <SyncProgress serial={serial} {...sync.view} onHide={sync.hide} />}
             <button onClick={handleRefresh} disabled={refreshing}
               style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 9, fontSize: 12, fontWeight: 700, color: 'var(--muted)', cursor: 'pointer', opacity: refreshing ? 0.6 : 1 }}>
