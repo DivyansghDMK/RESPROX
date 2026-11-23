@@ -106,3 +106,13 @@ test('td1: detection looks at the framing, not the file name', () => {
 });
 
 function round2(v) { return Math.round(v * 100) / 100; }
+
+test('an overnight session written with the start date on both ends ends the next morning', () => {
+  const f = Array(40).fill('0');
+  Object.assign(f, { 0: 'S', 1: '20', 2: '12', 3: '25', 4: '20', 5: '12', 6: '25', 7: '2', 9: '12', 10: '11', 19: '22', 20: '58', 21: '8', 22: '16', 39: 'E' });
+  const { records, days } = parseReportFile(f.join(','));
+  assert.equal(records[0].durationMinutes, 558);
+  assert.equal(records[0].suspect, null);
+  assert.equal(records[0].dayKey, '2025-12-20');
+  assert.equal(days[0].usage_hours, 9.3); // counted on screen, not only in the PDF
+});

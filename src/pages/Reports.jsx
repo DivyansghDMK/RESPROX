@@ -209,7 +209,7 @@ export default function Reports() {
                 readOnly
                 value={activeSerial}
                 style={{
-                  background: '#f1f5f9',
+                  background: 'var(--bg-f1f5f9)',
                   fontFamily: 'monospace',
                   fontWeight: 700,
                   border: '1px solid var(--line)',

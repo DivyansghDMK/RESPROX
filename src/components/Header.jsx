@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useTherapy } from '../context/TherapyContext';
 import { useNotifications } from '../hooks/useNotifications';
 import NotificationsPanel from './NotificationsPanel';
+import ThemeToggle from './ThemeToggle';
 import { MenuIcon, ServerIcon, BellIcon, UserIcon } from './Icons';
 import { useOnline } from './ConnectionBanner';
 import { Skel } from './Skeleton';
@@ -142,6 +143,7 @@ export default function Header() {
                 : <span>{status.detail}</span>}
             </div>
           </div>
+          <ThemeToggle />
           {notificationsButton('icon-button')}
         </div>
       </div>
@@ -160,6 +162,7 @@ export default function Header() {
           <span className="logo-link">prox</span>
         </div>
         <div className="mobile-header-right">
+          <ThemeToggle className="mobile-bell-btn" />
           {notificationsButton('mobile-bell-btn')}
         </div>
       </div>

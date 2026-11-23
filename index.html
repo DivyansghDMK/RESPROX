@@ -6,6 +6,10 @@
     <title>Resprox Dashboard</title>
     <link rel="icon" type="image/png" href="/resprox-logo.png" />
     <meta name="description" content="CPAP therapy dashboard built with React." />
+    <script>
+      // The saved theme, before anything paints (see src/services/theme.js).
+      try { if (localStorage.getItem('resproxTheme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (e) { /* storage blocked */ }
+    </script>
   </head>
   <body>
     <div id="root"></div>

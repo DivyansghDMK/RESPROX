@@ -124,6 +124,35 @@ function classifyMode(modeCode, { ipap, epap, minPressure, maxPressure }) {
 
 const MODE_LABELS = { bipap: 'BiPAP (ST MODE)', auto: 'AUTO CPAP', cpap: 'CPAP' };
 
+/**
+ * A session's pressure figures. The record carries no pressure trace, so they
+ * are worked out the way DeckMount's earlier therapy report did, from the
+ * pressure change count (field 13):
+ *   AUTO   reached = min + count / 10, capped at the set max;
+ *          median  = the middle of the 1 cmH₂O steps from min up to reached;
+ *          95th    = reached × 0.95.
+ *   CPAP   the pressure is fixed, so all three are the set pressure.
+ *   BiPAP  not worked out (null), nor AUTO without a count.
+ */
+export function sessionPressure(mode, { minPressure, maxPressure, pressureChangeCount }) {
+  const none = { reached: null, median: null, p95: null };
+  if (mode === 'cpap') {
+    const p = maxPressure > 0 ? maxPressure : minPressure;
+    return p > 0 ? { reached: p, median: p, p95: p } : none;
+  }
+  if (mode !== 'auto' || !Number.isFinite(pressureChangeCount) || !(minPressure > 0)) return none;
+  const reached = Math.min(minPressure + pressureChangeCount / 10, maxPressure);
+  // Every 1 cmH₂O step from min up to the rounded reached pressure, high to low.
+  const top = Math.round(reached);
+  const steps = [];
+  for (let v = minPressure; v <= top + 1e-9; v += 1) steps.push(Math.round(v * 10) / 10);
+  if (!steps.length) steps.push(minPressure);
+  steps.reverse();
+  const mid = Math.floor(steps.length / 2);
+  const median = steps.length % 2 ? steps[mid] : (steps[mid] + steps[mid - 1]) / 2;
+  return { reached, median, p95: reached * 0.95 };
+}
+
 /** Parse a single line. Returns a record, or `{ error }` if it is unusable. */
 export function parseRecordLine(line, lineNo) {
   const text = String(line).trim();
@@ -185,7 +214,7 @@ function rowToRecord(row, index) {
 function buildRecord(f, lineNo, raw) {
   const text = raw;
   const start = makeDate(f.startDay, f.startMonth, f.startYear, f.startHour, f.startMinute);
-  const end = makeDate(f.endDay, f.endMonth, f.endYear, f.endHour, f.endMinute);
+  let end = makeDate(f.endDay, f.endMonth, f.endYear, f.endHour, f.endMinute);
   if (!start) return { error: { lineNo, text, reason: 'unreadable start date/time' } };
   if (!end) return { error: { lineNo, text, reason: 'unreadable end date/time' } };
 
@@ -199,8 +228,6 @@ function buildRecord(f, lineNo, raw) {
 
   const { leakRaw } = f;
   const leakValid = Number.isFinite(leakRaw) && leakRaw < LEAK_SENTINEL;
-
-  const durationHours = (end - start) / 3600000;
 
   // Session length for the therapy report. The record has full start and end
   // dates, so use them when they give 0-24 h. Only when they don't (a date
@@ -218,6 +245,11 @@ function buildRecord(f, lineNo, raw) {
     if (endTotal < startTotal) endTotal += 1440;
     durationMinutes = endTotal - startTotal;
   }
+  // The device writes an overnight session (22:41 → 08:21) with the start
+  // date on both ends. The end date is then before the start, by less than a
+  // day: the session ended the next morning, and is a normal night.
+  if (byDate < 0 && byDate > -1440) end = new Date(start.getTime() + durationMinutes * 60000);
+  const durationHours = (end - start) / 3600000;
 
   // A record is kept but excluded from statistics when its own timestamps say
   // it cannot be a night of therapy — a device clock glitch must not silently
@@ -256,6 +288,10 @@ function buildRecord(f, lineNo, raw) {
       setPressure: mode === 'bipap' ? ipap : maxPressure,
 
       pressureChangeCount: f.pressureChangeCount,
+      ...(() => {
+        const sp = sessionPressure(mode, f);
+        return { pressureReached: sp.reached, medianPressure: sp.median, p95Pressure: sp.p95 };
+      })(),
       modeCounter: f.modeCounter,
       airFlow: f.airFlow,
       tidalVolume: f.tidalVolume,
@@ -363,11 +399,20 @@ function reportDay(all) {
   const tidal = avg(nonZero('tidalVolume'));
   const resp = avg(nonZero('respRate'));
   const last = all[all.length - 1];
+  // The pressure a session ran at: AUTO's reached pressure when the record
+  // gives it, else the set pressure (BiPAP: IPAP).
+  const ran = (r) => (r.pressureReached > 0 ? r.pressureReached : Math.max(r.ipap || 0, r.maxPressure || 0));
+  const mean = (key) => {
+    const v = all.map((r) => r[key]).filter((x) => Number.isFinite(x) && x > 0);
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+  };
   return {
     usageMinutes: all.reduce((sum, r) => sum + r.durationMinutes, 0),
-    maxPressure: Math.max(0, ...all.map((r) => Math.max(r.ipap || 0, r.maxPressure || 0))),
-    // Each session's pressure, for the day's median and 95th percentile.
-    pressures: all.map((r) => Math.max(r.ipap || 0, r.maxPressure || 0)).filter((v) => v > 0),
+    maxPressure: Math.max(0, ...all.map(ran)),
+    pressures: all.map(ran).filter((v) => v > 0),
+    // The day's median and 95th: the average of its sessions' (as DeckMount's earlier report).
+    medianPressure: mean('medianPressure'),
+    p95Pressure: mean('p95Pressure'),
     // What the device was set to in the day's last session (BiPAP: IPAP / EPAP).
     setMax: last.mode === 'bipap' ? last.ipap : last.maxPressure,
     setMin: last.mode === 'bipap' ? last.epap : last.minPressure,
