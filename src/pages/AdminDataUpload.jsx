@@ -10,10 +10,10 @@
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import GlassCard from '../components/GlassCard';
-import TherapyStatistics from '../components/TherapyStatistics';
 import { useAccess } from '../context/AccessContext';
 import { ChartSkeleton } from '../components/Skeleton';
 import { FileIcon, DownloadIcon, InfoIcon, CheckIcon, TrashIcon } from '../components/Icons';
+import { RANGE_PRESETS, presetRange } from '../services/reportRange';
 import { parseReportFile, parseTd1File, isTd1Data, dateRangeOf, daysToCSV, PARSER_CONSTANTS, TD1_RECORD_BYTES } from '../services/reportFileParser';
 
 // recharts is ~300 kB; this page is useful before any chart is needed, so the
@@ -25,15 +25,6 @@ const ACCEPT = '.txt,.TXT,.csv,.log,text/plain';
 const TD1_ACCEPT = '.td1,.TD1';
 const MAX_BYTES = 8 * 1024 * 1024;
 const PREVIEW_ROWS = 12;
-
-// Clinical review is normally a 30- or 90-night window; a whole file at once is
-// the exception, not the default.
-const QUICK_RANGES = [
-  { label: 'Last 7', nights: 7 },
-  { label: 'Last 30', nights: 30 },
-  { label: 'Last 90', nights: 90 },
-  { label: 'All', nights: null },
-];
 
 function hm(hours) {
   if (!Number.isFinite(hours)) return '—';
@@ -133,13 +124,15 @@ export default function AdminDataUpload() {
   const [showAllErrors, setShowAllErrors] = useState(false);
 
   const [range, setRange] = useState({ start: '', end: '' });
+  // The quick range last chosen (1, 7, 30, 90 or 'all'); null once a date is picked by hand.
+  const [preset, setPreset] = useState('all');
   const [patient, setPatient] = useState({ name: '', id: '', dob: '', gender: '' });
   const [serial, setSerial] = useState('');
   const [model, setModel] = useState('');
 
   const reset = useCallback(() => {
     setParsed(null); setError(null); setErrorSource(null); setFileName(''); setFileSize(0);
-    setRange({ start: '', end: '' });
+    setRange({ start: '', end: '' }); setPreset('all');
     setSerial(''); setShowAllErrors(false);
   }, []);
 
@@ -172,6 +165,7 @@ export default function AdminDataUpload() {
       setFileName(file.name);
       setFileSize(file.size);
       setRange(dateRangeOf(result));
+      setPreset('all');
       setSerial(result.serial || '');
       // Only prefill the patient ID when it is still untouched, so re-uploading
       // a second file does not quietly overwrite what the operator typed.
@@ -208,23 +202,15 @@ export default function AdminDataUpload() {
     };
   }, [daysInRange]);
 
-  const applyQuickRange = useCallback((q) => {
-    if (!parsed?.days.length) return;
-    const all = parsed.days;
-    if (!q.nights) { setRange(dateRangeOf(parsed)); return; }
-    const slice = all.slice(Math.max(0, all.length - q.nights));
-    setRange({ start: slice[0].dayKey, end: all[all.length - 1].dayKey });
+  // Calendar days ending on the file's last day, as on the Reports page, so
+  // Last 7 / 30 / 90 always cover that many days even when the file has fewer.
+  const applyQuickRange = useCallback((days) => {
+    const next = parsed?.days.length ? presetRange(days, dateRangeOf(parsed)) : null;
+    if (!next) return;
+    setPreset(days);
+    setRange(days === 1 ? { start: next.end, end: next.end } : next);
   }, [parsed]);
-
-  // Which preset (if any) the current range corresponds to.
-  const activeQuickRange = useMemo(() => {
-    if (!parsed?.days.length) return null;
-    const all = parsed.days;
-    const inRange = all.filter((d) => (!range.start || d.dayKey >= range.start) && (!range.end || d.dayKey <= range.end));
-    if (inRange.length === all.length) return 'All';
-    const match = QUICK_RANGES.find((q) => q.nights && q.nights === inRange.length);
-    return match?.label ?? null;
-  }, [parsed, range]);
+  const singleDay = preset === 1;
 
   const deviceData = useMemo(() => {
     if (!parsed) return null;
@@ -449,9 +435,6 @@ export default function AdminDataUpload() {
             )}
           </GlassCard>
 
-          {/* ── Compliance check + statistics over the whole file ──────────── */}
-          <TherapyStatistics rows={parsed.days} style={{ marginTop: 20 }} />
-
           {/* ── Report details ─────────────────────────────────────────────── */}
           <GlassCard style={{ marginTop: 20 }}>
             <div className="section-title">
@@ -464,13 +447,22 @@ export default function AdminDataUpload() {
                 <input id="up-serial" type="text" value={serial} onChange={(e) => setSerial(e.target.value)} placeholder="From file" />
               </div>
               <div className="input-field">
-                <label htmlFor="up-start">Start Date</label>
-                <input id="up-start" type="date" value={range.start} min={parsed.days[0]?.dayKey} max={range.end || undefined} onChange={(e) => setRange((r) => ({ ...r, start: e.target.value }))} />
+                <label htmlFor="up-start">{singleDay ? 'Day' : 'Start Date'}</label>
+                <input id="up-start" type="date" value={range.start} max={(singleDay ? parsed.days[parsed.days.length - 1]?.dayKey : range.end) || undefined}
+                  onChange={(e) => { const v = e.target.value; setRange((r) => (singleDay ? { start: v, end: v } : { ...r, start: v })); if (!singleDay) setPreset(null); }} />
               </div>
               <div className="input-field">
                 <label htmlFor="up-end">End Date</label>
-                <input id="up-end" type="date" value={range.end} min={range.start || undefined} max={parsed.days[parsed.days.length - 1]?.dayKey} onChange={(e) => setRange((r) => ({ ...r, end: e.target.value }))} />
+                <input id="up-end" type="date" value={range.end} min={range.start || undefined} max={parsed.days[parsed.days.length - 1]?.dayKey} disabled={singleDay} onChange={(e) => { setRange((r) => ({ ...r, end: e.target.value })); setPreset(null); }} />
               </div>
+            </div>
+
+            <div className="reports-range-presets" role="group" aria-label="Quick date ranges">
+              <span>Quick range:</span>
+              {RANGE_PRESETS.map(([d, text]) => (
+                <button key={text} type="button" className={preset === d ? 'on' : ''} aria-pressed={preset === d}
+                  onClick={() => applyQuickRange(d)} title={d === 1 ? 'One day: change it with the Day date' : undefined}>{text}</button>
+              ))}
             </div>
 
             <div className="reports-filters-grid" style={{ marginTop: 12 }}>
@@ -510,20 +502,6 @@ export default function AdminDataUpload() {
             {rangeStats.days === 0 && (
               <Notice tone="warn">No days fall inside this range — widen it before generating the report.</Notice>
             )}
-
-            <div className="quick-range" role="group" aria-label="Quick date ranges">
-              <span>Range</span>
-              {QUICK_RANGES.map((q) => (
-                <button
-                  key={q.label}
-                  type="button"
-                  className={activeQuickRange === q.label ? 'active' : ''}
-                  onClick={() => applyQuickRange(q)}
-                >
-                  {q.label}{q.nights ? ' nights' : ''}
-                </button>
-              ))}
-            </div>
 
             <div className="reports-actions-bar">
               <button className="icon-text-button" onClick={generate} disabled={rangeStats.days === 0 || building}>

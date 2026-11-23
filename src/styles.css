@@ -7151,3 +7151,43 @@ a.icon-text-button { text-decoration: none; }
    Media queries read the real window width, so this can't feed back on itself. */
 @media (min-width: 2200px) { html { zoom: 1.2; } }
 @media (min-width: 3000px) { html { zoom: 1.35; } }
+
+/* ── Public SD card report page (/sd-report) ─────────────────────────────── */
+.sdr-page { min-height: 100vh; background: #f4f7fb; padding: 32px 16px 24px; display: flex; flex-direction: column; align-items: center; color: var(--text); }
+.sdr-head { max-width: 640px; width: 100%; text-align: center; margin-bottom: 20px; }
+.sdr-logo { height: 44px; width: auto; }
+.sdr-head h1 { font-size: 24px; margin: 14px 0 6px; }
+.sdr-head p { color: var(--muted); margin: 0; font-size: 14px; line-height: 1.5; }
+.sdr-card { max-width: 640px; width: 100%; background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 24px; box-shadow: 0 8px 30px rgba(16, 35, 70, 0.06); box-sizing: border-box; }
+.sdr-step { padding-bottom: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--line); transition: opacity .2s; }
+.sdr-step.off { opacity: .45; }
+.sdr-step h2 { font-size: 16px; margin: 0 0 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sdr-step h2 small { font-weight: 500; color: var(--muted); font-size: 12px; }
+.sdr-num { width: 26px; height: 26px; border-radius: 50%; background: var(--brand-gradient); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; flex: none; }
+.sdr-help { color: var(--muted); font-size: 13px; line-height: 1.55; margin: 6px 0 0; }
+.sdr-center { text-align: center; }
+.sdr-privacy { font-size: 12px; color: #0f6e56; margin: 10px 0 0; }
+.sdr-drop { margin-top: 12px; border: 2px dashed #bcd0ee; border-radius: 12px; padding: 26px 16px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; text-align: center; background: #f8fbff; transition: border-color .15s, background .15s; }
+.sdr-drop:hover, .sdr-drop.over { border-color: #0047CC; background: #eef4ff; }
+.sdr-drop.busy { cursor: progress; opacity: .7; }
+.sdr-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.sdr-drop:focus-within { outline: 2px solid #0047CC; outline-offset: 2px; }
+.sdr-drop-icon { font-size: 22px; color: #0047CC; }
+.sdr-drop span { color: var(--muted); font-size: 12px; }
+.sdr-file { margin-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 12px 14px; }
+.sdr-file b { display: block; word-break: break-all; }
+.sdr-file span { font-size: 12px; color: #166534; }
+.sdr-link { background: none; border: 0; color: #0047CC; font-weight: 600; cursor: pointer; padding: 4px 0; font-size: 13px; }
+.sdr-presets { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+.sdr-presets button { border: 1px solid #c9d6ea; background: #fff; border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer; }
+.sdr-presets button.on { background: var(--brand-gradient); color: #fff; border-color: transparent; }
+.sdr-presets button:disabled { cursor: not-allowed; }
+.sdr-dates { display: flex; gap: 12px; flex-wrap: wrap; }
+.sdr-dates label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); flex: 1 1 160px; }
+.sdr-dates input, .sdr-name { border: 1px solid #c9d6ea; border-radius: 10px; padding: 10px 12px; font-size: 14px; color: var(--text); background: #fff; width: 100%; box-sizing: border-box; font-family: inherit; }
+.sdr-error { color: #a32d2d; font-size: 13px; margin: 8px 0 0; }
+.sdr-error-box { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.5; margin-bottom: 14px; }
+.sdr-go { width: 100%; border: 0; border-radius: 12px; padding: 14px; font-size: 15px; font-weight: 700; color: #fff; background: var(--brand-gradient); cursor: pointer; }
+.sdr-go:disabled { opacity: .5; cursor: not-allowed; }
+.sdr-foot { margin-top: 20px; font-size: 12px; color: var(--muted); text-align: center; max-width: 640px; }
+.sdr-foot a { color: inherit; }
