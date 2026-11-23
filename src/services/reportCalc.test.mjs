@@ -104,7 +104,7 @@ test('the report follows the app layout', () => {
   assert.match(html, /<span>A-Flex Level<\/span><span>3<\/span>/);
   assert.match(html, /<span>Mask Type<\/span><span>Pillow Mask<\/span>/);
   assert.match(html, /Pressure-cmH2O/);
-  assert.match(html, /<span>AI:<\/span><b>1\.63<\/b>/);
+  assert.match(html, /<td class="ml">AI:<\/td><td class="mv">1\.63<\/td>/);
   assert.match(html, /Set Max Pressure/);
   assert.match(html, /Usage days<\/span><span>3\/13 Days \(23%\)/);
   assert.doesNotMatch(html, /Compliance|Statistics/);
