@@ -15,7 +15,7 @@
 
 import { buildReportData, fmtHM, MODE_NAMES } from './reportCalc.js';
 
-const ADDRESS = 'DeckMount : 683, Udyog Vihar, Phase V, Gurugram, Haryana, 122016';
+const ADDRESS = 'DeckMount : 683, Udyog Vihar, Phase V, Gurugram 122016';
 
 const MASK_NAMES = { 1: 'Full Face Mask', 2: 'Nasal Mask', 3: 'Pillow Mask' };
 
@@ -454,7 +454,7 @@ ${logoMarkup()}
   ${mode.bipap ? '' : metricRow('Pressure-cmH2O', [['Median', num(r.pressure.median)], ['95th percentile', num(r.pressure.p95)], ['Maximum', num(r.pressure.max)]])}
   ${metricRow('Events per hour', [['AI', num(events.ai, 2)], ['HI', num(events.hi, 2)], ['AHI', num(events.ahi, 2)]])}
   ${mode.bipap ? '' : `
-  ${metricRow('Apnea Index - Events/hr', [['Central', num(events.central, 2)], ['Obstructive', num(events.obstructive, 2)], ['Unknown', num(events.unknown, 2)]])}
+  ${metricRow('Apnea Index - L/Min', [['Central', num(events.central, 2)], ['Obstructive', num(events.obstructive, 2)], ['Unknown', num(events.unknown, 2)]])}
   ${metricRow('Average Leak - L/Min', [['', whole(r.avgLeak)]])}`}
 </section>
 
