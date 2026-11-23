@@ -214,7 +214,7 @@ function rowToRecord(row, index) {
 function buildRecord(f, lineNo, raw) {
   const text = raw;
   const start = makeDate(f.startDay, f.startMonth, f.startYear, f.startHour, f.startMinute);
-  const end = makeDate(f.endDay, f.endMonth, f.endYear, f.endHour, f.endMinute);
+  let end = makeDate(f.endDay, f.endMonth, f.endYear, f.endHour, f.endMinute);
   if (!start) return { error: { lineNo, text, reason: 'unreadable start date/time' } };
   if (!end) return { error: { lineNo, text, reason: 'unreadable end date/time' } };
 
@@ -228,8 +228,6 @@ function buildRecord(f, lineNo, raw) {
 
   const { leakRaw } = f;
   const leakValid = Number.isFinite(leakRaw) && leakRaw < LEAK_SENTINEL;
-
-  const durationHours = (end - start) / 3600000;
 
   // Session length for the therapy report. The record has full start and end
   // dates, so use them when they give 0-24 h. Only when they don't (a date
@@ -247,6 +245,11 @@ function buildRecord(f, lineNo, raw) {
     if (endTotal < startTotal) endTotal += 1440;
     durationMinutes = endTotal - startTotal;
   }
+  // The device writes an overnight session (22:41 → 08:21) with the start
+  // date on both ends. The end date is then before the start, by less than a
+  // day: the session ended the next morning, and is a normal night.
+  if (byDate < 0 && byDate > -1440) end = new Date(start.getTime() + durationMinutes * 60000);
+  const durationHours = (end - start) / 3600000;
 
   // A record is kept but excluded from statistics when its own timestamps say
   // it cannot be a night of therapy — a device clock glitch must not silently
