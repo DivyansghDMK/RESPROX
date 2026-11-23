@@ -9,7 +9,7 @@
 // `raw`. Rows without `report` (older telemetry, stored nights) are rebuilt
 // from what they carry.
 
-export const MODE_NAMES = { 1: 'CPAP', 2: 'AUTO', 3: 'BiPAP-S', 4: 'BiPAP-ST', 5: 'BiPAP-T', 6: 'VAPS' };
+export const MODE_NAMES = { 1: 'CPAP', 2: 'AUTO CPAP', 3: 'BiPAP-S', 4: 'BiPAP-ST', 5: 'BiPAP-T', 6: 'VAPS' };
 export const LEAK_THRESHOLD = 24;
 export const COMPLIANT_MINUTES = 240;
 
@@ -31,9 +31,9 @@ export function fmtHM(minutes) {
   return `${String(Math.floor(m / 60)).padStart(2, '0')} Hours, ${String(m % 60).padStart(2, '0')} Minutes`;
 }
 
-/** Whole percent, rounded down; 0 when there is nothing to divide by. */
+/** Whole percent, rounded to the nearest (31/38 → 82 %); 0 when there is nothing to divide by. */
 export function pct(part, whole) {
-  return whole ? Math.floor((part * 100) / whole) : 0;
+  return whole ? Math.round((part * 100) / whole) : 0;
 }
 
 /** Nearest-rank percentile of an ascending list; NaN when it is empty. */
@@ -156,8 +156,9 @@ export function buildReportData({ rows = [], startDate, endDate } = {}) {
       over4hDays,
       under4hDays,
       totalMinutes,
-      avgTotalDaysMin: totalDays ? Math.floor(totalMinutes / totalDays) : 0,
-      avgUsedDaysMin: usedDays ? Math.floor(totalMinutes / usedDays) : 0,
+      // Averages to the nearest minute (11,961 min ÷ 38 days = 314.8 → 05 h 15 m).
+      avgTotalDaysMin: totalDays ? Math.round(totalMinutes / totalDays) : 0,
+      avgUsedDaysMin: usedDays ? Math.round(totalMinutes / usedDays) : 0,
       medianUsedDaysMin: sortedUsed.length ? sortedUsed[Math.floor(sortedUsed.length / 2)] : 0,
       usedPct: pct(usedDays, totalDays),
       over4hPct: pct(over4hDays, totalDays),
