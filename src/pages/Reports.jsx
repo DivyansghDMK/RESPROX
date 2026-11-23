@@ -49,14 +49,19 @@ export default function Reports() {
   const inRange = useCallback((key) => Boolean(key) && (!startDate || key >= startDate) && (!endDate || key <= endDate), [startDate, endDate]);
 
   /** Quick ranges end on the last day with data, so "Last 7 days" is never empty for an idle device. */
+  // Single-day mode: picking a start date moves the end date with it.
+  const [singleDay, setSingleDay] = useState(false);
   const preset = (days) => {
     if (!dataRange.end) return;
+    setSingleDay(days === 1);
     if (days === 'all') { setStartDate(dataRange.start); setEndDate(dataRange.end); return; }
     const end = new Date(`${dataRange.end}T00:00:00`);
     const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - (days - 1));
     setStartDate(dayKey(start.getTime()));
     setEndDate(dataRange.end);
   };
+  // A new device starts over in range mode.
+  useEffect(() => { setSingleDay(false); }, [activeSerial]);
   const rangeLabel = (key) => (key ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(`${key}T00:00:00`)) : '…');
   const [syncing, setSyncing] = useState(false);
   const sync = useSyncProgress();
@@ -159,12 +164,13 @@ export default function Reports() {
   // The report template and its SVG charts live in their own module so this
   // route's chunk stays small — it is fetched the first time a report is asked for.
   const [building, setBuilding] = useState(false);
-  const handleGeneratePDF = async () => {
+  /** The report for [from, to]: the chosen range, or one day from a session row. */
+  const handleGeneratePDF = async (from = startDate, to = endDate) => {
     if (building) return;
     setBuilding(true);
     try {
       const { openTherapyReport } = await import('../services/therapyReport');
-      const result = openTherapyReport({ deviceData, sessions, startDate, endDate });
+      const result = openTherapyReport({ deviceData, sessions, startDate: from, endDate: to });
       if (result.reason === 'build-failed') {
         notify.fromError(result.error, { action: 'build the therapy report', subject: activeSerial });
       } else if (!result.ok) {
@@ -219,8 +225,8 @@ export default function Reports() {
                 id="start-date"
                 type="date"
                 value={startDate}
-                max={endDate || undefined}
-                onChange={(e) => setStartDate(e.target.value)}
+                max={singleDay ? undefined : endDate || undefined}
+                onChange={(e) => { setStartDate(e.target.value); if (singleDay) setEndDate(e.target.value); }}
                 aria-label="Start Date"
               />
             </div>
@@ -231,7 +237,7 @@ export default function Reports() {
                 type="date"
                 value={endDate}
                 min={startDate || undefined}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={(e) => { setEndDate(e.target.value); setSingleDay(false); }}
                 aria-label="End Date"
               />
             </div>
@@ -239,8 +245,10 @@ export default function Reports() {
 
           <div className="reports-range-presets" role="group" aria-label="Quick date ranges">
             <span>Quick range:</span>
-            {[[7, 'Last 7 days'], [30, 'Last 30 days'], [90, 'Last 90 days'], ['all', 'All data']].map(([d, label]) => (
-              <button key={label} type="button" onClick={() => preset(d)} disabled={!dataRange.end}>{label}</button>
+            {[[1, 'Single day'], [7, 'Last 7 days'], [30, 'Last 30 days'], [90, 'Last 90 days'], ['all', 'All data']].map(([d, label]) => (
+              <button key={label} type="button" onClick={() => preset(d)} disabled={!dataRange.end}
+                className={d === 1 && singleDay ? 'on' : ''} aria-pressed={d === 1 ? singleDay : undefined}
+                title={d === 1 ? 'One day: pick it with Start Date' : undefined}>{label}</button>
             ))}
           </div>
           {rangeInvalid && <p className="reports-range-error" role="alert">The end date is before the start date. Pick an end date on or after {rangeLabel(startDate)}.</p>}
@@ -250,9 +258,9 @@ export default function Reports() {
               <span aria-hidden="true">⟳</span>
               <span>{syncing ? 'Syncing reports…' : 'Sync reports'}</span>
             </button>
-            <button className="icon-text-button" onClick={handleGeneratePDF} disabled={!sessions.length || building || rangeInvalid} title={sessions.length ? 'Opens the report for the chosen dates, to print or save as PDF' : 'No sessions to report yet'}>
+            <button className="icon-text-button" onClick={() => handleGeneratePDF()} disabled={!sessions.length || building || rangeInvalid} title={sessions.length ? 'Opens the report for the chosen dates, to print or save as PDF' : 'No sessions to report yet'}>
               <FileIcon />
-              <span>{building ? 'Building report…' : `Open report · ${rangeLabel(startDate)} – ${rangeLabel(endDate)}`}</span>
+              <span>{building ? 'Building report…' : startDate && startDate === endDate ? `Open report · ${rangeLabel(startDate)}` : `Open report · ${rangeLabel(startDate)} – ${rangeLabel(endDate)}`}</span>
             </button>
           </div>
         </GlassCard>
@@ -285,6 +293,7 @@ export default function Reports() {
                       <th>Leak Rate</th>
                       <th>Pressure</th>
                       <th>Compliance</th>
+                      <th><span className="sr-only">Report</span></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -304,6 +313,16 @@ export default function Reports() {
                             <span className={`compliance-tag ${report.compliance === 'Yes' ? 'pass' : 'fail'}`}>
                               {report.compliance === 'Yes' ? 'Passed' : 'Failed'}
                             </span>
+                          )}
+                        </td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          {/* One day's report: every session of that date, not just this row. */}
+                          {report.dayKey && (
+                            <button type="button" className="day-report-btn" disabled={building}
+                              onClick={() => handleGeneratePDF(report.dayKey, report.dayKey)}
+                              title={`Therapy report for ${rangeLabel(report.dayKey)} (all sessions that day)`}>
+                              <FileIcon /> Day report
+                            </button>
                           )}
                         </td>
                       </tr>

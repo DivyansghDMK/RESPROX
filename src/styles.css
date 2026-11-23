@@ -7134,7 +7134,17 @@ a.icon-text-button { text-decoration: none; }
   font-size: 12px; font-weight: 700; color: var(--text); cursor: pointer;
 }
 .reports-range-presets button:hover:not(:disabled) { border-color: #c7d6ee; color: var(--accent); }
+.reports-range-presets button.on { background: var(--brand-gradient); color: #fff; border-color: transparent; }
 .reports-range-error { margin: 10px 0 0; padding: 8px 12px; border-radius: 10px; background: #fde8e8; color: #b42318; font-size: 13px; font-weight: 600; }
+
+.day-report-btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 9px;
+  border: 1px solid var(--line); background: var(--panel-strong); color: var(--accent);
+  font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.day-report-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
+.day-report-btn:hover:not(:disabled) { border-color: #c7d6ee; background: #f3f7fd; }
+.day-report-btn:disabled { opacity: 0.5; cursor: wait; }
 
 /* Large monitors (2560×1440 and up): the whole UI is drawn at laptop scale and
    bunches into the top-left. Scale it up so it fills the screen the same way.
