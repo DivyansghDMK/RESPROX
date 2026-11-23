@@ -279,9 +279,12 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
   const setMax = r.set?.max ?? settings.max_pressure;
   const setMin = r.set?.min ?? settings.min_pressure;
   const setFixed = r.set?.max ?? settings.pressure ?? lastUsed?.maxPressure;
+  // A-Flex and mask as the sessions in the range recorded them (the same from
+  // a server sync, a .td1 or REPORTFL.TXT); today's settings only as fallback.
   const aflexLevel = Number(settings.aflex);
-  const aflexOn = Number.isFinite(aflexLevel) && settings.aflex != null ? aflexLevel > 0 : latest?.aflexOn;
-  const level = aflexOn ? (aflexLevel > 0 ? aflexLevel : latest?.aflexLevel) : null;
+  const aflexOn = latest?.aflexOn != null ? latest.aflexOn
+    : Number.isFinite(aflexLevel) && settings.aflex != null ? aflexLevel > 0 : null;
+  const level = aflexOn ? (latest?.aflexOn ? latest.aflexLevel : aflexLevel) : null;
 
   const settingsRows = mode.bipap
     ? [
@@ -301,7 +304,7 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
         : [['Set Pressure', trimF(setFixed)]]),
       ['A-Flex', aflexOn == null ? '—' : aflexOn ? 'ON' : 'OFF'],
       aflexOn ? ['A-Flex Level', trimF(level)] : null,
-      ['Mask Type', maskName(settings.mask_type) || maskName(latest?.maskType) || '—'],
+      ['Mask Type', maskName(latest?.maskType) || maskName(settings.mask_type) || '—'],
     ];
 
   const usagePanel = chartSection('Usage (Hours)', [

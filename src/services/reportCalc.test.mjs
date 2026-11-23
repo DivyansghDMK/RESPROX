@@ -98,6 +98,11 @@ test('the parser adds each day as the report counts it', () => {
   assert.equal(r.csa + r.osa + r.hsa, 12);
   assert.equal(r.minuteVent, 7);
   assert.deepEqual(r.pressures, [12, 14]);
+  // A session that starts and ends in the same minute is 0 min, not a whole day.
+  const same = parseReportRows([row({ start_hour: 13, start_minute: 59, end_day: 3, end_hour: 13, end_minute: 59 })]).records[0];
+  assert.equal(same.durationMinutes, 0);
+  // Overnight by the dates: 23:00 on the 3rd to 06:30 on the 4th.
+  assert.equal(parseReportRows([row({})]).records[0].durationMinutes, 450);
   assert.equal(r.setMax, 14); // the day's last session
   assert.equal(r.setMin, 6);
 });

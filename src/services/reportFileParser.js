@@ -202,12 +202,22 @@ function buildRecord(f, lineNo, raw) {
 
   const durationHours = (end - start) / 3600000;
 
-  // The Android app's session length, which the therapy report uses: clock
-  // times only, with an end at or before the start taken as the next morning.
-  const startTotal = f.startHour * 60 + f.startMinute;
-  let endTotal = f.endHour * 60 + f.endMinute;
-  if (endTotal <= startTotal) endTotal += 1440;
-  const durationMinutes = endTotal - startTotal;
+  // Session length for the therapy report. The record has full start and end
+  // dates, so use them when they give 0-24 h. Only when they don't (a date
+  // glitch) fall back to the clock times, with an end before the start taken
+  // as the next morning. An end equal to the start is 0 min, not 24 h: the
+  // Android app's "end <= start → +24 h" counted every same-minute session as
+  // a whole day.
+  const byDate = Math.round((end - start) / 60000);
+  let durationMinutes;
+  if (byDate >= 0 && byDate <= 1440) {
+    durationMinutes = byDate;
+  } else {
+    const startTotal = f.startHour * 60 + f.startMinute;
+    let endTotal = f.endHour * 60 + f.endMinute;
+    if (endTotal < startTotal) endTotal += 1440;
+    durationMinutes = endTotal - startTotal;
+  }
 
   // A record is kept but excluded from statistics when its own timestamps say
   // it cannot be a night of therapy — a device clock glitch must not silently
