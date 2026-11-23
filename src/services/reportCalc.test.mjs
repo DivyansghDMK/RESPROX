@@ -55,7 +55,11 @@ test('event indices are events over total hours, AHI = AI + HI', () => {
 });
 
 test('pressure percentiles, leak average and empty days', () => {
-  assert.deepEqual(data.pressure, { max: 19.1, p95: 14.2, median: 14.2 });
+  // One session a day: each day's max, 95th and median are that session's
+  // pressure, averaged over the 3 days: (19.1 + 14.2 + 10.8) / 3.
+  assert.equal(data.pressure.max.toFixed(2), '14.70');
+  assert.equal(data.pressure.p95.toFixed(2), '14.70');
+  assert.equal(data.pressure.median.toFixed(2), '14.70');
   assert.equal(data.avgLeak.toFixed(1), '9.7');
   const empty = data.days.find((d) => d.key === '2022-03-07');
   assert.equal(empty.hours, 0);
@@ -92,6 +96,9 @@ test('the parser adds each day as the report counts it', () => {
   assert.deepEqual(r.leaks, [20]);
   assert.equal(r.csa + r.osa + r.hsa, 12);
   assert.equal(r.minuteVent, 7);
+  assert.deepEqual(r.pressures, [12, 14]);
+  assert.equal(r.setMax, 14); // the day's last session
+  assert.equal(r.setMin, 6);
 });
 
 test('the report follows the app layout', () => {
@@ -141,4 +148,26 @@ test('usage figures of the Rajinder Kaur Ghai sample (15 Mar - 21 Apr 2026)', ()
   assert.equal(fmtHM(u.totalMinutes), '199 Hours, 21 Minutes');
   assert.equal(fmtHM(u.avgTotalDaysMin), '05 Hours, 15 Minutes');
   assert.equal(fmtHM(u.avgUsedDaysMin), '05 Hours, 23 Minutes');
+});
+
+test('pressure (avg): per-day max, 95th and median of its sessions, averaged over days', () => {
+  const d = buildReportData({
+    rows: [
+      day('2026-04-01', rep(400, 12, 0, 1, 1, [30], { pressures: [8, 10, 12], setMax: 11, setMin: 4 })),
+      day('2026-04-02', rep(300, 6, 0, 1, 1, [30], { pressures: [6], setMax: 12, setMin: 5 })),
+    ],
+  });
+  assert.equal(d.pressure.max, 9);      // (12 + 6) / 2
+  assert.equal(d.pressure.median, 8);   // (10 + 6) / 2
+  assert.equal(d.pressure.p95, 8);      // nearest rank of [8,10,12] is 10; (10 + 6) / 2
+  // Settings come from the range's last session, not today's device settings.
+  assert.deepEqual(d.set, { max: 12, min: 5 });
+});
+
+test('the report shows the settings recorded in the range', () => {
+  const rows2 = [day('2026-04-01', rep(400, 10, 0, 1, 1, [30], { pressures: [10], setMax: 11, setMin: 4 }))];
+  const html = buildTherapyReportHTML({ deviceData: { serial: 'CVT1', settings: { min_pressure: 6, max_pressure: 15 } }, sessions: rows2, startDate: '2026-04-01', endDate: '2026-04-01' });
+  assert.match(html, /<span>Min Pressure<\/span><span>4<\/span>/);
+  assert.match(html, /<span>Max Pressure<\/span><span>11<\/span>/);
+  assert.match(html, /Set Max Pressure<\/span>\s*<span class="stat-value"[^>]*>11</);
 });

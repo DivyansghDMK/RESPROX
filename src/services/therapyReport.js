@@ -269,6 +269,11 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
     : null;
 
   const lastUsed = [...days].reverse().find((d) => d.maxPressure > 0);
+  // Pressure settings as recorded by the sessions in this range; the device's
+  // current settings only when the sessions don't carry them.
+  const setMax = r.set?.max ?? settings.max_pressure;
+  const setMin = r.set?.min ?? settings.min_pressure;
+  const setFixed = r.set?.max ?? settings.pressure ?? lastUsed?.maxPressure;
   const aflexLevel = Number(settings.aflex);
   const aflexOn = Number.isFinite(aflexLevel) && settings.aflex != null ? aflexLevel > 0 : latest?.aflexOn;
   const level = aflexOn ? (aflexLevel > 0 ? aflexLevel : latest?.aflexLevel) : null;
@@ -278,8 +283,8 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
       ['Serial number', serial],
       ['Device', deviceData?.model || '—'],
       ['Mode', mode.label],
-      ['IPAP', trimF(settings.max_pressure)],
-      ['EPAP', trimF(settings.min_pressure)],
+      ['IPAP', trimF(setMax)],
+      ['EPAP', trimF(setMin)],
     ]
     : [
       ['Serial number', serial],
@@ -287,8 +292,8 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
       ['Mode', mode.label],
       // AUTO CPAP moves between a set min and max; CPAP holds one pressure.
       ...(auto
-        ? [['Min Pressure', trimF(settings.min_pressure)], ['Max Pressure', trimF(settings.max_pressure)]]
-        : [['Set Pressure', trimF(settings.pressure ?? lastUsed?.maxPressure)]]),
+        ? [['Min Pressure', trimF(setMin)], ['Max Pressure', trimF(setMax)]]
+        : [['Set Pressure', trimF(setFixed)]]),
       ['A-Flex', aflexOn == null ? '—' : aflexOn ? 'ON' : 'OFF'],
       aflexOn ? ['A-Flex Level', trimF(level)] : null,
       ['Mask Type', maskName(settings.mask_type) || maskName(latest?.maskType) || '—'],
@@ -309,8 +314,8 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
   const pressurePanel = chartSection('Pressure (cmH2O)', [
     ['Mode', mode.label, C.text],
     ...(mode.bipap ? [] : auto
-      ? [['Set Max Pressure', trimF(settings.max_pressure), C.text], ['Set Min Pressure', trimF(settings.min_pressure), C.text]]
-      : [['Set Pressure', trimF(settings.pressure ?? lastUsed?.maxPressure), C.text]]),
+      ? [['Set Max Pressure', trimF(setMax), C.text], ['Set Min Pressure', trimF(setMin), C.text]]
+      : [['Set Pressure', trimF(setFixed), C.text]]),
     ['Maximum (avg)', num(r.pressure.max), C.text],
     ['95th % (avg)', num(r.pressure.p95), C.heading],
     ['Median (avg)', num(r.pressure.median), C.text],

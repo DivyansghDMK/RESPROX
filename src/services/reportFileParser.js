@@ -356,6 +356,11 @@ function reportDay(all) {
   return {
     usageMinutes: all.reduce((sum, r) => sum + r.durationMinutes, 0),
     maxPressure: Math.max(0, ...all.map((r) => Math.max(r.ipap || 0, r.maxPressure || 0))),
+    // Each session's pressure, for the day's median and 95th percentile.
+    pressures: all.map((r) => Math.max(r.ipap || 0, r.maxPressure || 0)).filter((v) => v > 0),
+    // What the device was set to in the day's last session (BiPAP: IPAP / EPAP).
+    setMax: last.mode === 'bipap' ? last.ipap : last.maxPressure,
+    setMin: last.mode === 'bipap' ? last.epap : last.minPressure,
     csa: all.reduce((sum, r) => sum + r.csa, 0),
     osa: all.reduce((sum, r) => sum + r.osa, 0),
     hsa: all.reduce((sum, r) => sum + r.hsa, 0),
