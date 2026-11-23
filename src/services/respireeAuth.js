@@ -38,8 +38,30 @@ function getStoredSession() {
   };
 }
 
+// Sign-in and token refresh must never hang: every page waiting on a 401
+// refresh would hang with them.
+const AUTH_TIMEOUT_MS = 20000;
+
+async function fetchWithDeadline(url, options) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AUTH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      const timeout = new Error(`The sign-in service did not answer within ${AUTH_TIMEOUT_MS / 1000} seconds.`);
+      timeout.code = 'TIMEOUT';
+      throw timeout;
+    }
+    err.code = err.code || 'NETWORK';
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function callCognito(payload, target = 'InitiateAuth') {
-  const res = await fetch(COGNITO_ENDPOINT, {
+  const res = await fetchWithDeadline(COGNITO_ENDPOINT, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-amz-json-1.1',
@@ -134,7 +156,7 @@ export async function loginWithCognito(username, password) {
  * /api/alias-login, which holds the shared account's real password.
  */
 async function aliasRequest(body) {
-  const res = await fetch('/api/alias-login', {
+  const res = await fetchWithDeadline('/api/alias-login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

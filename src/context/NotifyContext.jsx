@@ -13,6 +13,7 @@
 
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import { describeError } from '../services/apiError';
+import { copyText, errorReport } from '../services/diagnostics';
 
 const NotifyContext = createContext(null);
 
@@ -63,6 +64,8 @@ export function NotifyProvider({ children }) {
         title: described.title,
         message: described.message,
         detail: described.detail,
+        // The full report a service engineer pastes to the backend team.
+        report: errorReport(err, { action, subject }),
         onRetry: described.retryable ? onRetry : undefined,
       });
     },
@@ -94,6 +97,16 @@ const ICONS = {
   info: 'i',
 };
 
+function CopyReport({ text }) {
+  const [label, setLabel] = useState('Copy for backend');
+  return (
+    <button type="button" className="notify-retry notify-copy" onClick={async () => {
+      setLabel((await copyText(text)) ? 'Copied' : 'Couldn’t copy');
+      setTimeout(() => setLabel('Copy for backend'), 2000);
+    }}>{label}</button>
+  );
+}
+
 function NotificationFrame({ items, onDismiss }) {
   if (!items.length) return null;
   return (
@@ -105,10 +118,15 @@ function NotificationFrame({ items, onDismiss }) {
             <strong>{n.title}</strong>
             {n.message && <p>{n.message}</p>}
             {n.detail && <code>{n.detail}</code>}
-            {n.onRetry && (
-              <button type="button" className="notify-retry" onClick={() => { onDismiss(n.id); n.onRetry(); }}>
-                Try again
-              </button>
+            {(n.onRetry || n.report) && (
+              <div className="notify-actions">
+                {n.onRetry && (
+                  <button type="button" className="notify-retry" onClick={() => { onDismiss(n.id); n.onRetry(); }}>
+                    Try again
+                  </button>
+                )}
+                {n.report && <CopyReport text={n.report} />}
+              </div>
             )}
           </div>
           <button type="button" className="notify-close" aria-label="Dismiss" onClick={() => onDismiss(n.id)}>×</button>

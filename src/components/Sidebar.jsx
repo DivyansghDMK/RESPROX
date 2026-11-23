@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useTherapy } from '../context/TherapyContext';
 import { useAuth } from '../context/AuthContext';
 import { useAccess } from '../context/AccessContext';
@@ -21,7 +21,7 @@ import {
 
 function Sidebar() {
   const { sidebarOpen, setSidebarOpen, adminActiveSerial } = useTherapy();
-  const activeSerial = adminActiveSerial || localStorage.getItem('adminActiveSerial') || '';
+  const activeSerial = adminActiveSerial || '';
   const { logout, loginPath } = useAuth();
   const access = useAccess();
   const navigate = useNavigate();
@@ -37,13 +37,16 @@ function Sidebar() {
   // Start fetching a route's chunk as soon as the pointer lands on its link.
   // The ~200 ms between hover and click is normally enough to have it parsed
   // and ready, so navigation never shows the loading fallback.
+  const location = useLocation();
   const warm = useCallback((path) => {
     const key = routeKeyForPath(path);
     if (key) prefetch(key);
   }, []);
 
   const sidebarItems = [
-    { label: 'Dashboard', path: activeSerial ? `/device/${activeSerial}` : '/devices', icon: HomeIcon },
+    // With no device chosen Dashboard leads to Devices, but it is only
+    // highlighted on a device's own dashboard, so two items never light up.
+    { label: 'Dashboard', path: activeSerial ? `/device/${activeSerial}` : '/devices', icon: HomeIcon, activeWhen: (p) => p.startsWith('/device/') },
     { label: access.isDealer ? 'My Devices' : 'Devices', path: '/devices', icon: DeviceIcon },
     { label: 'Reports', path: '/reports', icon: FileIcon },
     { label: 'Activity Log', path: '/activity', icon: ActivityIcon },
@@ -81,11 +84,11 @@ function Sidebar() {
         </div>
 
         <nav className="nav-list">
-          {sidebarItems.map(({ label, path, icon: Icon }) => (
+          {sidebarItems.map(({ label, path, icon: Icon, activeWhen }) => (
             <NavLink
               key={label}
               to={path}
-              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+              className={({ isActive }) => `nav-item ${(activeWhen ? activeWhen(location.pathname) : isActive) ? 'active' : ''}`}
               onClick={() => setSidebarOpen(false)}
               onMouseEnter={() => warm(path)}
               onFocus={() => warm(path)}

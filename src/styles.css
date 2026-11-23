@@ -6207,6 +6207,10 @@ textarea:focus-visible,
   margin-top: 10px; padding: 6px 14px; border-radius: 8px; cursor: pointer;
   font-size: 12px; font-weight: 700; color: #fff; border: 0; background: var(--brand-gradient);
 }
+.notify-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.notify-actions .notify-retry { margin-top: 0; }
+.notify-copy { background: #fff; color: var(--muted); border: 1px solid var(--line); }
+.notify-copy:hover { color: var(--accent); border-color: #c7d6ee; }
 .notify-close {
   border: 0; background: none; cursor: pointer; padding: 0 2px;
   font-size: 19px; line-height: 1; color: #94A3B8; flex-shrink: 0;
@@ -6576,6 +6580,14 @@ textarea:focus-visible,
 .load-error p { margin: 8px 0 0; font-size: 14px; line-height: 1.6; color: #475569; }
 .load-error code { display: block; margin-top: 10px; font-size: 11.5px; color: #94a3b8; word-break: break-all; }
 .load-error-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+.error-facts { margin-top: 14px; font-size: 12.5px; color: #475569; }
+.error-facts summary { cursor: pointer; font-weight: 700; color: #64748b; width: fit-content; }
+.error-facts summary:hover { color: var(--accent); }
+.error-facts dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; background: #f6f8fb; }
+.error-facts dt { font-weight: 700; color: #64748b; }
+.error-facts dd { margin: 0; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #1e293b; }
+.error-panel.compact { padding: 16px; }
+@media (max-width: 480px) { .error-facts dl { grid-template-columns: 1fr; } .error-facts dt { margin-top: 6px; } }
 .admin-page-btn.primary { background: var(--brand-gradient); color: #fff; border-color: transparent; }
 .therapy-btn.stop .therapy-spinner { border-color: rgba(185, 28, 28, 0.25); border-top-color: #b91c1c; }
 
@@ -7015,10 +7027,105 @@ tr.live-updated > td { animation: live-flash-bg 1.6s ease-out; }
 .activity-change { font-size: 12px; padding: 3px 9px; border-radius: 8px; background: #f3f6fb; color: var(--text); }
 .activity-change s { color: var(--muted); }
 
+.activity-search { margin-top: 16px; }
+.activity-search input {
+  width: 100%; max-width: 360px; padding: 9px 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--panel-strong); font-size: 13px; color: var(--text);
+}
+.activity-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.activity-table th {
+  text-align: left; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+.activity-table td { padding: 11px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.activity-table td small { display: block; margin-top: 2px; font-size: 11.5px; color: var(--muted); }
+.activity-table .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+.activity-table tbody tr { cursor: pointer; transition: background 0.15s; }
+.activity-table tbody tr:hover, .activity-table tbody tr:focus-visible { background: #f3f7fd; outline: none; }
+.activity-table .go { width: 24px; color: var(--muted); font-size: 18px; text-align: right; }
+.activity-table .muted, .activity-page .muted { color: var(--muted); }
+.activity-page .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.activity-conn { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 12px; }
+.activity-conn::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; }
+.activity-conn.online::before { background: #1d9e75; }
+.activity-conn.phone::before { background: #3b82f6; }
+.activity-device-chip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; font-weight: 800;
+  padding: 2px 8px; border-radius: 6px; background: #0f2a5c; color: #fff; text-decoration: none;
+}
+.activity-device-chip:hover { background: var(--accent); }
+.activity-crumbs { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; font-size: 13px; }
+.activity-crumbs a { color: var(--accent); font-weight: 700; text-decoration: none; }
+.activity-crumbs label { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-weight: 700; }
+.activity-crumbs select {
+  padding: 7px 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel-strong);
+  font-size: 13px; font-weight: 700; color: var(--text);
+}
+a.icon-text-button { text-decoration: none; }
 @media (max-width: 900px) { .activity-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 480px) {
   .activity-row { grid-template-columns: 44px 12px minmax(0, 1fr); gap: 8px; }
 }
+
+/* Help & Support for the service team (HelpSupport.jsx) */
+.help-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 16px; font-size: 13px; }
+.help-facts dt { color: var(--muted); font-weight: 700; }
+.help-facts dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.help-check { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; font-size: 13px; color: var(--muted); }
+.help-check b.good { color: #1d7a4a; }
+.help-check b.slow { color: #8a6100; }
+.help-check b.bad { color: #b42318; }
+.help-contacts { margin: 0; padding-left: 18px; display: grid; gap: 8px; font-size: 13px; line-height: 1.5; color: var(--text); }
+.help-failures .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; word-break: break-all; }
+.help-failures tbody tr { cursor: default; }
+
+/* Reduced motion, everywhere: no looping or sliding animation for people who
+   asked the system for less motion. Spinners still turn so "busy" stays
+   visible; everything else settles at once. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .spin-animation, .admin-spinner, .s-dialog .spinner {
+    animation-duration: 1.2s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
+/* Selected device bar (DeviceBar.jsx) and "Select a device first" (DeviceDataState.jsx) */
+.device-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+  margin: 0 0 18px; padding: 10px 14px; border-radius: 14px;
+  background: var(--panel-strong); border: 1px solid var(--line); box-shadow: 0 6px 20px rgba(28, 50, 87, 0.05);
+}
+.device-bar-id { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.device-bar-label { font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.device-bar-id b { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 15px; color: var(--accent); }
+.device-bar-model { font-size: 12px; color: var(--muted); font-weight: 700; }
+.device-bar-state { display: flex; flex-wrap: wrap; gap: 6px; }
+.device-bar-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: #f1f5f9; color: #475569; }
+.device-bar-chip.online { background: #e6f9f0; color: #0f6e56; }
+.device-bar-chip.phone { background: #e8f1fd; color: #1d5fb8; }
+.device-bar-chip.offline { background: #f1efe8; color: #5f5e5a; }
+.device-bar-chip.bad { background: #fde8e8; color: #b42318; }
+.device-bar-actions { display: flex; gap: 8px; margin-left: auto; }
+.device-bar-actions button {
+  padding: 6px 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel);
+  font-size: 12.5px; font-weight: 700; color: var(--text); cursor: pointer;
+}
+.device-bar-actions button:hover { border-color: #c7d6ee; color: var(--accent); }
+@media (max-width: 640px) { .device-bar-actions { margin-left: 0; width: 100%; } .device-bar-actions button { flex: 1; } }
+
+.select-device-first {
+  max-width: 520px; margin: 48px auto; padding: 32px 28px; text-align: center;
+  background: var(--panel-strong); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow);
+}
+.select-device-icon { width: 56px; height: 56px; margin: 0 auto 14px; border-radius: 16px; display: grid; place-items: center; background: #eef4ff; color: var(--accent); }
+.select-device-first h2 { margin: 0; font-size: 20px; font-weight: 800; color: var(--text); }
+.select-device-first p { margin: 8px 0 20px; font-size: 14px; line-height: 1.6; color: var(--muted); }
 
 /* Large monitors (2560×1440 and up): the whole UI is drawn at laptop scale and
    bunches into the top-left. Scale it up so it fills the screen the same way.

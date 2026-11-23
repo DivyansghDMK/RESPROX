@@ -6,6 +6,15 @@ import { DeviceInfoSkeleton } from '../components/Skeleton';
 import { DeviceIcon, SyncIcon } from '../components/Icons';
 import { therapyLabel } from '../services/deviceStatus';
 
+// The backend's last_synced is a YYMMDDHHMM string (e.g. 2608151430).
+function syncStamp(value) {
+  if (!value) return '—';
+  const m = /^(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(String(value));
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  if (!m || !months[Number(m[2]) - 1]) return String(value);
+  return `${m[3]} ${months[Number(m[2]) - 1]} 20${m[1]}, ${m[4]}:${m[5]}`;
+}
+
 export default function Devices() {
   const { deviceData, adminActiveSerial, fetchDeviceData } = useTherapy();
   const [refreshing, setRefreshing] = useState(false);
@@ -25,7 +34,7 @@ export default function Devices() {
     ['Firmware Version', device.firmware || '—'],
     ['Therapy', therapyLabel(device.therapy_status) || '—'],
     ['Connection', device.device_online ? 'Online' : device.phone_connected ? 'Connected to app' : 'Offline'],
-    ['Last Sync', device.sync_state?.lastSynced || '—'],
+    ['Last Sync', syncStamp(device.sync_state?.lastSynced)],
   ];
 
   return (
@@ -56,7 +65,8 @@ export default function Devices() {
           <div className="section-title"><h2>Device History</h2></div>
           {device.sessions?.length ? (
             <div className="timeline-list">
-              {device.sessions.slice(0, 10).map((session, index) => (
+              {/* Sessions are oldest first; the history shows the latest ten, newest on top. */}
+              {device.sessions.slice(-10).reverse().map((session, index) => (
                 <div className="timeline-item" key={`${session.timestamp || session.date}-${index}`}>
                   <div className="timeline-dot" />
                   <div className="timeline-content">

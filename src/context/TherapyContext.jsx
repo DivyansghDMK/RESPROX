@@ -19,6 +19,26 @@ const FULL_REFRESH_MS = 60_000;
 const SYNC_CHECK_EVERY = 3;
 const MAX_DEVICE_EVENTS = 20;
 
+const SELECTED_KEY = 'resproxSelectedSerial';
+
+/** The device chosen in this tab, or null. */
+export function readSelectedSerial() {
+  try {
+    // The old permanent key made every new session open on a stale device.
+    localStorage.removeItem('adminActiveSerial');
+    return sessionStorage.getItem(SELECTED_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSelectedSerial(serial) {
+  try {
+    if (serial) sessionStorage.setItem(SELECTED_KEY, serial);
+    else sessionStorage.removeItem(SELECTED_KEY);
+  } catch { /* storage blocked: the choice lasts until reload */ }
+}
+
 export function TherapyProvider({ children }) {
   const notify = useNotify();
   const { isAuthenticated } = useAuth();
@@ -36,7 +56,9 @@ export function TherapyProvider({ children }) {
   const [toastMessage, setToastMessage] = useState('');
 
   // Admin selected device states
-  const [adminActiveSerial, setAdminActiveSerial] = useState(localStorage.getItem('adminActiveSerial') || null);
+  // The selected device lasts for this tab only (survives a reload). A new tab
+  // or a new sign-in starts on Devices with nothing selected.
+  const [adminActiveSerial, setAdminActiveSerial] = useState(() => readSelectedSerial());
   const [deviceData, setDeviceData] = useState(null);
   // Why the last device load failed, so pages can show it instead of loading forever.
   const [deviceLoadError, setDeviceLoadError] = useState(null);
@@ -138,7 +160,7 @@ export function TherapyProvider({ children }) {
 
   useEffect(() => {
     if (!adminActiveSerial) {
-      localStorage.removeItem('adminActiveSerial');
+      writeSelectedSerial(null);
       latestSerial.current = null;
       return;
     }
@@ -147,10 +169,21 @@ export function TherapyProvider({ children }) {
     // is mounted above the router — so without this guard a signed-out visitor
     // on /login pulled the previous session's device, and any failure surfaced
     // as an error card on the login screen.
-    localStorage.setItem('adminActiveSerial', adminActiveSerial);
+    writeSelectedSerial(adminActiveSerial);
     if (!isAuthenticated) return;
     fetchDeviceData(adminActiveSerial);
   }, [adminActiveSerial, fetchDeviceData, isAuthenticated]);
+
+  // Signing out drops the device data held in memory, so the next account in
+  // this tab never sees the previous one's readings. (The selected serial is
+  // kept on purpose; AccessContext clears it if the new account can't see it.)
+  useEffect(() => {
+    if (isAuthenticated) return;
+    setAdminActiveSerial(null);
+    setDeviceData(null);
+    setDeviceEvents([]);
+    setDeviceLoadError(null);
+  }, [isAuthenticated]);
 
   const stateRef = useRef({ deviceData, pressure, minPressure, maxPressure, aflex, ramp });
   useEffect(() => {
@@ -247,11 +280,15 @@ export function TherapyProvider({ children }) {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasUnsavedChanges]);
 
+  const savingRef = useRef(false);
   const handleSave = useCallback(async () => {
     if (!adminActiveSerial) return;
+    // One save at a time: a second click must not send a second command.
+    if (savingRef.current) return;
     if (stateRef.current.deviceData?.therapy_running) {
       setShowToast(true);
       setToastMessage('Therapy is running. Stop therapy on the device before changing settings.');
+      setTimeout(() => setShowToast(false), 4000);
       return;
     }
     const current = stateRef.current.deviceData;
@@ -264,6 +301,7 @@ export function TherapyProvider({ children }) {
       return;
     }
     setSaveState('saving');
+    savingRef.current = true;
     setShowToast(true);
     setToastMessage('Pushing settings to device...');
     
@@ -312,8 +350,10 @@ export function TherapyProvider({ children }) {
       setSaveState('error');
       setToastMessage(describeError(e, { action: 'save these settings' }).title);
       setTimeout(() => setShowToast(false), 4000);
+    } finally {
+      savingRef.current = false;
     }
-  }, [adminActiveSerial, mode, pressure, minPressure, maxPressure, aflex, ramp]);
+  }, [adminActiveSerial, mode, pressure, minPressure, maxPressure, aflex, ramp, notify]);
 
   // Every page and the sidebar/header consume this context. A fresh object on
   // each render re-rendered the whole tree on any state change (toast, sidebar,

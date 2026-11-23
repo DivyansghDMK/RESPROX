@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildActivity, commandStatus, describeField } from './activityLog.js';
+import { buildActivity, buildFleetActivity, commandStatus, describeField } from './activityLog.js';
 
 const full = (id, at, cpap = { pressure: 10, ramp: 0 }) => ({
   id, packet_type: 'FULL_SYNC', mode: 'CPAP', server_timestamp: at,
@@ -59,4 +59,21 @@ test('labels', () => {
   assert.equal(describeField('humidifierLevel', 0).text, 'Off');
   assert.equal(commandStatus('TIMEOUT').key, 'failed');
   assert.equal(commandStatus('PENDING').key, 'pending');
+});
+
+test('all devices: weekly counts, latest event, one feed tagged by device', () => {
+  const now = new Date('2026-11-23T12:00:00Z').getTime();
+  const rec = (d) => ({ dayKey: d, start: new Date(`${d}T22:00:00`), startClock: '22:00', endClock: '06:00', durationMinutes: 480, lineNo: 1 });
+  const fleet = buildFleetActivity([
+    { device: { serial: 'CVT1', status: 'online' }, telemetry: [full(1, '2026-11-22T10:00:00Z'), update(2, 'CPAP', '2026-11-22T11:00:00Z', { pressure: 12, ramp: 0 })], records: [rec('2026-11-21'), rec('2026-10-01')] },
+    { device: { serial: 'CVT2', status: 'offline' }, telemetry: [], records: [] },
+  ], now);
+  assert.deepEqual(fleet.devices.map((d) => d.serial), ['CVT1', 'CVT2']);
+  assert.deepEqual(fleet.devices[0].week, { therapy: 1, deviceChanges: 1, fullSyncs: 1 });
+  assert.equal(fleet.devices[0].latest.kind, 'settings');
+  assert.equal(fleet.devices[1].latest, null);
+  assert.equal(fleet.totals.online, 1);
+  assert.equal(fleet.totals.activeThisWeek, 1);
+  assert.ok(fleet.feed.every((e) => e.serial === 'CVT1'));
+  assert.equal(fleet.feed.length, 4);
 });

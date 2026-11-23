@@ -1,11 +1,12 @@
 import React, { useCallback } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { HomeIcon, PhoneIcon, PulseIcon, ClipboardIcon, DotsIcon } from './Icons';
 import { prefetch, routeKeyForPath } from '../routes';
 
 function BottomNavbar() {
   const { isAuthenticated } = useAuth();
+  const location = useLocation();
 
   // On touch devices `touchstart` fires well before the tap completes, which
   // is the only prefetch window available without a hover state.
@@ -15,7 +16,8 @@ function BottomNavbar() {
   }, []);
 
   const items = [
-    { label: 'Dashboard', path: '/dashboard', icon: HomeIcon },
+    // /dashboard redirects to the device (or Devices); lit only on a device's dashboard.
+    { label: 'Dashboard', path: '/dashboard', icon: HomeIcon, activeWhen: (p) => p.startsWith('/device/') },
     {
       label: isAuthenticated ? 'Devices' : 'Device',
       path: isAuthenticated ? '/devices' : '/device-info',
@@ -29,11 +31,11 @@ function BottomNavbar() {
 
   return (
     <nav className="bottom-navbar">
-      {items.map(({ label, path, icon: Icon }) => (
+      {items.map(({ label, path, icon: Icon, activeWhen }) => (
         <NavLink
           key={label}
           to={path}
-          className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}
+          className={({ isActive }) => `bottom-nav-item ${(activeWhen ? activeWhen(location.pathname) : isActive) ? 'active' : ''}`}
           onTouchStart={() => warm(path)}
           onMouseEnter={() => warm(path)}
           onFocus={() => warm(path)}

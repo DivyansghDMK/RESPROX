@@ -12,9 +12,13 @@ const STALE_AFTER_MS = 10 * 60 * 1000;
 
 // The pill reports the state of the connection to the server, so it is driven
 // by whether a pull has actually succeeded — not hard-coded to "Connected".
-function serverStatus(lastServerPull, deviceData, online = true) {
+function serverStatus(lastServerPull, deviceData, online = true, loadError = null, serial = null) {
   if (!online) {
     return { label: 'Offline', detail: 'No internet connection', tone: '#dc2626' };
+  }
+  // The selected device failed to load: say which, not "awaiting" forever.
+  if (loadError && !deviceData) {
+    return { label: 'Load failed', detail: serial ? `Couldn’t load ${serial}` : 'Couldn’t load the device', tone: '#dc2626' };
   }
   if (!lastServerPull) {
     return { label: 'Not connected', detail: 'Awaiting first sync', tone: '#94a3b8' };
@@ -80,7 +84,7 @@ export default function Header() {
   const { profile } = useAuth();
   const adminLabel = displayName(profile);
   const online = useOnline();
-  const status = serverStatus(lastServerPull, deviceData, online);
+  const status = serverStatus(lastServerPull, deviceData, online, deviceLoadError, adminActiveSerial);
 
   const toggleNotifications = () => {
     setNotifOpen((open) => {

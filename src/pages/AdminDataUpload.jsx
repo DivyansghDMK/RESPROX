@@ -243,22 +243,33 @@ export default function AdminDataUpload() {
     };
   }, [parsed, serial, model, patient, fileName]);
 
+  const [building, setBuilding] = useState(false);
   const generate = useCallback(async () => {
-    if (!parsed) return;
-    const { openTherapyReport } = await import('../services/therapyReport');
-    const result = openTherapyReport({
-      deviceData,
-      sessions: parsed.days,
-      startDate: range.start,
-      endDate: range.end,
-      // The file records set pressure, never a measured trace.
-      pressureSource: 'set',
-    });
-    if (!result.ok) {
+    if (!parsed || building) return;
+    setBuilding(true);
+    try {
+      const { openTherapyReport } = await import('../services/therapyReport');
+      const result = openTherapyReport({
+        deviceData,
+        sessions: parsed.days,
+        startDate: range.start,
+        endDate: range.end,
+        // The file records set pressure, never a measured trace.
+        pressureSource: 'set',
+      });
+      if (!result.ok) {
+        setErrorSource(parsed.format === 'td1' ? 'td1' : 'text');
+        setError(result.reason === 'build-failed'
+          ? `The report could not be built from this file: ${result.error?.message || result.error}. Send the file to the web team.`
+          : 'The browser blocked the report window. Allow pop-ups for this site and try again.');
+      }
+    } catch (e) {
       setErrorSource(parsed.format === 'td1' ? 'td1' : 'text');
-      setError('The browser blocked the report window. Allow pop-ups for this site and try again.');
+      setError(`The report could not be opened: ${e?.message || e}. Reload the page and try again.`);
+    } finally {
+      setBuilding(false);
     }
-  }, [parsed, deviceData, range]);
+  }, [parsed, deviceData, range, building]);
 
   const downloadCSV = useCallback(() => {
     const blob = new Blob([daysToCSV(daysInRange)], { type: 'text/csv;charset=utf-8' });
@@ -515,7 +526,7 @@ export default function AdminDataUpload() {
             </div>
 
             <div className="reports-actions-bar">
-              <button className="icon-text-button" onClick={generate} disabled={rangeStats.days === 0}>
+              <button className="icon-text-button" onClick={generate} disabled={rangeStats.days === 0 || building}>
                 <FileIcon />
                 <span>Generate Therapy Report</span>
               </button>
