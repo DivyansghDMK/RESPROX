@@ -228,7 +228,22 @@ function AppContent() {
   );
 }
 
+// The SD card report page is public: DeckMount sends its link to patients
+// and clinics, and it works on the file alone, so it skips sign-in and every
+// provider that talks to the server.
+const SdCardReport = React.lazy(() => import('./pages/SdCardReport'));
+const isPublicPage = () => typeof window !== 'undefined' && /^\/sd-report\/?$/.test(window.location.pathname);
+
 export default function App() {
+  if (isPublicPage()) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<RouteFallback />}>
+          <SdCardReport />
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
   return (
     <AuthProvider>
       <NotifyProvider>
