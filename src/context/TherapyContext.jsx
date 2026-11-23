@@ -152,6 +152,16 @@ export function TherapyProvider({ children }) {
     fetchDeviceData(adminActiveSerial);
   }, [adminActiveSerial, fetchDeviceData, isAuthenticated]);
 
+  // Signing out drops the device data held in memory, so the next account in
+  // this tab never sees the previous one's readings. (The selected serial is
+  // kept on purpose; AccessContext clears it if the new account can't see it.)
+  useEffect(() => {
+    if (isAuthenticated) return;
+    setDeviceData(null);
+    setDeviceEvents([]);
+    setDeviceLoadError(null);
+  }, [isAuthenticated]);
+
   const stateRef = useRef({ deviceData, pressure, minPressure, maxPressure, aflex, ramp });
   useEffect(() => {
     stateRef.current = { deviceData, pressure, minPressure, maxPressure, aflex, ramp };
@@ -247,11 +257,15 @@ export function TherapyProvider({ children }) {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasUnsavedChanges]);
 
+  const savingRef = useRef(false);
   const handleSave = useCallback(async () => {
     if (!adminActiveSerial) return;
+    // One save at a time: a second click must not send a second command.
+    if (savingRef.current) return;
     if (stateRef.current.deviceData?.therapy_running) {
       setShowToast(true);
       setToastMessage('Therapy is running. Stop therapy on the device before changing settings.');
+      setTimeout(() => setShowToast(false), 4000);
       return;
     }
     const current = stateRef.current.deviceData;
@@ -264,6 +278,7 @@ export function TherapyProvider({ children }) {
       return;
     }
     setSaveState('saving');
+    savingRef.current = true;
     setShowToast(true);
     setToastMessage('Pushing settings to device...');
     
@@ -312,8 +327,10 @@ export function TherapyProvider({ children }) {
       setSaveState('error');
       setToastMessage(describeError(e, { action: 'save these settings' }).title);
       setTimeout(() => setShowToast(false), 4000);
+    } finally {
+      savingRef.current = false;
     }
-  }, [adminActiveSerial, mode, pressure, minPressure, maxPressure, aflex, ramp]);
+  }, [adminActiveSerial, mode, pressure, minPressure, maxPressure, aflex, ramp, notify]);
 
   // Every page and the sidebar/header consume this context. A fresh object on
   // each render re-rendered the whole tree on any state change (toast, sidebar,

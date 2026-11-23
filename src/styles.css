@@ -6207,6 +6207,10 @@ textarea:focus-visible,
   margin-top: 10px; padding: 6px 14px; border-radius: 8px; cursor: pointer;
   font-size: 12px; font-weight: 700; color: #fff; border: 0; background: var(--brand-gradient);
 }
+.notify-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.notify-actions .notify-retry { margin-top: 0; }
+.notify-copy { background: #fff; color: var(--muted); border: 1px solid var(--line); }
+.notify-copy:hover { color: var(--accent); border-color: #c7d6ee; }
 .notify-close {
   border: 0; background: none; cursor: pointer; padding: 0 2px;
   font-size: 19px; line-height: 1; color: #94A3B8; flex-shrink: 0;
@@ -6576,6 +6580,14 @@ textarea:focus-visible,
 .load-error p { margin: 8px 0 0; font-size: 14px; line-height: 1.6; color: #475569; }
 .load-error code { display: block; margin-top: 10px; font-size: 11.5px; color: #94a3b8; word-break: break-all; }
 .load-error-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+.error-facts { margin-top: 14px; font-size: 12.5px; color: #475569; }
+.error-facts summary { cursor: pointer; font-weight: 700; color: #64748b; width: fit-content; }
+.error-facts summary:hover { color: var(--accent); }
+.error-facts dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; background: #f6f8fb; }
+.error-facts dt { font-weight: 700; color: #64748b; }
+.error-facts dd { margin: 0; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #1e293b; }
+.error-panel.compact { padding: 16px; }
+@media (max-width: 480px) { .error-facts dl { grid-template-columns: 1fr; } .error-facts dt { margin-top: 6px; } }
 .admin-page-btn.primary { background: var(--brand-gradient); color: #fff; border-color: transparent; }
 .therapy-btn.stop .therapy-spinner { border-color: rgba(185, 28, 28, 0.25); border-top-color: #b91c1c; }
 
@@ -7053,6 +7065,34 @@ a.icon-text-button { text-decoration: none; }
 @media (max-width: 900px) { .activity-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 480px) {
   .activity-row { grid-template-columns: 44px 12px minmax(0, 1fr); gap: 8px; }
+}
+
+/* Help & Support for the service team (HelpSupport.jsx) */
+.help-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 16px; font-size: 13px; }
+.help-facts dt { color: var(--muted); font-weight: 700; }
+.help-facts dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.help-check { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; font-size: 13px; color: var(--muted); }
+.help-check b.good { color: #1d7a4a; }
+.help-check b.slow { color: #8a6100; }
+.help-check b.bad { color: #b42318; }
+.help-contacts { margin: 0; padding-left: 18px; display: grid; gap: 8px; font-size: 13px; line-height: 1.5; color: var(--text); }
+.help-failures .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; word-break: break-all; }
+.help-failures tbody tr { cursor: default; }
+
+/* Reduced motion, everywhere: no looping or sliding animation for people who
+   asked the system for less motion. Spinners still turn so "busy" stays
+   visible; everything else settles at once. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .spin-animation, .admin-spinner, .s-dialog .spinner {
+    animation-duration: 1.2s !important;
+    animation-iteration-count: infinite !important;
+  }
 }
 
 /* Large monitors (2560×1440 and up): the whole UI is drawn at laptop scale and

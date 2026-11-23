@@ -12,12 +12,13 @@
 //
 // Counts at the top, filters by where a change came from and what kind it was.
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import GlassCard from '../components/GlassCard';
 import { devicesAPI } from '../services/respireeApi';
 import { buildActivity, buildFleetActivity } from '../services/activityLog';
-import { describeError } from '../services/apiError';
+import ErrorPanel from '../components/ErrorPanel';
+import { TimelineSkeleton } from '../components/Skeleton';
 import { therapyLabel } from '../services/deviceStatus';
 import { useAccess } from '../context/AccessContext';
 
@@ -147,15 +148,8 @@ function Timeline({ events, source, kind, showDevice, emptyText }) {
   );
 }
 
-function LoadError({ error, what, onRetry }) {
-  const err = describeError(error, { action: what });
-  return (
-    <div className="load-error" role="alert">
-      <strong>{err.title}</strong>
-      <p>{err.message}</p>
-      {err.retryable && <button className="admin-page-btn primary" onClick={onRetry}>Try again</button>}
-    </div>
-  );
+function LoadError({ error, what, subject, onRetry }) {
+  return <ErrorPanel error={error} action={what} subject={subject} onRetry={onRetry} />;
 }
 
 /** Loads with `loader`, keeps the last good result while refreshing. */
@@ -163,15 +157,19 @@ function useLoad(loader, deps) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  // Only the newest request may land: two quick refreshes can finish out of order.
+  const latest = useRef(0);
   const load = useCallback(async (force = false) => {
+    const id = ++latest.current;
     setLoading(true);
     setError(null);
     try {
-      setData(await loader(force));
+      const next = await loader(force);
+      if (id === latest.current) setData(next);
     } catch (e) {
-      setError(e);
+      if (id === latest.current) setError(e);
     } finally {
-      setLoading(false);
+      if (id === latest.current) setLoading(false);
     }
   }, deps); // eslint-disable-line react-hooks/exhaustive-deps
   return { data, setData, error, loading, load };
@@ -221,12 +219,19 @@ function FleetActivity() {
         </div>
       </GlassCard>
 
+      {error && data && (
+        <div style={{ marginTop: 20 }}>
+          <ErrorPanel error={error} action="refresh the activity log" onRetry={() => load(true)} compact
+            described={{ title: 'Couldn’t refresh: showing the last loaded activity', message: 'The figures below may be out of date. Try again; if it keeps failing, copy the details for the backend team.', retryable: true }} />
+        </div>
+      )}
+
       <GlassCard style={{ marginTop: 20 }}>
         <div className="section-title"><h2>Devices</h2></div>
         {error && !data ? (
           <LoadError error={error} what="load the activity log" onRetry={() => load(true)} />
         ) : !data ? (
-          <div className="activity-empty">Loading every device’s recent activity…</div>
+          <TimelineSkeleton label="Loading every device’s recent activity" rows={5} />
         ) : !devices.length ? (
           <div className="activity-empty">{q ? 'No device matches that search.' : 'No devices on this account.'}</div>
         ) : (
@@ -269,7 +274,7 @@ function FleetActivity() {
         <Filters source={source} setSource={setSource} kind={kind} setKind={setKind} />
         <div style={{ marginTop: 14 }}>
           {data ? <Timeline events={feed} source={source} kind={kind} showDevice emptyText="Nothing here for these filters." />
-            : !error && <div className="activity-empty">Loading…</div>}
+            : !error && <TimelineSkeleton />}
         </div>
       </GlassCard>
     </div>
@@ -287,7 +292,8 @@ function DeviceActivity({ serial }) {
     async () => buildActivity(await devicesAPI.getDeviceActivity(serial)), [serial],
   );
   useEffect(() => { setData(null); load(); }, [load, setData]);
-  useEffect(() => { devicesAPI.getDevices().then(setDevices).catch(() => {}); }, []);
+  // The switcher is a convenience: without the list the page still works.
+  useEffect(() => { devicesAPI.getDevices().then(setDevices).catch(() => setDevices([])); }, []);
 
   const c = data?.counts;
   return (
@@ -339,11 +345,18 @@ function DeviceActivity({ serial }) {
         <Filters source={source} setSource={setSource} kind={kind} setKind={setKind} />
       </GlassCard>
 
+      {error && data && (
+        <div style={{ marginTop: 20 }}>
+          <ErrorPanel error={error} action="refresh the activity log" subject={serial} onRetry={() => load()} compact
+            described={{ title: 'Couldn’t refresh: showing the last loaded activity', message: 'What is below may be out of date. Try again; if it keeps failing, copy the details for the backend team.', retryable: true }} />
+        </div>
+      )}
+
       <GlassCard style={{ marginTop: 20 }}>
         {error && !data ? (
-          <LoadError error={error} what="load the activity log" onRetry={() => load()} />
+          <LoadError error={error} what="load the activity log" subject={serial} onRetry={() => load()} />
         ) : !data ? (
-          <div className="activity-empty">Loading the activity for {serial}…</div>
+          <TimelineSkeleton label={`Loading the activity for ${serial}`} />
         ) : (
           <Timeline events={data.events} source={source} kind={kind} emptyText="Nothing here for these filters." />
         )}
@@ -356,7 +369,7 @@ export default function ActivityLog() {
   const { serial } = useParams();
   const access = useAccess();
   if (!serial) return <FleetActivity />;
-  if (access.dealerLoading) return <div className="activity-empty">Loading…</div>;
+  if (access.dealerLoading) return <TimelineSkeleton />;
   // A dealer opening a device that isn't theirs (old link, typed serial).
   if (!access.canSeeDevice(serial)) {
     return (

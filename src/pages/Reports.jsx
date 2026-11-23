@@ -133,11 +133,22 @@ export default function Reports() {
 
   // The report template and its SVG charts live in their own module so this
   // route's chunk stays small — it is fetched the first time a report is asked for.
+  const [building, setBuilding] = useState(false);
   const handleGeneratePDF = async () => {
-    const { openTherapyReport } = await import('../services/therapyReport');
-    const result = openTherapyReport({ deviceData, sessions, startDate, endDate });
-    if (!result.ok) {
-      notify.error('The report window was blocked', { message: 'Your browser blocked the pop-up. Allow pop-ups for this site, then generate the report again.' });
+    if (building) return;
+    setBuilding(true);
+    try {
+      const { openTherapyReport } = await import('../services/therapyReport');
+      const result = openTherapyReport({ deviceData, sessions, startDate, endDate });
+      if (result.reason === 'build-failed') {
+        notify.fromError(result.error, { action: 'build the therapy report', subject: activeSerial });
+      } else if (!result.ok) {
+        notify.error('The report window was blocked', { message: 'Your browser blocked the pop-up. Allow pop-ups for this site, then generate the report again.' });
+      }
+    } catch (e) {
+      notify.fromError(e, { action: 'open the therapy report', subject: activeSerial });
+    } finally {
+      setBuilding(false);
     }
   };
 
@@ -204,7 +215,7 @@ export default function Reports() {
               <span aria-hidden="true">⟳</span>
               <span>{syncing ? 'Syncing reports…' : 'Sync reports'}</span>
             </button>
-            <button className="icon-text-button" onClick={handleGeneratePDF} disabled={!sessions.length} title={sessions.length ? 'Opens the report to print or save as PDF' : 'No sessions to report yet'}>
+            <button className="icon-text-button" onClick={handleGeneratePDF} disabled={!sessions.length || building} title={sessions.length ? 'Opens the report to print or save as PDF' : 'No sessions to report yet'}>
               <FileIcon />
               <span>Open report (print / save PDF)</span>
             </button>

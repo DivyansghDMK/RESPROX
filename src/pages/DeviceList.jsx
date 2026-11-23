@@ -6,7 +6,6 @@ import { devicesAPI } from '../services/respireeApi';
 import { useTherapy } from '../context/TherapyContext';
 import { useNotify } from '../context/NotifyContext';
 import { useAccess } from '../context/AccessContext';
-import { describeError } from '../services/apiError';
 
 // Material UI Icons
 import DevicesIcon from '@mui/icons-material/Devices';
@@ -17,6 +16,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import LiveValue from '../components/LiveValue';
 import { therapyLabel } from '../services/deviceStatus';
+import ErrorPanel from '../components/ErrorPanel';
 import LiveBars from '../components/LiveBars';
 import { IDLE_AFTER_MS, IDLE_CHECK_MS, idleFor } from '../services/userActivity';
 
@@ -205,7 +205,7 @@ export default function DeviceList() {
     e.preventDefault();
     const serial = quickSerial.trim().toUpperCase();
     if (!serial) return;
-    navigate(`/device/${serial}`);
+    navigate(`/device/${encodeURIComponent(serial)}`);
   };
 
   // Handle Enter key on general search input to go directly to matching device
@@ -425,18 +425,17 @@ export default function DeviceList() {
       {loading ? (
         <DeviceListSkeleton rows={5} />
       ) : loadError ? (
-        <div className="admin-empty" style={{ background: '#fff5f5', borderRadius: 16, padding: 32, border: '1px solid #fecaca', textAlign: 'center' }}>
-          <p style={{ margin: 0, color: '#b91c1c', fontWeight: 700 }}>The device registry could not be loaded.</p>
-          <p style={{ margin: '8px 0 0', color: 'var(--muted)', fontSize: 13.5 }}>
-            {describeError(loadError, { action: 'load the device registry' }).message}
-          </p>
-          <button className="icon-text-button" style={{ marginTop: 18 }} onClick={fetchDevices}>
-            <span>Try again</span>
-          </button>
-        </div>
+        <ErrorPanel error={loadError} action="load the device registry" onRetry={fetchDevices} />
       ) : filteredDevices.length === 0 ? (
         <div className="admin-empty" style={{ background: 'var(--panel-strong)', borderRadius: 16, padding: 32, border: '1px solid var(--line)', textAlign: 'center' }}>
-          <p style={{ margin: 0, color: 'var(--muted)', fontWeight: 600 }}>No devices found matching current filters.</p>
+          <p style={{ margin: 0, color: 'var(--muted)', fontWeight: 600 }}>
+            {devices.length === 0
+              ? 'No devices on this account yet. A device appears here once it has connected to Wi-Fi and sent its first data.'
+              : 'No devices match this search or filter.'}
+          </p>
+          {devices.length > 0 && (search || statusFilter !== 'all') && (
+            <button className="icon-text-button" style={{ marginTop: 14 }} onClick={() => { setSearch(''); setStatusFilter('all'); }}>Clear search and filter</button>
+          )}
         </div>
       ) : (
         <>

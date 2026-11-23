@@ -75,6 +75,26 @@ export function describeError(err, { action = 'complete that', subject } = {}) {
       };
   }
 
+  if (err?.code === 'NACKED') {
+    return {
+      kind: 'rejected',
+      title: `The device rejected the command${on}`,
+      message: `It answered that it could not apply it${raw ? `: ${raw}` : ''}. Check the device is idle (no therapy running) and try again.`,
+      detail: raw,
+      retryable: true,
+    };
+  }
+
+  if (err?.code === 'BAD_RESPONSE') {
+    return {
+      kind: 'server',
+      title: 'The server sent an unexpected answer',
+      message: `It answered, but not with data, while trying to ${action}${on}. Try again; if it repeats, send the details to the backend team.`,
+      detail: raw + where,
+      retryable: true,
+    };
+  }
+
   if (err?.code === 'ACK_PENDING') {
     return {
       kind: 'timeout',

@@ -7,6 +7,7 @@ import Toast from './components/Toast';
 import BottomNavbar from './components/BottomNavbar';
 import RouteFallback from './components/RouteFallback';
 import ErrorBoundary from './components/ErrorBoundary';
+import ErrorPanel from './components/ErrorPanel';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ConnectionBanner from './components/ConnectionBanner';
 import { NotifyProvider } from './context/NotifyContext';
@@ -45,7 +46,7 @@ function AppContent() {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout, teamSignIn, loginPath } = useAuth();
-  const { accountBlocked, reloadDealer } = useAccess();
+  const { accountBlocked, reloadDealer, accountError, accountLoading, isDealer } = useAccess();
 
   // The API layer raises this when the session can no longer be refreshed.
   useEffect(() => {
@@ -72,6 +73,8 @@ function AppContent() {
 
     // gsap + lenis are ~90 kB that nothing needs before first paint, so they
     // load after the shell is interactive instead of blocking it.
+    // Smooth scrolling is motion; skip it for people who asked for less.
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return undefined;
     import('lenis').then(({ default: Lenis }) => {
       if (cancelled) return;
       lenis = new Lenis({
@@ -90,7 +93,7 @@ function AppContent() {
         frame = requestAnimationFrame(raf);
       };
       frame = requestAnimationFrame(raf);
-    });
+    }).catch(() => { /* plain scrolling is fine */ });
 
     return () => {
       cancelled = true;
@@ -102,6 +105,7 @@ function AppContent() {
   useEffect(() => {
     if (isAuthPage) return;
     let cancelled = false;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return undefined;
     // Clean GSAP transitions on page changes.
     import('gsap').then(({ default: gsap }) => {
       if (cancelled) return;
@@ -111,7 +115,7 @@ function AppContent() {
         // containing block for position: fixed, trapping overlays inside it.
         { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out', clearProps: 'transform' }
       );
-    });
+    }).catch(() => { /* no transition is fine */ });
     return () => { cancelled = true; };
   }, [location.pathname, isAuthPage]);
 
@@ -158,6 +162,16 @@ function AppContent() {
     );
   }
 
+  // The account (GET /me) decides what this person may see. Until it has
+  // answered once, show the page shape; if it failed, say so with a retry.
+  if (accountLoading) {
+    return (
+      <div className="app-shell">
+        <main className="content"><RouteFallback /></main>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <Sidebar />
@@ -166,6 +180,19 @@ function AppContent() {
 
         {/* The shell above renders immediately; only the route body suspends.
             A page that throws is caught here, so the shell stays usable. */}
+        {accountError && (
+          <ErrorPanel
+            error={accountError}
+            action="load your account"
+            onRetry={reloadDealer}
+            compact
+            described={isDealer ? undefined : {
+              title: 'Couldn’t load your account details',
+              message: 'Your role and organisation could not be read, so some pages may be missing. Try again; if it keeps failing, send the details to the backend team.',
+              retryable: true,
+            }}
+          />
+        )}
         <ErrorBoundary resetKey={location.pathname}>
           <Suspense fallback={<RouteFallback />}>
             <Routes>
@@ -202,12 +229,16 @@ export default function App() {
         <TherapyProvider>
           <AccessProvider>
           <Router>
-            <ConnectionBanner />
-            <Suspense fallback={<RouteFallback />}>
-              <Routes>
-                <Route path="/*" element={<AppContent />} />
-              </Routes>
-            </Suspense>
+            {/* Last line of defence: a throw in the sidebar, header or a provider
+                shows a recoverable panel instead of a blank white screen. */}
+            <ErrorBoundary>
+              <ConnectionBanner />
+              <Suspense fallback={<RouteFallback />}>
+                <Routes>
+                  <Route path="/*" element={<AppContent />} />
+                </Routes>
+              </Suspense>
+            </ErrorBoundary>
           </Router>
           </AccessProvider>
         </TherapyProvider>

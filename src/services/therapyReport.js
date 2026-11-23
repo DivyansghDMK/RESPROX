@@ -465,12 +465,20 @@ ${chartPages}
 
 /** Open the report in a new window, ready to print or save as PDF. */
 export function openTherapyReport(args) {
+  // Build first: if the data can't be turned into a report, no blank tab is
+  // left behind and the caller gets the reason.
+  let html;
+  try {
+    html = buildTherapyReportHTML(args);
+  } catch (error) {
+    return { ok: false, reason: 'build-failed', error };
+  }
   const win = window.open('', '_blank');
   if (!win) {
     return { ok: false, reason: 'popup-blocked' };
   }
   win.document.open();
-  win.document.write(buildTherapyReportHTML(args));
+  win.document.write(html);
   win.document.close();
   return { ok: true };
 }

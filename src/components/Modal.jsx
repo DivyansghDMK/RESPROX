@@ -9,14 +9,19 @@ import { createPortal } from 'react-dom';
 export default function Modal({ title, onClose, children, footer, wide = false, busy = false }) {
   const panelRef = useRef(null);
 
+  // The latest handlers, so a parent re-render (live refresh every few
+  // seconds) doesn't re-run the effect and pull focus back to the first field.
+  const latest = useRef({ onClose, busy });
+  latest.current = { onClose, busy };
+
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape' && !busy) onClose(); };
+    const onKey = (e) => { if (e.key === 'Escape' && !latest.current.busy) latest.current.onClose(); };
     document.addEventListener('keydown', onKey);
-    // Focus the first field, or the dialog itself when it has none.
+    // Focus the first field, or the dialog itself when it has none. Once.
     const first = panelRef.current?.querySelector('input, select, textarea, button:not(.modal-close)');
     (first || panelRef.current)?.focus();
     return () => document.removeEventListener('keydown', onKey);
-  }, [onClose, busy]);
+  }, []);
 
   return createPortal(
     <div className="therapy-dialog-backdrop" role="presentation" onClick={() => { if (!busy) onClose(); }}>

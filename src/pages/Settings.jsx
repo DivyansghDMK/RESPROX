@@ -233,8 +233,13 @@ export default function Settings() {
   // has nothing pending, so the screen never sits on stale or empty values.
   const dirtyRef = useRef(isDirty);
   dirtyRef.current = isDirty;
+  // Edits belong to one device: switching device always starts from the new
+  // device's own values, so unsaved edits can never be sent to another device.
+  const draftSerial = useRef(deviceData?.serial);
   useEffect(() => {
-    if (dirtyRef.current) return;
+    const switched = deviceData?.serial !== draftSerial.current;
+    draftSerial.current = deviceData?.serial;
+    if (dirtyRef.current && !switched) return;
     const next = committedFrom(deviceData, ctx);
     setCommitted(next);
     setDraft(next);
@@ -364,8 +369,10 @@ export default function Settings() {
           });
           const bad = describeCommandStatus(status.status, { subject: serial });
           if (bad) { fail(bad.message, bad); return; }
-        } catch {
-          const described = describeCommandStatus('TIMEOUT', { subject: serial });
+        } catch (err) {
+          // Not hearing back (network, session, slow device) is not the same as
+          // the device refusing: the change may still apply. Say which it was.
+          const described = describeError(err, { action: 'confirm these settings', subject: serial });
           fail(described.message, described);
           return;
         }

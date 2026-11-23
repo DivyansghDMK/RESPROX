@@ -2,6 +2,7 @@ import { clearCognitoSession, getCognitoSession, refreshCognitoSession, loginWit
 import { parseReportRows } from './reportFileParser';
 import { extractStatus } from './deviceStatus';
 import { currentSettingsRow, telemetryRows } from './currentSettings';
+import { recordFailure } from './diagnostics';
 
 const BASE_URL = import.meta.env.VITE_RESPIREE_API_BASE_URL
   || (import.meta.env.DEV ? '/api-proxy' : 'https://52ct9sbsu3.execute-api.us-east-1.amazonaws.com');
@@ -125,7 +126,8 @@ function normalizeTelemetry(raw = {}) {
 function normalizeDeviceSummary(raw = {}) {
   const latest = normalizeTelemetry(raw.latest || raw.telemetry_latest || raw.latestTelemetry || raw.telemetry || {});
   const syncState = raw.sync_state || raw.syncState || {};
-  const serial = extractSerial(raw) || latest.serial;
+  // Always text: some rows carry a numeric id, and every screen lowercases it.
+  const serial = String(extractSerial(raw) || latest.serial || '');
   const status = extractStatus(raw, syncState, latest.raw);
 
   return {
@@ -446,21 +448,36 @@ function recoverSession() {
   return sessionRecovery;
 }
 
+// Only reads are retried. A POST or PATCH that reached the server but lost its
+// answer would otherwise send the same command to the device twice.
+const isRead = (options) => !options.method || String(options.method).toUpperCase() === 'GET';
+const RETRY_STATUS = new Set([502, 503, 504]);
+
+/** Tag an error with what was asked and when, and keep it for Help & Support. */
+function tagged(err, path, options) {
+  err.path = err.path || path;
+  err.method = err.method || String(options.method || 'GET').toUpperCase();
+  err.at = err.at || new Date().toISOString();
+  recordFailure(err);
+  return err;
+}
+
 async function request(path, options = {}, { retry = true } = {}) {
+  const canRetry = retry && isRead(options);
   let res;
   try {
     res = await fetchJson(path, options);
   } catch (err) {
-    if (retry && err.code !== 'TIMEOUT') {
-      await new Promise(r => setTimeout(r, 1000));
+    if (canRetry) {
+      await new Promise(r => setTimeout(r, 800));
       return request(path, options, { retry: false });
     }
-    throw err;
+    throw tagged(err, path, options);
   }
 
-  // Handle transient 500 server errors with a 1-time retry
-  if (res.status >= 500 && retry) {
-    await new Promise(r => setTimeout(r, 1000));
+  // A gateway hiccup (502-504) on a read is worth one more try.
+  if (RETRY_STATUS.has(res.status) && canRetry) {
+    await new Promise(r => setTimeout(r, 800));
     return request(path, options, { retry: false });
   }
 
@@ -482,15 +499,31 @@ async function request(path, options = {}, { retry = true } = {}) {
     err.status = res.status;
     err.statusText = res.statusText;
     err.body = errorData;
-    err.path = path;
-    throw err;
+    throw tagged(err, path, options);
   }
 
   if (res.status === 204) {
     return null;
   }
 
-  return res.json();
+  // The body gets its own deadline (headers can arrive and the body stall),
+  // and a non-JSON answer (e.g. a proxy's HTML page) gets a clear error.
+  let timer;
+  try {
+    return await Promise.race([
+      res.json(),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error('The server started answering but did not finish.'), { code: 'TIMEOUT' })), REQUEST_TIMEOUT_MS); }),
+    ]);
+  } catch (err) {
+    if (err.code !== 'TIMEOUT') {
+      err.message = `The server sent something that isn't data (HTTP ${res.status}).`;
+      err.code = 'BAD_RESPONSE';
+      err.status = res.status;
+    }
+    throw tagged(err, path, options);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 const DEVICES_TTL_MS = 15000;
@@ -518,10 +551,16 @@ async function getDevices({ force = false } = {}) {
   if (force) invalidate('devices');
   return dedupe('devices', DEVICES_TTL_MS, async () => {
     const json = await request('/devices');
-    const rawList = Array.isArray(json) ? json : (json.data || json.devices || json.items || []);
+    const rawList = Array.isArray(json) ? json : (json?.data || json?.devices || json?.items || []);
     return rawList.map(normalizeDeviceSummary);
   });
 }
+
+/** For optional parts of a load: a 404 means "none yet"; anything else still fails. */
+const partial = (err) => {
+  if (err?.status === 404) return null;
+  throw err;
+};
 
 async function getDeviceDetail(serial, { force = false } = {}) {
   // Manual refresh must bypass both the detail entry and the device list it
@@ -533,9 +572,11 @@ async function getDeviceDetail(serial, { force = false } = {}) {
   return dedupe(`detail:${serial}`, DETAIL_TTL_MS, async () => {
     const [devices, latest, history, syncState, reports] = await Promise.all([
       getDevices().catch(() => []),
-      request(`/devices/${encodeURIComponent(serial)}/telemetry/latest`),
-      request(`/devices/${encodeURIComponent(serial)}/telemetry/history?page=1&limit=20`),
-      request(`/devices/${encodeURIComponent(serial)}/sync-state`),
+      // A new device has no telemetry yet (404) and sync-state can be missing:
+      // show what there is rather than failing the whole device.
+      request(`/devices/${encodeURIComponent(serial)}/telemetry/latest`).catch(partial),
+      request(`/devices/${encodeURIComponent(serial)}/telemetry/history?page=1&limit=20`).catch(partial),
+      request(`/devices/${encodeURIComponent(serial)}/sync-state`).catch(partial),
       // Older deployments may not expose stored reports yet; telemetry history
       // remains a safe fallback until that endpoint is available.
       getAllReports(serial).catch(() => []),
@@ -834,8 +875,10 @@ async function getCommands(serial) {
       const totalPages = Number((json?.data?.pagination || json?.pagination)?.totalPages);
       if (items.length < ACTIVITY_PAGE || (Number.isFinite(totalPages) && page >= totalPages)) break;
     }
-  } catch {
-    commandsUnavailable = true;
+  } catch (err) {
+    // A missing route (404, or a network error from its CORS-less 404) means
+    // "not deployed"; anything else is a passing failure, so ask next time.
+    if (err?.status === 404 || err?.status === 403 || err?.code === 'NETWORK') commandsUnavailable = true;
     return null;
   }
   return rows;

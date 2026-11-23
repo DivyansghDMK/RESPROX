@@ -256,3 +256,22 @@ export function DeviceInfoSkeleton({ label = 'Loading device' }) {
     </Frame>
   );
 }
+
+/** Activity Log: day heading, then rows of time · dot · title and change chips. */
+export function TimelineSkeleton({ label = 'Loading activity', rows = 6 }) {
+  return (
+    <Frame label={label}>
+      <Skel w={160} h={12} style={{ marginBottom: 14 }} />
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="skel-row" style={{ alignItems: 'flex-start', flexWrap: 'nowrap', padding: '10px 0', gap: 12 }}>
+          <Skel w={40} h={12} />
+          <Skel w={10} h={10} r={5} style={{ marginTop: 2 }} />
+          <div style={{ flex: 1 }}>
+            <Skel w={`${45 + ((i * 17) % 35)}%`} h={13} />
+            <Skel w={`${25 + ((i * 11) % 30)}%`} h={10} style={{ marginTop: 8 }} />
+          </div>
+        </div>
+      ))}
+    </Frame>
+  );
+}

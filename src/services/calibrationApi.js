@@ -34,7 +34,10 @@ async function send(serial, body) {
     const err = new Error(status.status === 'NACKED'
       ? 'The device refused the calibration command.'
       : 'The device did not confirm. It shows "Command Failed" on its screen if it never got the command.');
-    err.code = status.status;
+    // NACKED: the device said no. Anything else: it never confirmed, which reads
+    // as "sent, not confirmed" rather than a slow server.
+    err.code = status.status === 'NACKED' ? 'NACKED' : 'ACK_PENDING';
+    err.serial = serial;
     throw err;
   }
   return status;

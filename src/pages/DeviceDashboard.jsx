@@ -5,6 +5,7 @@ import BreathingLungs from '../components/BreathingLungs';
 import LiveBars from '../components/LiveBars';
 import SyncReportsButton from '../components/SyncReportsButton';
 import SyncProgress, { useSyncProgress } from '../components/SyncProgress';
+import ErrorPanel from '../components/ErrorPanel';
 import { therapyLabel } from '../services/deviceStatus';
 import { DeviceDashboardSkeleton } from '../components/Skeleton';
 import { createPortal } from 'react-dom';
@@ -74,18 +75,31 @@ const RingProgress = React.memo(function RingProgress({ pct, size = 72, stroke =
   );
 });
 
+/** Largest finite value of `key`, at least `floor`; no spread over long lists. */
+function peak(rows, key, floor) {
+  let max = floor;
+  for (const r of rows) {
+    const v = Number(r?.[key]);
+    if (Number.isFinite(v) && v > max) max = v;
+  }
+  return max;
+}
+
 // ── Mini Bar Chart ────────────────────────────────────────────────────────────
 const MiniBarChart = React.memo(function MiniBarChart({ sessions = [], valueKey, maxVal, goodFn, goodColor = '#1d9e75', badColor = '#e24b4a' }) {
   return (
     <div className="mini-bar-chart-container">
       {sessions.map((s, i) => {
-        const val = s[valueKey];
-        const pct = Math.min((val / maxVal) * 100, 100);
-        const clr = goodFn(val) ? goodColor : badColor;
+        const raw = s[valueKey];
+        const known = raw != null && raw !== '' && Number.isFinite(Number(raw));
+        const val = known ? Number(raw) : null;
+        // A missing night is a grey stub, never a red bar that reads as a bad night.
+        const pct = known ? Math.min((val / maxVal) * 100, 100) : 0;
+        const clr = !known ? '#cbd5e1' : goodFn(val) ? goodColor : badColor;
         return (
-          <div key={i} title={`${s.date}: ${val}`}
+          <div key={i} title={`${s.date || '—'}: ${known ? val : 'no data'}`}
             style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-            <span className="bar-chart-val" style={{ fontSize: 9, color: '#64748b', fontWeight: 700 }}>{val}</span>
+            <span className="bar-chart-val" style={{ fontSize: 9, color: '#64748b', fontWeight: 700 }}>{known ? val : '—'}</span>
             <div style={{
               width: '100%', height: `${Math.max(pct * 0.44, 6)}px`,
               background: `linear-gradient(180deg, ${clr}dd, ${clr})`,
@@ -186,12 +200,15 @@ function TherapyControl({ status, applying, online, allowed = true, onRequest })
 function TherapyConfirmDialog({ action, serial, onCancel, onConfirm }) {
   const cancelRef = useRef(null);
   const start = action === 'start';
+  // Focus Cancel once; a live refresh re-rendering the page must not pull it back.
+  const cancelLatest = useRef(onCancel);
+  cancelLatest.current = onCancel;
   useEffect(() => {
     cancelRef.current?.focus();
-    const onKey = (e) => { if (e.key === 'Escape') onCancel(); };
+    const onKey = (e) => { if (e.key === 'Escape') cancelLatest.current(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel]);
+  }, []);
   // Portalled: the dashboard's entrance animation puts a transform on its children,
   // which would otherwise turn this fixed overlay into a box inside the page.
   return createPortal(
@@ -227,6 +244,9 @@ function pageList(current, total) {
   });
   return out;
 }
+
+/** One decimal, or "—" for a value that is missing or not a number. Never throws. */
+const fmt1 = (v) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v).toFixed(1) : '—');
 
 // Missing values read as "—", never as a 0 that looks like a measurement.
 const dash = (v, unit = '') => (v == null || Number.isNaN(Number(v)) ? '—' : `${v}${unit}`);
@@ -342,9 +362,11 @@ function DeviceDashboardView() {
     finally { if (!silent && id === requestId.current) setLoading(false); }
   }, [serial, setLastServerPull, setDeviceData, notify]);
 
+  // Refresh keeps the page on screen (no skeleton, scroll kept) and reports a
+  // failure as a notice; the data already shown stays.
   const handleRefresh = async () => {
     setRefreshing(true);
-    await fetchDevice(false, true);
+    await fetchDevice(true, true);
     setRefreshing(false);
   };
 
@@ -498,9 +520,10 @@ function DeviceDashboardView() {
     const all = device?.sessions || [];
     return {
       sessions: all.slice(-7),
-      maxAHI: Math.max(...all.map(s => s.ahi), 5),
-      maxUsageHrs: Math.max(...all.map(s => s.usage_hours), 8),
-      maxLeak: Math.max(...all.map(s => s.mask_leak), 24),
+      // Missing values must not turn the scale into NaN.
+      maxAHI: peak(all, 'ahi', 5),
+      maxUsageHrs: peak(all, 'usage_hours', 8),
+      maxLeak: peak(all, 'mask_leak', 24),
     };
   }, [device?.sessions]);
 
@@ -584,18 +607,12 @@ function DeviceDashboardView() {
   if (!device) {
     const problem = loadError
       ? describeError(loadError, { action: 'load this device', subject: serial })
-      : { title: 'Device not found', message: `The server has no record of ${serial}.`, retryable: false };
+      : { title: 'Device not found', message: `The server has no record of ${serial}. Check the serial; a new device appears once it has connected to Wi-Fi and sent its first data.`, retryable: false };
     return (
       <div className="admin-detail-page">
-        <div className="load-error" role="alert">
-          <strong>{problem.title}</strong>
-          <p>{problem.message}</p>
-          {problem.detail && <code>{problem.detail}</code>}
-          <div className="load-error-actions">
-            {problem.retryable && <button className="admin-page-btn primary" onClick={() => fetchDevice(false, true)}>Try again</button>}
-            <button className="admin-page-btn" onClick={() => navigate('/devices')}>← Back to Devices</button>
-          </div>
-        </div>
+        <ErrorPanel error={loadError} described={problem} action="load this device" subject={serial} onRetry={() => fetchDevice(false, true)}>
+          <button className="admin-page-btn" style={{ marginTop: 14 }} onClick={() => navigate('/devices')}>← Back to Devices</button>
+        </ErrorPanel>
       </div>
     );
   }
@@ -894,9 +911,9 @@ function DeviceDashboardView() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <button aria-label="Decrease pressure" onClick={() => setPressure(v => Math.max(4, +(v - 0.1).toFixed(1)))} style={stepBtn}><MinusIcon/></button>
                     <div style={{ textAlign: 'center', minWidth: 110 }}>
-                      <span style={{ fontSize: 32, fontWeight: 900, color: 'var(--accent)' }}>{pressure.toFixed(1)}</span>
+                      <span style={{ fontSize: 32, fontWeight: 900, color: 'var(--accent)' }}>{fmt1(pressure)}</span>
                       <span style={{ fontSize: 14, color: '#64748b', marginLeft: 4 }}>cmH₂O</span>
-                      {device.settings.pressure !== pressure && <div style={{ ...changedTag, display: 'block', margin: '2px auto 0' }}>was {device.settings.pressure.toFixed(1)}</div>}
+                      {device.settings.pressure !== pressure && <div style={{ ...changedTag, display: 'block', margin: '2px auto 0' }}>was {fmt1(device.settings.pressure)}</div>}
                     </div>
                     <button aria-label="Increase pressure" onClick={() => setPressure(v => Math.min(maxLimit, +(v + 0.1).toFixed(1)))} style={stepBtn}><PlusIcon/></button>
                   </div>
@@ -930,10 +947,10 @@ function DeviceDashboardView() {
                       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>{label}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
                         <button aria-label={`Decrease ${label}`} onClick={dec} style={stepBtn}><MinusIcon/></button>
-                        <span style={{ fontSize: 26, fontWeight: 900, color: '#163257' }}>{val.toFixed(1)}</span>
+                        <span style={{ fontSize: 26, fontWeight: 900, color: '#163257' }}>{fmt1(val)}</span>
                         <span style={{ fontSize: 12, color: '#64748b' }}>cmH₂O</span>
                         <button aria-label={`Increase ${label}`} onClick={inc} style={stepBtn}><PlusIcon/></button>
-                        {changed && <span style={changedTag}>was {was.toFixed(1)}</span>}
+                        {changed && <span style={changedTag}>was {fmt1(was)}</span>}
                       </div>
                       <StyledSlider value={val} min={4} max={sliderMax} step={0.1} onChange={onChange} label={label}/>
                     </div>
@@ -1042,6 +1059,11 @@ function DeviceDashboardView() {
                 <tr>{['Date', 'Usage', 'AHI', 'Mask Leak', '95th Pressure', 'Compliance'].map(h => <th key={h}>{h}</th>)}</tr>
               </thead>
               <tbody>
+                {!paginatedSessions.length && (
+                  <tr><td colSpan={6} style={{ padding: '28px 12px', textAlign: 'center', color: 'var(--muted)' }}>
+                    No sessions or settings frames for this device yet. Use Sync reports to pull them from the device.
+                  </td></tr>
+                )}
                 {paginatedSessions.map((s, i) => {
                   const isSettings = s.type === 'SETTINGS_UPDATE';
                   const compliant = s.usage_hours >= 4;
@@ -1160,7 +1182,7 @@ function DeviceDashboardView() {
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            justify: 'space-between',
+            justifyContent: 'space-between',
             padding: '12px 16px',
             border: '1px solid var(--line)',
             borderTop: 'none',

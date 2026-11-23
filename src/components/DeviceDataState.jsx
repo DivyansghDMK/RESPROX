@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import GlassCard from './GlassCard';
 import { PageSkeleton } from './Skeleton';
 import { useTherapy } from '../context/TherapyContext';
-import { describeError } from '../services/apiError';
+import ErrorPanel from './ErrorPanel';
 
 /**
  * What a device page shows before it has data: a shimmer while the selected
@@ -18,19 +18,10 @@ export default function DeviceDataState({ what = 'this page', skeleton: Shape = 
   }
 
   if (adminActiveSerial && deviceLoadError) {
-    const d = describeError(deviceLoadError, { action: 'load this device', subject: adminActiveSerial });
     return (
-      <div className="load-error" role="alert">
-        <strong>{d.title}</strong>
-        <p>{d.message}</p>
-        {d.detail && <code>{d.detail}</code>}
-        <div className="load-error-actions">
-          {d.retryable && (
-            <button className="admin-page-btn primary" onClick={() => fetchDeviceData(adminActiveSerial)}>Try again</button>
-          )}
-          <button className="admin-page-btn" onClick={() => navigate('/devices')}>← Back to Devices</button>
-        </div>
-      </div>
+      <ErrorPanel error={deviceLoadError} action="load this device" subject={adminActiveSerial} onRetry={() => fetchDeviceData(adminActiveSerial)}>
+        <button className="admin-page-btn" style={{ marginTop: 14 }} onClick={() => navigate('/devices')}>← Back to Devices</button>
+      </ErrorPanel>
     );
   }
 

@@ -33,7 +33,8 @@ export default function Trends() {
   const usage7d = useMemo(() => {
     return displaySessions.map(s => ({
       day: s.date,
-      usage: Math.round((s.usage_hours / 8) * 100)
+      // A night with no reading is a gap in the chart, not 0 %.
+      usage: Number.isFinite(Number(s.usage_hours)) && s.usage_hours !== null ? Math.round((s.usage_hours / 8) * 100) : null
     }));
   }, [displaySessions]);
 
@@ -192,7 +193,7 @@ export default function Trends() {
           {usage7d.length ? (
             <TrendChart data={usage7d} yKey="usage" yUnit="%" type="bar" />
           ) : (
-            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)' }}>No data available</div>
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)' }}>No sessions in this period. Sync reports from the device dashboard to pull them.</div>
           )}
         </GlassCard>
 
@@ -203,7 +204,7 @@ export default function Trends() {
           {ahiData.length ? (
             <TrendChart data={ahiData} yKey="ahi" yUnit="" type="line" colorStart="#dc2626" />
           ) : (
-            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)' }}>No data available</div>
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)' }}>No sessions in this period. Sync reports from the device dashboard to pull them.</div>
           )}
         </GlassCard>
 
@@ -214,7 +215,7 @@ export default function Trends() {
           {leakData.length ? (
             <TrendChart data={leakData} yKey="leak" yUnit=" L/min" type="area" colorStart="var(--accent-2)" colorEnd="var(--accent)" />
           ) : (
-            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)' }}>No data available</div>
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)' }}>No sessions in this period. Sync reports from the device dashboard to pull them.</div>
           )}
         </GlassCard>
 
@@ -225,7 +226,7 @@ export default function Trends() {
           {pressureData.length ? (
             <TrendChart data={pressureData} yKey="pressure" yUnit=" cmH2O" type="line" colorStart="var(--accent)" />
           ) : (
-            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)' }}>No data available</div>
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)' }}>No sessions in this period. Sync reports from the device dashboard to pull them.</div>
           )}
         </GlassCard>
       </section>

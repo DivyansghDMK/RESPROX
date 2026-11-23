@@ -8,6 +8,7 @@
 // by loading the new version, so the boundary reloads once by itself.
 
 import React from 'react';
+import ErrorPanel from './ErrorPanel';
 
 const RELOADED_KEY = 'resproxChunkReloadAt';
 
@@ -60,22 +61,34 @@ export default class ErrorBoundary extends React.Component {
     if (reloading) return <div className="load-error" role="status"><strong>Updating to the latest version…</strong></div>;
 
     const stale = isStaleBuildError(error);
-    return (
-      <div className="load-error" role="alert">
-        <strong>{stale ? 'A new version of the app is available' : 'This page ran into a problem'}</strong>
-        <p>
-          {stale
-            ? 'Reload to get it. Nothing you saved on the device is affected.'
-            : 'The rest of the app still works. Reload the page, or go back to Devices. If it keeps happening, tell support what you were doing.'}
-        </p>
-        {!stale && <code>{String(error?.message || error).slice(0, 300)}</code>}
-        <div className="load-error-actions">
-          <button className="admin-page-btn primary" onClick={() => window.location.reload()}>Reload page</button>
-          {!stale && (
-            <button className="admin-page-btn" onClick={() => { window.location.href = '/devices'; }}>← Back to Devices</button>
-          )}
+    if (stale) {
+      return (
+        <div className="load-error" role="alert">
+          <strong>A new version of the app is available</strong>
+          <p>Reload to get it. Nothing on the device is affected.</p>
+          <div className="load-error-actions">
+            <button className="admin-page-btn primary" onClick={() => window.location.reload()}>Reload page</button>
+          </div>
         </div>
-      </div>
+      );
+    }
+    // A bug in this page, not a server or device problem: say so, keep the
+    // rest of the app usable, and give the engineer the report for the team.
+    return (
+      <ErrorPanel
+        error={error}
+        action="show this page"
+        described={{
+          title: 'This page ran into a problem',
+          message: 'A bug in the website stopped this page. The device and the server are not affected, and the rest of the app still works. Reload, or go back to Devices, and send the details to the web team.',
+          retryable: false,
+        }}
+      >
+        <div className="load-error-actions" style={{ marginTop: 14 }}>
+          <button className="admin-page-btn primary" onClick={() => window.location.reload()}>Reload page</button>
+          <button className="admin-page-btn" onClick={() => { window.location.href = '/devices'; }}>← Back to Devices</button>
+        </div>
+      </ErrorPanel>
     );
   }
 }

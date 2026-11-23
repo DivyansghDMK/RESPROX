@@ -67,7 +67,14 @@ function buildNotifications(deviceData, lastServerPull) {
   const stamp = latest?.display_date || latest?.date || 'latest';
 
   if (deviceData.device_online === false) {
-    list.push({
+    // On the phone app is a normal state (Bluetooth, off Wi-Fi on purpose), not a fault.
+    list.push(deviceData.phone_connected ? {
+      id: `phone:${serial}`,
+      severity: 'info',
+      title: 'Device on the phone app',
+      detail: `${serial} is connected to the phone app over Bluetooth, so it is off Wi-Fi. Commands from the website reach it once the app disconnects.`,
+      to: `/device/${serial}`,
+    } : {
       id: `offline:${serial}`,
       severity: 'critical',
       title: 'Device offline',
@@ -172,7 +179,7 @@ export function useNotifications() {
         id: e.id,
         severity: e.severity,
         title: e.title,
-        detail: `${e.detail} ${new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+        detail: [e.detail, Number.isFinite(new Date(e.at).getTime()) ? new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null].filter(Boolean).join(' '),
         to: `/device/${e.serial}`,
       })),
       ...buildNotifications(deviceData, lastServerPull),

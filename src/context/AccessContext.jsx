@@ -37,6 +37,7 @@ export function AccessProvider({ children }) {
 
   const tokenRole = roleFromClaims(token ? readTokenClaims(token) : {});
 
+  const [meError, setMeError] = useState(null);
   const loadMe = useCallback(async () => {
     if (!isAuthenticated) {
       setMe(null);
@@ -44,12 +45,14 @@ export function AccessProvider({ children }) {
       return;
     }
     setMeState('loading');
+    setMeError(null);
     try {
       // Dev preview of a dealer reads the preview store; everyone else the server.
       setMe(previewRole ? await partnersAPI.me(previewRole.dealerId) : await request('/me'));
       setMeState('ready');
     } catch (err) {
       setMe(null);
+      setMeError(err);
       // 403: the user row is disabled. 404: no user row for this Cognito sub.
       // Neither may fall back to the token's role (no group reads as admin).
       setMeState(err?.status === 403 ? 'disabled' : err?.status === 404 && !previewRole ? 'unprovisioned' : 'error');
@@ -97,12 +100,18 @@ export function AccessProvider({ children }) {
     // of briefly showing "not your device".
     dealerLoading: permissions.isDealer && (meState === 'loading' || meState === 'idle'),
     dealerError: permissions.isDealer && meState === 'error',
+    // The account itself couldn't be read (network, server): shown with retry
+    // instead of quietly running with no devices.
+    accountError: meState === 'error' ? meError : null,
+    // Until the account answers once, the app waits rather than running on
+    // the role in the sign-in token.
+    accountLoading: isAuthenticated && (meState === 'idle' || meState === 'loading') && !me,
     reloadDealer: loadMe,
     previewRole,
     setPreviewRole,
     clientIp: account.ip,
     accountBlocked: blocked,
-  }), [permissions, dealer, account, meState, blocked, loadMe, previewRole, setPreviewRole]);
+  }), [permissions, dealer, account, meState, meError, me, isAuthenticated, blocked, loadMe, previewRole, setPreviewRole]);
 
   return <AccessContext.Provider value={value}>{children}</AccessContext.Provider>;
 }
