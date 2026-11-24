@@ -30,8 +30,9 @@ export default function Reports() {
     return Number.isNaN(d.getTime()) ? '' : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
   const dataRange = useMemo(() => {
-    const stamps = sessions.map((s) => s.timestamp).filter(Boolean).sort((a, b) => a - b);
-    return stamps.length ? { start: dayKey(stamps[0]), end: dayKey(stamps[stamps.length - 1]) } : { start: '', end: '' };
+    // A session's therapy day (noon to noon) when it has one, else its date.
+    const keys = sessions.map((s) => s.dayKey || dayKey(s.timestamp)).filter(Boolean).sort();
+    return keys.length ? { start: keys[0], end: keys[keys.length - 1] } : { start: '', end: '' };
   }, [sessions]); // eslint-disable-line react-hooks/exhaustive-deps
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -120,7 +121,6 @@ export default function Reports() {
       dayCount.set(r.dayKey, (dayCount.get(r.dayKey) || 0) + 1);
     }
     const seenInDay = new Map();
-    const label = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     return [...records]
       .sort((a, b) => a.start - b.start)
       .map((r) => {
@@ -130,13 +130,13 @@ export default function Reports() {
         return {
           id: `${r.dayKey}-${n}-${r.startClock}`,
           dayKey: r.dayKey,
-          date: label.format(r.start),
+          date: r.dateLabel,
           session: dayCount.get(r.dayKey) > 1 ? `Session ${n} of ${dayCount.get(r.dayKey)}` : null,
           time: `${r.startClock} – ${r.endClock}`,
           usage: hm(r.durationMinutes),
           ahi: hours > 0 ? `${(r.events / hours).toFixed(1)} / hr` : '—',
           leak: r.leakValid ? `${r.leak} L/min` : '—',
-          pressure: has(r.setPressure) ? `${r.setPressure} cmH₂O` : '—',
+          pressure: has(r.sessionPressure) ? `${r.sessionPressure} cmH₂O` : '—',
           compliance: dayMinutes.get(r.dayKey) >= 240 ? 'Yes' : 'No',
         };
       })

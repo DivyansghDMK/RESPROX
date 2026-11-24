@@ -24,7 +24,10 @@ test('helpers follow the app', () => {
   // Rounded to the nearest, as in the Rajinder Kaur Ghai sample: 31/38 → 82 %, 6/38 → 16 %.
   assert.equal(pct(31, 38), 82);
   assert.equal(pct(6, 38), 16);
-  assert.equal(percentile([10.8, 14.2, 19.1], 0.95), 14.2);
+  // Linear interpolation, as in the Android app (Excel PERCENTILE.INC).
+  assert.equal(percentile([10.8, 14.2, 19.1], 0.95).toFixed(2), '18.61');
+  assert.equal(percentile([16, 20], 0.5), 18); // even count: mean of the middle two
+  assert.equal(percentile([8], 0.95), 8);
   assert.ok(Number.isNaN(percentile([], 0.5)));
 });
 
@@ -55,12 +58,10 @@ test('event indices are events over total hours, AHI = AI + HI', () => {
 });
 
 test('pressure percentiles, leak average and empty days', () => {
-  // One session a day: each day's max, 95th and median are that session's
-  // pressure, averaged over the 3 days: (19.1 + 14.2 + 10.8) / 3.
-  assert.equal(data.pressure.max.toFixed(2), '14.70');
-  // One pressure per session: no real median or 95th yet.
-  assert.ok(Number.isNaN(data.pressure.p95));
-  assert.ok(Number.isNaN(data.pressure.median));
+  // One session a day: the three session pressures [10.8, 14.2, 19.1].
+  assert.equal(data.pressure.max, 19.1);
+  assert.equal(data.pressure.median, 14.2);
+  assert.equal(data.pressure.p95.toFixed(2), '18.61');
   assert.equal(data.avgLeak.toFixed(1), '9.7');
   const empty = data.days.find((d) => d.key === '2022-03-07');
   assert.equal(empty.hours, 0);
@@ -88,7 +89,12 @@ test('the parser adds each day as the report counts it', () => {
     end_day: 4, end_month: 7, end_year: 26, end_hour: 6, end_minute: 30, mode: 2, max_pressure: 12, min_pressure: 6,
     ipap: 0, epap: 0, csa_count: 1, osa_count: 2, hsa_count: 3, leak: 20, tidal_volume: 500, resp_rate: 14, ...o,
   });
-  const { days } = parseReportRows([row({}), row({ start_hour: 23, start_minute: 50, end_hour: 23, end_minute: 55, leak: 130, max_pressure: 14 })]);
+  // Session pressure from the step counters: 6 + (8 − 2) × 0.5 = 9, and
+  // 6 + 30 × 0.5 = 21, held at that session's set max of 14.
+  const { days } = parseReportRows([
+    row({ pressure_change_count: 8, rate_change_factor: 2 }),
+    row({ start_hour: 23, start_minute: 50, end_hour: 23, end_minute: 55, leak: 130, max_pressure: 14, pressure_change_count: 30 }),
+  ]);
   assert.equal(days.length, 1);
   const r = days[0].report;
   assert.equal(r.usageMinutes, 455);
@@ -97,7 +103,7 @@ test('the parser adds each day as the report counts it', () => {
   assert.deepEqual(r.leaks, [20]);
   assert.equal(r.csa + r.osa + r.hsa, 12);
   assert.equal(r.minuteVent, 7);
-  assert.deepEqual(r.pressures, [12, 14]);
+  assert.deepEqual(r.pressures, [9, 14]);
   // A session that starts and ends in the same minute is 0 min, not a whole day.
   const same = parseReportRows([row({ start_hour: 13, start_minute: 59, end_day: 3, end_hour: 13, end_minute: 59 })]).records[0];
   assert.equal(same.durationMinutes, 0);
@@ -156,16 +162,17 @@ test('usage figures of the Rajinder Kaur Ghai sample (15 Mar - 21 Apr 2026)', ()
   assert.equal(fmtHM(u.avgUsedDaysMin), '05 Hours, 23 Minutes');
 });
 
-test('pressure (avg): per-day max, 95th and median of its sessions, averaged over days', () => {
+test('pressure: every session of the range in one list, not one value per day', () => {
   const d = buildReportData({
     rows: [
       day('2026-04-01', rep(400, 12, 0, 1, 1, [30], { pressures: [8, 10, 12], setMax: 11, setMin: 4 })),
       day('2026-04-02', rep(300, 6, 0, 1, 1, [30], { pressures: [6], setMax: 12, setMin: 5 })),
     ],
   });
-  assert.equal(d.pressure.max, 9);      // (12 + 6) / 2
-  assert.ok(Number.isNaN(d.pressure.median));
-  assert.ok(Number.isNaN(d.pressure.p95));
+  // [6, 8, 10, 12]
+  assert.equal(d.pressure.max, 12);
+  assert.equal(d.pressure.median, 9);
+  assert.equal(d.pressure.p95.toFixed(1), '11.7');
   // Settings come from the range's last session, not today's device settings.
   assert.deepEqual(d.set, { max: 12, min: 5 });
 });
@@ -178,21 +185,37 @@ test('the report shows the settings recorded in the range', () => {
   assert.match(html, /Set Max Pressure<\/span>\s*<span class="stat-value"[^>]*>11</);
 });
 
-test('once sessions carry median and 95th pressure, they are averaged over days', () => {
-  const d = buildReportData({
+test("the Android document's examples: 5 days x 3 sessions, and CVT3000010 20-21 Nov", () => {
+  const five = buildReportData({
     rows: [
-      day('2026-04-01', rep(400, 12, 0, 1, 1, [30], { medianPressure: 7, p95Pressure: 10 })),
-      day('2026-04-02', rep(300, 11, 0, 1, 1, [30], { medianPressure: 6.8, p95Pressure: 8.8 })),
+      day('2026-11-01', rep(400, 7.5, 0, 0, 0, [0], { pressures: [5.0, 6.0, 7.5] })),
+      day('2026-11-02', rep(400, 8.0, 0, 0, 0, [0], { pressures: [6.5, 8.0, 5.5] })),
+      day('2026-11-03', rep(400, 9.0, 0, 0, 0, [0], { pressures: [7.0, 9.0, 6.0] })),
+      day('2026-11-04', rep(400, 6.5, 0, 0, 0, [0], { pressures: [4.5, 5.0, 6.5] })),
+      day('2026-11-05', rep(400, 10.0, 0, 0, 0, [0], { pressures: [8.5, 7.0, 10.0] })),
     ],
   });
-  assert.equal(d.pressure.median.toFixed(1), '6.9');
-  assert.equal(d.pressure.p95.toFixed(1), '9.4');
+  assert.equal(five.pressure.median, 6.5);
+  assert.equal(five.pressure.p95.toFixed(1), '9.3');
+  assert.equal(five.pressure.max, 10);
+  assert.deepEqual(five.days.map((x) => x.maxPressure), [7.5, 8, 9, 6.5, 10]);
+
+  const cvt = buildReportData({
+    rows: [
+      day('2026-11-20', rep(60, 6, 0, 0, 0, [30, 20, 19], { pressures: [4, 4, 6] })),
+      day('2026-11-21', rep(60, 5, 0, 0, 0, [24], { pressures: [5] })),
+    ],
+  });
+  assert.equal(cvt.pressure.median, 4.5);
+  assert.equal(cvt.pressure.p95.toFixed(2), '5.85');
+  assert.equal(cvt.pressure.max, 6);
+  assert.equal(cvt.avgLeak, 23.25);
 });
 
-test('values the data cannot give read N/A on the report', () => {
+test('the report prints the session-pressure statistics; Unknown stays N/A', () => {
   const html = buildTherapyReportHTML({ deviceData: { serial: 'CVT1', settings: { min_pressure: 4, max_pressure: 11 } }, sessions: rows, startDate: '2022-03-06', endDate: '2022-03-18' });
-  assert.match(html, /<td class="ml">Median:<\/td><td class="mv">N\/A<\/td>/);
-  assert.match(html, /<td class="ml">95th percentile:<\/td><td class="mv">N\/A<\/td>/);
+  assert.match(html, /<td class="ml">Median:<\/td><td class="mv">14.2<\/td>/);
+  assert.match(html, /<td class="ml">95th percentile:<\/td><td class="mv">18.6<\/td>/);
   assert.match(html, /<td class="ml">Unknown:<\/td><td class="mv">N\/A<\/td>/);
-  assert.match(html, /Median \(avg\)<\/span>\s*<span class="stat-value"[^>]*>N\/A</);
+  assert.match(html, /Median \(avg\)<\/span>\s*<span class="stat-value"[^>]*>14.2</);
 });
