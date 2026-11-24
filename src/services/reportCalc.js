@@ -36,9 +36,17 @@ export function pct(part, whole) {
   return whole ? Math.round((part * 100) / whole) : 0;
 }
 
-/** Nearest-rank percentile of an ascending list; NaN when it is empty. */
+/**
+ * Percentile of an ascending list by linear interpolation (Excel
+ * PERCENTILE.INC, numpy's default; the Android app's rule): the median of an
+ * even count is the mean of the two middle values. NaN when it is empty.
+ */
 export function percentile(sorted, p) {
-  return sorted.length ? sorted[Math.floor(p * (sorted.length - 1))] : NaN;
+  if (!sorted.length) return NaN;
+  const pos = p * (sorted.length - 1);
+  const i = Math.floor(pos);
+  const next = sorted[Math.min(i + 1, sorted.length - 1)];
+  return sorted[i] + (pos - i) * (next - sorted[i]);
 }
 
 /** One day's values (section 5) from a day row. */
@@ -52,8 +60,6 @@ export function dayValues(row) {
       pressures: r.pressures || (r.maxPressure > 0 ? [r.maxPressure] : []),
       setMax: r.setMax,
       setMin: r.setMin,
-      medianPressure: r.medianPressure,
-      p95Pressure: r.p95Pressure,
       csa: r.csa, osa: r.osa, hsa: r.hsa, hasSplit: true,
       events: r.csa + r.osa + r.hsa,
       leak: r.leak,
@@ -152,26 +158,11 @@ export function buildReportData({ rows = [], startDate, endDate } = {}) {
 
   const latest = [...days].reverse().find((d) => d.modeCode != null) || null;
 
-  // Pressure "(avg)": each used day's highest, 95th-percentile and median
-  // session pressure, averaged over those days (DeckMount's report: its
-  // "Maximum (avg)" is the mean of the daily bars).
-  const pressureDays = days.filter((d) => d.pressures?.length);
-  const meanOf = (pick) => (pressureDays.length
-    ? pressureDays.reduce((a, d) => a + pick([...d.pressures].sort((x, y) => x - y)), 0) / pressureDays.length
-    : NaN);
-  // A session record carries one pressure, so a real median or 95th
-  // percentile of the night's pressure can't be worked out from it. They are
-  // NaN (shown "N/A") until sessions carry medianPressure / p95Pressure,
-  // which the firmware has been asked for; then each is averaged over days.
-  const meanField = (key) => {
-    const vals = days.map((d) => Number(d[key])).filter((v) => Number.isFinite(v) && v > 0);
-    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : NaN;
-  };
-  const pressure = {
-    max: meanOf((s) => s[s.length - 1]),
-    p95: meanField('p95Pressure'),
-    median: meanField('medianPressure'),
-  };
+  // Pressure, as the Android app works it out: every session in the range in
+  // one list (not one value per day), each session's pressure from its step
+  // counters (reportFileParser's steppedPressure).
+  const sessionPressures = days.flatMap((d) => d.pressures || []).filter((v) => v > 0).sort((a, b) => a - b);
+  const pressure = stats3(sessionPressures);
   // The settings in force during the range: the last session that recorded them.
   const lastSet = [...days].reverse().find((d) => Number(d.setMax) > 0) || null;
 

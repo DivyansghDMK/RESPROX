@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseReportFile, parseRecordLine, parseReportRows, parseTd1File, parseTd1Record, isTd1Data } from './reportFileParser.js';
+import { parseReportFile, parseRecordLine, parseReportRows, parseTd1File, parseTd1Record, isTd1Data, steppedPressure } from './reportFileParser.js';
 
 const GOOD = 'S,29,3,26,29,3,26,4,352,16,5,0,0,2,0,216,656,0,0,21,55,21,56,2,0,2,0,39,0,0,0,0,0,1,2,2,1,0,4,A,24000425';
 
@@ -115,4 +115,28 @@ test('an overnight session written with the start date on both ends ends the nex
   assert.equal(records[0].suspect, null);
   assert.equal(records[0].dayKey, '2025-12-20');
   assert.equal(days[0].usage_hours, 9.3); // counted on screen, not only in the PDF
+});
+
+test('a therapy day runs noon to noon', () => {
+  const at = (day, hour) => ({
+    start_day: day, start_month: 11, start_year: 26, start_hour: hour, start_minute: 0,
+    end_day: day, end_month: 11, end_year: 26, end_hour: hour, end_minute: 30, mode: 2,
+    max_pressure: 12, min_pressure: 4, csa_count: 0, osa_count: 0, hsa_count: 0, leak: 10,
+  });
+  const { records, days } = parseReportRows([at(20, 23), at(21, 1), at(21, 11), at(21, 12)]);
+  // 23:00 on the 20th and 01:00 / 11:00 on the 21st are one night; 12:00 on the 21st starts the next.
+  assert.deepEqual(records.map((r) => r.dayKey), ['2026-11-20', '2026-11-20', '2026-11-20', '2026-11-21']);
+  assert.deepEqual(days.map((d) => [d.dayKey, d.sessionCount, d.date]), [['2026-11-20', 3, '20 Nov 2026'], ['2026-11-21', 1, '21 Nov 2026']]);
+});
+
+test('session pressure from the step counters, kept between min and set max', () => {
+  const cases = [
+    [4, 20, 20, 10, 9],   // normal
+    [4, 20, 5, 12, 4],    // more downs than ups → min
+    [4, 20, 60, 10, 20],  // very many ups → set max
+    [6, 12, 30, 0, 12],   // set max below 20
+  ];
+  for (const [minPressure, maxPressure, pressureChangeCount, rateChangeFactor, want] of cases) {
+    assert.equal(steppedPressure({ minPressure, maxPressure, pressureChangeCount, rateChangeFactor }), want);
+  }
 });

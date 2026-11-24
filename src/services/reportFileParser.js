@@ -83,6 +83,29 @@ function dayLabel(date) {
   return `${String(date.getDate()).padStart(2, '0')} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
 }
 
+// A therapy day runs noon to noon, as in the Android app: a session that
+// starts before 12:00 belongs to the night that began the evening before.
+const THERAPY_DAY_START_HOUR = 12;
+
+/** Midnight of the therapy day a session starting at `start` belongs to. */
+export function therapyDay(start) {
+  const back = start.getHours() < THERAPY_DAY_START_HOUR ? 1 : 0;
+  return new Date(start.getFullYear(), start.getMonth(), start.getDate() - back);
+}
+
+/**
+ * The pressure a CPAP / AUTO session ran at, from its step counters (Android
+ * app, TherapySession.therapyMaxPressure): each step up adds 1 to the pressure
+ * change count and 0.5 cmH2O, each step down adds 1 to the rate change factor
+ * and takes 0.5 off. Kept between the session's min and set max pressure.
+ */
+export function steppedPressure({ minPressure, maxPressure, pressureChangeCount, rateChangeFactor }) {
+  if (!Number.isFinite(minPressure)) return Number.isFinite(maxPressure) ? maxPressure : NaN;
+  const net = Math.max(0, (pressureChangeCount || 0) - (rateChangeFactor || 0));
+  const p = minPressure + net * 0.5;
+  return Number.isFinite(maxPressure) && maxPressure > 0 ? Math.min(maxPressure, p) : p;
+}
+
 function clock(hour, minute) {
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
@@ -239,8 +262,8 @@ function buildRecord(f, lineNo, raw) {
       end,
       startClock: clock(f.startHour, f.startMinute),
       endClock: clock(f.endHour, f.endMinute),
-      dayKey: dayKey(start),
-      dateLabel: dayLabel(start),
+      dayKey: dayKey(therapyDay(start)),
+      dateLabel: dayLabel(therapyDay(start)),
       durationHours,
       durationMinutes,
       crossesMidnight: dayKey(start) !== dayKey(end),
@@ -257,6 +280,11 @@ function buildRecord(f, lineNo, raw) {
       // Set therapy pressure: the file records what the device was told to
       // deliver. It carries no measured pressure trace.
       setPressure: mode === 'bipap' ? ipap : maxPressure,
+      // The pressure the session ran at: BiPAP's IPAP, else from the step
+      // counters (see steppedPressure).
+      sessionPressure: mode === 'bipap'
+        ? ipap
+        : steppedPressure({ minPressure, maxPressure, pressureChangeCount: f.pressureChangeCount, rateChangeFactor: f.rateChangeFactor }),
 
       pressureChangeCount: f.pressureChangeCount,
       modeCounter: f.modeCounter,
@@ -319,14 +347,14 @@ function aggregateDays(records) {
       const first = all[0];
 
       const leak = weightedMean(counted.filter((r) => r.leakValid).map((r) => [r.leak, r.durationHours]));
-      const pressure = weightedMean(counted.map((r) => [r.setPressure, r.durationHours]));
+      const pressure = weightedMean(counted.map((r) => [r.sessionPressure, r.durationHours]));
       const tidal = weightedMean(counted.map((r) => [r.tidalVolume, r.durationHours]));
       const airFlow = weightedMean(counted.map((r) => [r.airFlow, r.durationHours]));
 
       return {
         // Consumed by therapyReport.js — these names are its contract.
         timestamp: first.start.getTime(),
-        date: dayLabel(first.start),
+        date: first.dateLabel,
         usage_hours: round(usageHours, 2) ?? 0,
         ahi: usageHours > 0 ? round(events / usageHours, 1) : 0,
         mask_leak: round(leak, 1),
@@ -368,9 +396,10 @@ function reportDay(all) {
   const last = all[all.length - 1];
   return {
     usageMinutes: all.reduce((sum, r) => sum + r.durationMinutes, 0),
-    maxPressure: Math.max(0, ...all.map((r) => Math.max(r.ipap || 0, r.maxPressure || 0))),
-    // Each session's pressure, for the day's median and 95th percentile.
-    pressures: all.map((r) => Math.max(r.ipap || 0, r.maxPressure || 0)).filter((v) => v > 0),
+    // The day's pressure bar: its highest session pressure.
+    maxPressure: Math.max(0, ...all.map((r) => r.sessionPressure || 0)),
+    // Each session's pressure; the report's median and 95th use every one.
+    pressures: all.map((r) => r.sessionPressure).filter((v) => v > 0),
     // What the device was set to in the day's last session (BiPAP: IPAP / EPAP).
     setMax: last.mode === 'bipap' ? last.ipap : last.maxPressure,
     setMin: last.mode === 'bipap' ? last.epap : last.minPressure,
