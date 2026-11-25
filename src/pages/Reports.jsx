@@ -68,11 +68,14 @@ export default function Reports() {
   useEffect(() => { setSingleDay(false); }, [activeSerial]);
   const rangeLabel = (key) => (key ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(`${key}T00:00:00`)) : '…');
   // The calendar's days: from the stored session reports, else the day rows.
-  const calendarDays = useMemo(() => {
-    const parsedDays = parseReportRows(deviceData?.reports || []).days;
-    return calendarSummary(parsedDays.length ? parsedDays : sessions);
+  const calendarData = useMemo(() => {
+    const parsedRows = parseReportRows(deviceData?.reports || []);
+    return {
+      byDay: calendarSummary(parsedRows.days.length ? parsedRows.days : sessions),
+      records: parsedRows.records,
+    };
   }, [deviceData?.reports, sessions]);
-  const pickDay = (key) => { setSingleDay(true); setStartDate(key); setEndDate(key); };
+  const pickDates = (from, to) => { setSingleDay(from === to); setStartDate(from); setEndDate(to); };
   const [syncing, setSyncing] = useState(false);
   const sync = useSyncProgress();
 
@@ -292,7 +295,8 @@ export default function Reports() {
             ))}
           </div>
           {dataRange.end && (
-            <TherapyCalendar byDay={calendarDays} dataEnd={dataRange.end} selection={{ start: startDate, end: endDate }} onPick={pickDay} />
+            <TherapyCalendar byDay={calendarData.byDay} records={calendarData.records} dataEnd={dataRange.end}
+              selection={{ start: startDate, end: endDate }} onPick={pickDates} onReport={(from, to) => handleGeneratePDF(from, to)} />
           )}
           {rangeInvalid && <p className="reports-range-error" role="alert">The end date is before the start date. Pick an end date on or after {rangeLabel(startDate)}.</p>}
 

@@ -103,7 +103,7 @@ export default function SdCardReport() {
   };
 
   const calendarDays = useMemo(() => calendarSummary(parsed?.days || []), [parsed]);
-  const pickDay = (key) => { setSingleDay(true); setPreset(1); setRange({ start: key, end: key }); };
+  const pickDates = (start, end) => { setSingleDay(start === end); setPreset(start === end ? 1 : null); setRange({ start, end }); };
 
   const rangeInvalid = Boolean(range.start && range.end && range.start > range.end);
 
@@ -234,7 +234,8 @@ export default function SdCardReport() {
             )}
           </div>
           {parsed && dataRange.end && (
-            <TherapyCalendar byDay={calendarDays} dataEnd={dataRange.end} selection={range} onPick={pickDay} />
+            <TherapyCalendar byDay={calendarDays} dataEnd={dataRange.end} selection={range} onPick={pickDates}
+              onReport={() => openReport()} />
           )}
           {parsed && !rangeInvalid && (
             <p className="sdr-help">{sessionsInRange ? `${sessionsInRange} session${sessionsInRange === 1 ? '' : 's'} on these dates.` : 'No therapy on these dates. The report will show them as unused.'}</p>
