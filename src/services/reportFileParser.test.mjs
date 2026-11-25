@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseReportFile, parseRecordLine, parseReportRows, parseTd1File, parseTd1Record, isTd1Data, steppedPressure } from './reportFileParser.js';
+import { parseReportFile, parseRecordLine, parseReportRows, parseTd1File, parseTd1Record, isTd1Data, steppedPressure, daysFromRecords } from './reportFileParser.js';
 
 const GOOD = 'S,29,3,26,29,3,26,4,352,16,5,0,0,2,0,216,656,0,0,21,55,21,56,2,0,2,0,39,0,0,0,0,0,1,2,2,1,0,4,A,24000425';
 
@@ -151,4 +151,17 @@ test('tidal volume FF FF means not measured, not 65,535 mL', () => {
   assert.equal(records[0].tidalVolume, null);
   assert.equal(days[0].report.tidal, 500);
   assert.equal(days[0].tidalVolume, 500);
+});
+
+test('daysFromRecords builds the day from just the chosen sessions', () => {
+  const at = (h, m, eh, em, leak) => ({
+    start_day: 24, start_month: 11, start_year: 26, start_hour: h, start_minute: m,
+    end_day: 24, end_month: 11, end_year: 26, end_hour: eh, end_minute: em, mode: 2,
+    max_pressure: 18, min_pressure: 5, csa_count: 0, osa_count: 1, hsa_count: 0, leak,
+  });
+  const { records } = parseReportRows([at(17, 27, 17, 28, 103), at(22, 34, 23, 34, 31), at(23, 40, 23, 50, 25)]);
+  const [day] = daysFromRecords(records.slice(1));
+  assert.equal(day.sessionCount, 2);
+  assert.equal(day.report.usageMinutes, 70);
+  assert.equal(day.report.leak, 31);
 });

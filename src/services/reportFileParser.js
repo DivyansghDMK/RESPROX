@@ -604,6 +604,11 @@ function summarize(records, errors, lineCount) {
   };
 }
 
+/** Day rows (as in a parse result's `days`) from just these records, e.g. the sessions a user ticked. */
+export function daysFromRecords(records) {
+  return aggregateDays([...records].sort((a, b) => a.start - b.start));
+}
+
 /** `YYYY-MM-DD` bounds covering the file, for pre-filling the date range. */
 export function dateRangeOf(parsed) {
   const first = parsed.days[0];

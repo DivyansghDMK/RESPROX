@@ -8,8 +8,8 @@
 // Everything runs in this browser. The file is never uploaded, so the page
 // needs no account and no server.
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { parseReportFile, parseTd1File, isTd1Data, dateRangeOf } from '../services/reportFileParser';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { parseReportFile, parseTd1File, isTd1Data, dateRangeOf, daysFromRecords } from '../services/reportFileParser';
 // Imported up front, not on click: the report opens in a new window, and a
 // window opened after an await is blocked as a pop-up on most phones.
 import { buildTherapyReportHTML, openTherapyReport } from '../services/therapyReport';
@@ -57,6 +57,8 @@ export default function SdCardReport() {
   const [age, setAge] = useState('');
   const [gender, setGender] = useState('');
   const [fallbackUrl, setFallbackUrl] = useState(null);
+  // On a single day, the sessions left out of the report (by line number).
+  const [leftOut, setLeftOut] = useState(() => new Set());
   const inputRef = useRef(null);
 
   const dataRange = useMemo(() => (parsed ? dateRangeOf(parsed) : { start: '', end: '' }), [parsed]);
@@ -99,6 +101,19 @@ export default function SdCardReport() {
   };
 
   const rangeInvalid = Boolean(range.start && range.end && range.start > range.end);
+
+  // One day picked: its sessions, each with a tick box; all ticked to start with.
+  const oneDay = Boolean(range.start) && range.start === range.end;
+  const daySessions = useMemo(() => (parsed && oneDay
+    ? parsed.records.filter((r) => r.dayKey === range.start).sort((a, b) => a.start - b.start)
+    : []), [parsed, oneDay, range.start]);
+  useEffect(() => { setLeftOut(new Set()); }, [parsed, range.start, range.end]);
+  const chosen = daySessions.filter((r) => !leftOut.has(r.lineNo));
+  const toggleSession = (lineNo) => setLeftOut((s) => {
+    const next = new Set(s);
+    if (next.has(lineNo)) next.delete(lineNo); else next.add(lineNo);
+    return next;
+  });
   const sessionsInRange = useMemo(() => (parsed
     ? parsed.records.filter((r) => r.dayKey >= range.start && r.dayKey <= range.end).length
     : 0), [parsed, range]);
@@ -116,7 +131,17 @@ export default function SdCardReport() {
     if (!parsed || rangeInvalid) return;
     setError(null);
     setFallbackUrl(null);
-    const args = { deviceData, sessions: parsed.days, startDate: range.start, endDate: range.end, pressureSource: 'set' };
+    // Some of the day's sessions unticked: the report covers only the ticked ones.
+    const partial = oneDay && leftOut.size > 0;
+    if (partial && !chosen.length) { setError('Tick at least one session for the report.'); return; }
+    const times = chosen.map((r) => `${r.startClock} – ${r.endClock}`).join(', ');
+    const args = {
+      deviceData,
+      sessions: partial ? daysFromRecords(chosen) : parsed.days,
+      startDate: range.start,
+      endDate: range.end,
+      note: partial ? `Selected ${chosen.length} of ${daySessions.length} sessions: ${times}` : undefined,
+    };
     const result = openTherapyReport(args);
     if (result.ok) return;
     if (result.reason === 'build-failed') {
@@ -207,6 +232,23 @@ export default function SdCardReport() {
             <p className="sdr-help">{sessionsInRange ? `${sessionsInRange} session${sessionsInRange === 1 ? '' : 's'} on these dates.` : 'No therapy on these dates. The report will show them as unused.'}</p>
           )}
           {rangeInvalid && <p className="sdr-error" role="alert">The “To” date is before the “From” date.</p>}
+          {daySessions.length > 1 && (
+            <fieldset className="sdr-sessions">
+              <legend>Sessions in the report <small>({chosen.length} of {daySessions.length} ticked)</small></legend>
+              {daySessions.map((r) => {
+                const h = r.durationMinutes;
+                const ahi = h > 0 ? (r.events / (h / 60)).toFixed(1) : '—';
+                return (
+                  <label key={r.lineNo} className={leftOut.has(r.lineNo) ? 'off' : undefined}>
+                    <input type="checkbox" checked={!leftOut.has(r.lineNo)} onChange={() => toggleSession(r.lineNo)} />
+                    <b>{r.startClock} – {r.endClock}</b>
+                    <span>{Math.floor(h / 60)}h {h % 60}m · AHI {ahi} · leak {r.leakValid ? `${r.leak} L/min` : '—'}{r.suspect ? ' · not counted' : ''}</span>
+                  </label>
+                );
+              })}
+              <p className="sdr-help">Untick a session to leave it out, for example a short test run.</p>
+            </fieldset>
+          )}
         </section>
 
         <section className={`sdr-step${parsed ? '' : ' off'}`}>
@@ -244,7 +286,7 @@ export default function SdCardReport() {
         {error && <div className="sdr-error-box" role="alert">{error}</div>}
 
         <button type="button" className="sdr-go" onClick={openReport} disabled={!parsed || rangeInvalid || !range.start}>
-          {parsed ? `Open report · ${rangeText}` : 'Open report'}
+          {parsed ? `Open report · ${rangeText}${oneDay && leftOut.size ? ` · ${chosen.length} of ${daySessions.length} sessions` : ''}` : 'Open report'}
         </button>
         {fallbackUrl && (
           <p className="sdr-help" role="status">
