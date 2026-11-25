@@ -7684,6 +7684,12 @@ a.icon-text-button { text-decoration: none; }
 .therapy-cal-day:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .therapy-cal-day.in-range { box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--accent) 55%, transparent); }
 .therapy-cal-day.picked { border-color: var(--accent); }
+.therapy-cal-day.anchor { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+.therapy-cal-mode { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.therapy-cal-head .therapy-cal-mode button { border: 0; border-radius: 0; height: 28px; font-size: 12px; color: var(--muted); }
+.therapy-cal-head .therapy-cal-mode button.on { background: var(--accent); color: #fff; }
+.therapy-cal-step { margin: 0 0 8px; padding: 8px 12px; border-radius: 9px; background: color-mix(in srgb, var(--accent) 9%, transparent); font-size: 13px; color: var(--text); }
+.therapy-cal-step button { margin-left: 6px; border: 0; background: none; color: var(--accent); font-weight: 700; cursor: pointer; padding: 0; }
 .therapy-cal-day.dragging { border-color: color-mix(in srgb, var(--accent) 70%, transparent); border-style: dashed; }
 .therapy-cal-day:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .therapy-cal-day:active { transform: scale(0.97); }

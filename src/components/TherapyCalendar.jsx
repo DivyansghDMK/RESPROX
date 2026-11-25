@@ -11,7 +11,10 @@ const order = (a, b) => (a <= b ? [a, b] : [b, a]);
  * 30 days of therapy, every date shown and coloured by how that night went.
  *
  * Click a date to pick that day and see its sessions; drag across dates, or
- * shift-click, to pick a range. Arrow keys move between dates, Enter picks.
+ * shift-click, to pick a range. In "From – to" mode (or after a double tap on
+ * a date) the first tap is where the report starts and the second where it
+ * ends, which is how a range is picked on a phone. Arrow keys move between
+ * dates, Enter picks.
  * `records` (reportFileParser records) fill the day panel's session list.
  */
 export default function TherapyCalendar({ byDay, records = [], dataEnd, selection, onPick, onReport }) {
@@ -39,10 +42,26 @@ export default function TherapyCalendar({ byDay, records = [], dataEnd, selectio
     return m;
   }, [records]);
 
+  // "From – to" mode: `anchor` is the first date tapped, waiting for the last.
+  const [rangeMode, setRangeMode] = useState(false);
+  const [anchor, setAnchor] = useState(null);
+  const [hoverKey, setHoverKey] = useState(null);
+  // The click that ends a double tap arrives after the range has started from it.
+  const startedAt = useRef(0);
+  const startRange = (key) => { setRangeMode(true); setAnchor(key); startedAt.current = Date.now(); };
+  const tapRange = (key) => {
+    if (Date.now() - startedAt.current < 300) return;
+    if (!anchor) { setAnchor(key); return; }
+    onPick?.(...order(anchor, key));
+    setAnchor(null);
+  };
+  const setMode = (on) => { setRangeMode(on); setAnchor(null); };
+
   // Drag to pick a range: where it started and where the pointer is now.
   const [drag, setDrag] = useState(null);
   const dragRef = useRef(null);
   dragRef.current = drag;
+  const lastTap = useRef(null);
   useEffect(() => {
     const up = () => {
       const d = dragRef.current;
@@ -50,6 +69,14 @@ export default function TherapyCalendar({ byDay, records = [], dataEnd, selectio
       setDrag(null);
       const [a, b] = order(d.from, d.to);
       onPick?.(a, b);
+      // A second tap on the same date soon after: start a range from it.
+      const now = Date.now();
+      if (a === b && lastTap.current?.key === a && now - lastTap.current.t < 400) {
+        lastTap.current = null;
+        startRange(a);
+      } else {
+        lastTap.current = a === b ? { key: a, t: now } : null;
+      }
     };
     // A touch that turns into a scroll is not a pick.
     const cancel = () => setDrag(null);
@@ -70,20 +97,22 @@ export default function TherapyCalendar({ byDay, records = [], dataEnd, selectio
 
   const first = win.cells[0].key;
   const lead = (new Date(`${first}T00:00:00`).getDay() + 6) % 7;
-  const [dragA, dragB] = drag ? order(drag.from, drag.to) : ['', ''];
+  const preview = drag ? order(drag.from, drag.to) : anchor ? order(anchor, hoverKey || anchor) : null;
   const mark = (key) => {
-    if (drag) return key >= dragA && key <= dragB ? ' dragging' : '';
+    if (anchor && key === anchor) return ' anchor';
+    if (preview) return key >= preview[0] && key <= preview[1] ? ' dragging' : '';
     if (!selStart || key < selStart || key > selEnd) return '';
     return single ? ' picked' : ' in-range';
   };
 
   const keyAt = (e) => document.elementFromPoint(e.clientX, e.clientY)?.closest?.('[data-key]')?.dataset.key;
   const onPointerDown = (e, key) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || rangeMode) return;
     if (e.shiftKey && selStart) { onPick?.(...order(selStart, key)); return; }
     setDrag({ from: key, to: key });
   };
   const onPointerMove = (e) => {
+    if (anchor && e.pointerType === 'mouse') { setHoverKey(keyAt(e) || null); return; }
     if (!drag) return;
     const key = keyAt(e);
     if (key && key !== drag.to) setDrag((d) => d && { ...d, to: key });
@@ -100,9 +129,12 @@ export default function TherapyCalendar({ byDay, records = [], dataEnd, selectio
       else if (next < first) setEnd(shiftKey(next, CALENDAR_DAYS - 1));
       setFocusKey(next);
       if (e.shiftKey && selStart) onPick?.(...order(selStart, next));
+    } else if (e.key === 'Escape' && rangeMode) {
+      setMode(false);
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      if (e.shiftKey && selStart) onPick?.(...order(selStart, key));
+      if (rangeMode) tapRange(key);
+      else if (e.shiftKey && selStart) onPick?.(...order(selStart, key));
       else onPick?.(key, key);
     }
   };
@@ -133,12 +165,24 @@ export default function TherapyCalendar({ byDay, records = [], dataEnd, selectio
         <button type="button" onClick={() => setEnd(shiftKey(end, CALENDAR_DAYS))} disabled={end >= dataEnd} aria-label="Later 30 days">→</button>
         {end !== dataEnd && <button type="button" className="therapy-cal-latest" onClick={() => setEnd(dataEnd)}>Latest</button>}
         <button type="button" className="therapy-cal-latest" onClick={() => onPick?.(first, end)} title="Pick these 30 days for the report">Pick these 30 days</button>
+        <div className="therapy-cal-mode" role="group" aria-label="How to pick dates">
+          <button type="button" className={rangeMode ? '' : 'on'} aria-pressed={!rangeMode} onClick={() => setMode(false)}>One day</button>
+          <button type="button" className={rangeMode ? 'on' : ''} aria-pressed={rangeMode} onClick={() => setMode(true)}>From – to</button>
+        </div>
         <span className="therapy-cal-sum">
           {win.used} of {CALENDAR_DAYS} days used · {win.met} days ≥ 4 h ({win.compliance}%)
         </span>
       </div>
 
-      <div className={`therapy-cal-grid${drag ? ' is-dragging' : ''}`} role="grid" aria-label="Therapy by date" ref={gridRef} onPointerMove={onPointerMove}>
+      {rangeMode && (
+        <p className="therapy-cal-step" role="status">
+          {anchor
+            ? <>From <b>{fmt(anchor, { day: 'numeric', month: 'short' })}</b>: now tap the <b>last date</b> of the report. <button type="button" onClick={() => setAnchor(null)}>Start again</button></>
+            : <>Tap the <b>first date</b> of the report, then the <b>last date</b>.</>}
+        </p>
+      )}
+
+      <div className={`therapy-cal-grid${drag || anchor ? ' is-dragging' : ''}${rangeMode ? ' range-mode' : ''}`} role="grid" aria-label="Therapy by date" ref={gridRef} onPointerMove={onPointerMove}>
         {WEEKDAYS.map((w) => <div key={w} className="therapy-cal-wd" role="columnheader">{w}</div>)}
         {Array.from({ length: lead }, (_, i) => <div key={`b${i}`} aria-hidden="true" />)}
         {win.cells.map((c, i) => {
@@ -157,6 +201,7 @@ export default function TherapyCalendar({ byDay, records = [], dataEnd, selectio
               tabIndex={c.key === tabKey ? 0 : -1}
               aria-selected={Boolean(mark(c.key))} aria-label={label}
               onPointerDown={(e) => onPointerDown(e, c.key)}
+              onClick={() => { if (rangeMode) tapRange(c.key); }}
               onKeyDown={(e) => onKeyDown(e, c.key)}
               onFocus={() => setFocusKey(c.key)}>
               <span className="therapy-cal-num">{day === 1 || i === 0 ? fmt(c.key, { day: 'numeric', month: 'short' }) : day}</span>
@@ -183,7 +228,7 @@ export default function TherapyCalendar({ byDay, records = [], dataEnd, selectio
         <span><i className="low" /> Used, under 4 h</span>
         <span><i className="none" /> No therapy</span>
         <span><i className="ahi" /> AHI ≥ {HIGH_AHI}</span>
-        <span className="therapy-cal-hint">Click a date · drag or shift-click for a range</span>
+        <span className="therapy-cal-hint">{rangeMode ? 'Tap the first date, then the last' : 'Click a date · double-tap or drag for a range'}</span>
       </div>
 
       {single && (
