@@ -98,12 +98,23 @@ export default function TherapyCalendar({ byDay, records = [], dataEnd, selectio
   const first = win.cells[0].key;
   const lead = (new Date(`${first}T00:00:00`).getDay() + 6) % 7;
   const preview = drag ? order(drag.from, drag.to) : anchor ? order(anchor, hoverKey || anchor) : null;
-  const mark = (key) => {
-    if (anchor && key === anchor) return ' anchor';
-    if (preview) return key >= preview[0] && key <= preview[1] ? ' dragging' : '';
-    if (!selStart || key < selStart || key > selEnd) return '';
-    return single ? ' picked' : ' in-range';
+  // A range is a band joining its dates, its two ends filled in; one picked
+  // date is filled in on its own. `col` is the weekday column, where the band
+  // breaks onto the next row.
+  const band = preview || (selStart && !single ? [selStart, selEnd] : null);
+  const mark = (key, col) => {
+    if (anchor && key === anchor && !drag && (!hoverKey || hoverKey === anchor)) return ' anchor';
+    if (band && key >= band[0] && key <= band[1]) {
+      if (band[0] === band[1]) return preview ? ' preview-end' : ' picked';
+      const ends = (key === band[0] ? ' band-start' : '') + (key === band[1] ? ' band-end' : '');
+      const edges = (col === 0 ? ' row-start' : '') + (col === 6 ? ' row-end' : '');
+      const end = key === band[0] || key === band[1];
+      return ` band${preview ? ' preview' : ''}${ends}${edges}${end ? (preview ? ' preview-end' : ' picked') : ''}`;
+    }
+    if (!preview && single && key === selStart) return ' picked';
+    return '';
   };
+  const RING = 2 * Math.PI * 19;
 
   const keyAt = (e) => document.elementFromPoint(e.clientX, e.clientY)?.closest?.('[data-key]')?.dataset.key;
   const onPointerDown = (e, key) => {
@@ -197,16 +208,27 @@ export default function TherapyCalendar({ byDay, records = [], dataEnd, selectio
           ].filter(Boolean).join(', ');
           return (
             <button key={c.key} type="button" role="gridcell" data-key={c.key}
-              className={`therapy-cal-day ${c.status}${mark(c.key)}${c.key > dataEnd ? ' future' : ''}`}
+              className={`therapy-cal-day ${c.status}${mark(c.key, col)}${c.key > dataEnd ? ' future' : ''}`}
               tabIndex={c.key === tabKey ? 0 : -1}
-              aria-selected={Boolean(mark(c.key))} aria-label={label}
+              aria-selected={Boolean(mark(c.key, col))} aria-label={label}
               onPointerDown={(e) => onPointerDown(e, c.key)}
               onClick={() => { if (rangeMode) tapRange(c.key); }}
               onKeyDown={(e) => onKeyDown(e, c.key)}
               onFocus={() => setFocusKey(c.key)}>
-              <span className="therapy-cal-num">{day === 1 || i === 0 ? fmt(c.key, { day: 'numeric', month: 'short' }) : day}</span>
-              {used && <span className="therapy-cal-hrs">{(c.info.minutes / 60).toFixed(1)}h</span>}
-              {c.highAhi && <span className="therapy-cal-ahi" aria-hidden="true" />}
+              {(day === 1 || i === 0) && <span className="therapy-cal-mon" aria-hidden="true">{fmt(c.key, { month: 'short' })}</span>}
+              <span className="therapy-cal-ring" aria-hidden="true">
+                {/* The ring fills with the night's use, full at 8 h; a dotted ring is a night without therapy. */}
+                <svg viewBox="0 0 44 44">
+                  <circle className="therapy-cal-track" cx="22" cy="22" r="19" />
+                  {used && (
+                    <circle className="therapy-cal-arc" cx="22" cy="22" r="19" transform="rotate(-90 22 22)"
+                      strokeDasharray={`${Math.max(0.04, Math.min(1, c.info.minutes / 480)) * RING} ${RING}`} />
+                  )}
+                </svg>
+                <span className="therapy-cal-num">{day}</span>
+                {c.highAhi && <span className="therapy-cal-ahi" />}
+              </span>
+              <span className="therapy-cal-hrs" aria-hidden="true">{used ? `${(c.info.minutes / 60).toFixed(1)}h` : ''}</span>
               <span className={`therapy-cal-tip${col < 2 ? ' left' : col > 4 ? ' right' : ''}`} aria-hidden="true">
                 <b>{fmt(c.key, { weekday: 'short', day: 'numeric', month: 'short' })}</b>
                 <span className={`therapy-cal-chip ${c.status}`}>{STATUS_TEXT[c.status]}</span>
@@ -227,6 +249,7 @@ export default function TherapyCalendar({ byDay, records = [], dataEnd, selectio
         <span><i className="met" /> 4 h or more</span>
         <span><i className="low" /> Used, under 4 h</span>
         <span><i className="none" /> No therapy</span>
+        <span><i className="fill" /> Ring fills with hours (full at 8 h)</span>
         <span><i className="ahi" /> AHI ≥ {HIGH_AHI}</span>
         <span className="therapy-cal-hint">{rangeMode ? 'Tap the first date, then the last' : 'Click a date · double-tap or drag for a range'}</span>
       </div>

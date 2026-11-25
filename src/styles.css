@@ -7669,73 +7669,120 @@ a.icon-text-button { text-decoration: none; }
 .sdr-sessions label.off b, .sdr-sessions label.off span { opacity: .5; text-decoration: line-through; }
 .sdr-sessions input { width: 17px; height: 17px; accent-color: var(--accent); }
 
-/* 30-day therapy calendar (Reports, SD card page) */
-.therapy-cal { --cal-met: #16a34a; --cal-low: #f59e0b; --cal-none: rgba(113, 128, 155, 0.12); --cal-ahi: #dc2626; margin-top: 16px; }
-.therapy-cal-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; font-size: 13px; color: var(--text); }
-.therapy-cal-head button { min-width: 30px; height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; background: none; color: var(--text); font-weight: 700; cursor: pointer; }
+/* 30-day therapy calendar (Reports, Upload Data, SD card page). Each date is
+   a ring that fills with that night's hours; a dotted ring is a night without
+   therapy. A picked range is a band joining its dates. */
+.therapy-cal { --cal-met: #16a34a; --cal-low: #f59e0b; --cal-none: rgba(113, 128, 155, 0.12); --cal-dot: rgba(113, 128, 155, 0.55); --cal-ahi: #ef4444; --cal-band: color-mix(in srgb, var(--accent) 11%, transparent); --cal-ring: 42px;
+  margin-top: 16px; padding: 16px 16px 14px; border: 1px solid var(--line); border-radius: 18px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 5%, transparent), transparent 140px), var(--panel, transparent);
+  box-shadow: 0 1px 2px rgba(15, 30, 60, 0.04), 0 12px 32px -18px rgba(0, 71, 204, 0.25); }
+:root[data-theme='dark'] .therapy-cal { --cal-met: #22c55e; --cal-low: #fbbf24; --cal-dot: rgba(148, 163, 184, 0.45); --cal-band: color-mix(in srgb, var(--accent) 22%, transparent); }
+.therapy-cal-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px; color: var(--text); }
+.therapy-cal-head > strong { font-size: 15px; letter-spacing: -0.01em; }
+.therapy-cal-head button { min-width: 32px; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg-ffffff); color: var(--text); font-weight: 700; font-size: 12.5px; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.therapy-cal-head button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 50%, transparent); box-shadow: 0 2px 8px -2px rgba(0, 71, 204, 0.25); }
 .therapy-cal-head button:disabled { opacity: 0.35; cursor: not-allowed; }
 .therapy-cal-sum { margin-left: auto; color: var(--muted); font-weight: 600; font-size: 12px; }
-.therapy-cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
-.therapy-cal-wd { font-size: 11px; font-weight: 700; color: var(--muted); text-align: center; padding-bottom: 2px; }
-.therapy-cal-day { position: relative; min-height: 50px; padding: 5px 4px; border: 2px solid transparent; border-radius: 9px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer; font: inherit; color: var(--text); background: var(--cal-none); }
-.therapy-cal-day.met { background: color-mix(in srgb, var(--cal-met) 26%, transparent); }
-.therapy-cal-day.low { background: color-mix(in srgb, var(--cal-low) 30%, transparent); }
-.therapy-cal-day.none { color: var(--muted); }
-.therapy-cal-day:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
-.therapy-cal-day.in-range { box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--accent) 55%, transparent); }
-.therapy-cal-day.picked { border-color: var(--accent); }
-.therapy-cal-day.anchor { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
-.therapy-cal-mode { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.therapy-cal-head .therapy-cal-mode button { border: 0; border-radius: 0; height: 28px; font-size: 12px; color: var(--muted); }
-.therapy-cal-head .therapy-cal-mode button.on { background: var(--accent); color: #fff; }
-.therapy-cal-step { margin: 0 0 8px; padding: 8px 12px; border-radius: 9px; background: color-mix(in srgb, var(--accent) 9%, transparent); font-size: 13px; color: var(--text); }
+.therapy-cal-mode { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg-ffffff); }
+.therapy-cal-head .therapy-cal-mode button { height: 26px; border: 0; border-radius: 999px; background: none; font-size: 12px; color: var(--muted); box-shadow: none; }
+.therapy-cal-head .therapy-cal-mode button.on { background: var(--brand-gradient, var(--accent)); color: #fff; }
+.therapy-cal-step { margin: 0 0 10px; padding: 9px 14px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 9%, transparent); font-size: 13px; color: var(--text); }
 .therapy-cal-step button { margin-left: 6px; border: 0; background: none; color: var(--accent); font-weight: 700; cursor: pointer; padding: 0; }
-.therapy-cal-day.dragging { border-color: color-mix(in srgb, var(--accent) 70%, transparent); border-style: dashed; }
-.therapy-cal-day:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.therapy-cal-day:active { transform: scale(0.97); }
-.therapy-cal-grid { user-select: none; -webkit-user-select: none; }
+
+.therapy-cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); row-gap: 4px; user-select: none; -webkit-user-select: none; }
+.therapy-cal-wd { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); text-align: center; padding-bottom: 6px; }
+.therapy-cal-day { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 0 2px; border: 0; background: none; font: inherit; color: var(--text); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.therapy-cal-day:focus-visible { outline: none; }
+.therapy-cal-day:focus-visible .therapy-cal-ring { box-shadow: 0 0 0 2px var(--bg-ffffff), 0 0 0 4px var(--accent); }
+
+/* The band behind a range, from the middle of its first date to the middle of its last. */
+.therapy-cal-day.band::before { content: ''; position: absolute; top: 4px; left: 0; right: 0; height: var(--cal-ring); background: var(--cal-band); z-index: 0; }
+.therapy-cal-day.band.band-start::before { left: 50%; }
+.therapy-cal-day.band.band-end::before { right: 50%; }
+.therapy-cal-day.band.row-start:not(.band-start)::before { border-radius: 999px 0 0 999px; left: 4px; }
+.therapy-cal-day.band.row-end:not(.band-end)::before { border-radius: 0 999px 999px 0; right: 4px; }
+.therapy-cal-day.band.preview::before { background: repeating-linear-gradient(90deg, var(--cal-band) 0 6px, transparent 6px 9px); }
+
+.therapy-cal-ring { position: relative; z-index: 1; width: var(--cal-ring); height: var(--cal-ring); border-radius: 50%; display: grid; place-items: center; background: var(--bg-ffffff); transition: transform .15s ease, box-shadow .15s ease, background .15s; }
+.therapy-cal-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.therapy-cal-track { fill: none; stroke: var(--cal-none); stroke-width: 3; }
+.therapy-cal-arc { fill: none; stroke-width: 3.5; stroke-linecap: round; transition: stroke-dasharray .4s ease; }
+.therapy-cal-day.met .therapy-cal-arc { stroke: var(--cal-met); }
+.therapy-cal-day.low .therapy-cal-arc { stroke: var(--cal-low); }
+.therapy-cal-day.met .therapy-cal-ring { background: color-mix(in srgb, var(--cal-met) 9%, var(--bg-ffffff)); }
+.therapy-cal-day.low .therapy-cal-ring { background: color-mix(in srgb, var(--cal-low) 10%, var(--bg-ffffff)); }
+/* No therapy: a ring of dots. */
+.therapy-cal-day.none .therapy-cal-ring { background: transparent; }
+.therapy-cal-day.none .therapy-cal-track { stroke: var(--cal-dot); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 0.01 4.95; }
+.therapy-cal-day.none .therapy-cal-num { color: var(--muted); font-weight: 600; }
+.therapy-cal-num { position: relative; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.therapy-cal-hrs { min-height: 13px; font-size: 10.5px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.therapy-cal-day.met .therapy-cal-hrs { color: var(--cal-met); }
+.therapy-cal-day.low .therapy-cal-hrs { color: color-mix(in srgb, var(--cal-low) 75%, var(--text)); }
+.therapy-cal-mon { position: absolute; top: -6px; left: 50%; transform: translateX(-50%); z-index: 2; padding: 0 5px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 9px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; line-height: 14px; }
+.therapy-cal-ahi { position: absolute; top: 1px; right: 1px; width: 9px; height: 9px; border-radius: 50%; background: var(--cal-ahi); box-shadow: 0 0 0 2px var(--bg-ffffff); }
+
+@media (hover: hover) { .therapy-cal-day:hover .therapy-cal-ring { transform: scale(1.08); box-shadow: 0 6px 16px -6px rgba(0, 71, 204, 0.45); } }
+.therapy-cal-day:active .therapy-cal-ring { transform: scale(0.94); }
+
+/* Picked: filled with the brand gradient. */
+.therapy-cal-day.picked .therapy-cal-ring { background: var(--brand-gradient, var(--accent)); box-shadow: 0 8px 18px -8px rgba(0, 71, 204, 0.7); }
+.therapy-cal-day.picked .therapy-cal-num { color: #fff; }
+.therapy-cal-day.picked .therapy-cal-track { stroke: rgba(255, 255, 255, 0.28); stroke-dasharray: none; }
+.therapy-cal-day.picked .therapy-cal-arc { stroke: #fff; }
+.therapy-cal-day.preview-end .therapy-cal-ring { box-shadow: 0 0 0 2px var(--accent); }
+/* The first date of a From – to pick, waiting for the last. */
+.therapy-cal-day.anchor .therapy-cal-ring { background: var(--brand-gradient, var(--accent)); animation: therapy-cal-pulse 1.4s ease-out infinite; }
+.therapy-cal-day.anchor .therapy-cal-num { color: #fff; }
+.therapy-cal-day.anchor .therapy-cal-track { stroke: rgba(255, 255, 255, 0.3); stroke-dasharray: none; }
+.therapy-cal-day.anchor .therapy-cal-arc { stroke: #fff; }
+@keyframes therapy-cal-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } 100% { box-shadow: 0 0 0 12px transparent; } }
+@media (prefers-reduced-motion: reduce) { .therapy-cal-day.anchor .therapy-cal-ring { animation: none; } .therapy-cal-ring, .therapy-cal-arc { transition: none; } }
+
 .therapy-cal-grid.is-dragging .therapy-cal-tip { display: none !important; }
-.therapy-cal-tip { display: none; position: absolute; z-index: 20; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); min-width: 170px; padding: 8px 10px; border-radius: 10px; background: var(--bg-ffffff); color: var(--text); border: 1px solid var(--line); box-shadow: 0 8px 24px rgba(15, 30, 60, 0.18); text-align: left; flex-direction: column; gap: 3px; font-size: 12px; font-weight: 500; pointer-events: none; white-space: nowrap; }
+.therapy-cal-tip { display: none; position: absolute; z-index: 20; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); min-width: 180px; padding: 10px 12px; border-radius: 12px; background: var(--bg-ffffff); color: var(--text); border: 1px solid var(--line); box-shadow: 0 14px 34px -10px rgba(15, 30, 60, 0.35); text-align: left; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 500; pointer-events: none; white-space: nowrap; }
 .therapy-cal-tip.left { left: 0; transform: none; }
 .therapy-cal-tip.right { left: auto; right: 0; transform: none; }
 .therapy-cal-tip b { font-size: 12.5px; }
 @media (hover: hover) { .therapy-cal-day:hover .therapy-cal-tip { display: flex; } }
-.therapy-cal-chip { display: inline-block; align-self: flex-start; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
-.therapy-cal-chip.met { background: color-mix(in srgb, var(--cal-met) 22%, transparent); color: var(--cal-met); }
-.therapy-cal-chip.low { background: color-mix(in srgb, var(--cal-low) 25%, transparent); color: #b45309; }
+.therapy-cal-chip { display: inline-block; align-self: flex-start; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.therapy-cal-chip.met { background: color-mix(in srgb, var(--cal-met) 16%, transparent); color: #15803d; }
+.therapy-cal-chip.low { background: color-mix(in srgb, var(--cal-low) 20%, transparent); color: #b45309; }
 .therapy-cal-chip.none { background: var(--cal-none); color: var(--muted); }
-.therapy-cal-panel { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--accent) 4%, transparent); }
+:root[data-theme='dark'] .therapy-cal-chip.low { color: #fbbf24; }
+:root[data-theme='dark'] .therapy-cal-chip.met { color: #4ade80; }
+
+.therapy-cal-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); font-size: 12px; color: var(--muted); font-weight: 600; }
+.therapy-cal-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.therapy-cal-legend i { width: 14px; height: 14px; border-radius: 50%; display: inline-block; box-sizing: border-box; }
+.therapy-cal-legend i.met { border: 3px solid var(--cal-met); }
+.therapy-cal-legend i.low { background: conic-gradient(var(--cal-low) 0 60%, var(--cal-none) 60% 100%); -webkit-mask: radial-gradient(circle, transparent 3.5px, #000 4px); mask: radial-gradient(circle, transparent 3.5px, #000 4px); }
+.therapy-cal-legend i.none { border: 2px dotted var(--cal-dot); }
+.therapy-cal-legend i.fill { background: conic-gradient(var(--accent) 0 75%, var(--cal-none) 75% 100%); -webkit-mask: radial-gradient(circle, transparent 3.5px, #000 4px); mask: radial-gradient(circle, transparent 3.5px, #000 4px); }
+.therapy-cal-legend i.ahi { width: 9px; height: 9px; background: var(--cal-ahi); }
+.therapy-cal-hint { margin-left: auto; }
+
+.therapy-cal-panel { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg-ffffff); box-shadow: 0 8px 24px -16px rgba(15, 30, 60, 0.3); }
 .therapy-cal-panel-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 14px; color: var(--text); }
-.therapy-cal-panel-head > button:not(.therapy-cal-report) { width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 8px; background: none; color: var(--text); font-size: 16px; font-weight: 700; cursor: pointer; }
+.therapy-cal-panel-head > button:not(.therapy-cal-report) { width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 50%; background: none; color: var(--text); font-size: 16px; font-weight: 700; cursor: pointer; }
 .therapy-cal-panel-head > button:disabled { opacity: 0.35; cursor: not-allowed; }
-.therapy-cal-report { margin-left: auto; padding: 6px 12px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 700; font-size: 12.5px; cursor: pointer; }
-.therapy-cal-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
-.therapy-cal-stats div { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 9px; background: var(--cal-none); }
+.therapy-cal-report { margin-left: auto; padding: 8px 16px; border: 0; border-radius: 999px; background: var(--brand-gradient, var(--accent)); color: #fff; font-weight: 700; font-size: 12.5px; cursor: pointer; box-shadow: 0 6px 16px -8px rgba(0, 71, 204, 0.7); }
+.therapy-cal-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.therapy-cal-stats div { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 5%, transparent); border: 1px solid var(--line); }
 .therapy-cal-stats span { font-size: 11px; font-weight: 600; color: var(--muted); }
-.therapy-cal-stats b { font-size: 15px; color: var(--text); }
+.therapy-cal-stats b { font-size: 16px; color: var(--text); font-variant-numeric: tabular-nums; }
 .therapy-cal-stats b.bad { color: var(--cal-ahi); }
 .therapy-cal-sessions { list-style: none; margin: 10px 0 0; padding: 0; }
-.therapy-cal-sessions li { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 6px 2px; border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
+.therapy-cal-sessions li { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 7px 2px; border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
+.therapy-cal-sessions li:last-child { border-bottom: 0; }
 .therapy-cal-sessions li b { color: var(--text); min-width: 104px; }
 .therapy-cal-sessions li.suspect { opacity: 0.6; }
 .therapy-cal-sessions em { color: var(--cal-ahi); font-style: normal; font-weight: 600; }
 .therapy-cal-empty { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
-.therapy-cal-num { font-size: 12px; font-weight: 700; white-space: nowrap; }
-.therapy-cal-hrs { font-size: 11px; font-weight: 600; opacity: 0.85; }
-.therapy-cal-ahi { position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--cal-ahi); }
-.therapy-cal-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 12px; color: var(--muted); font-weight: 600; }
-.therapy-cal-legend span { display: inline-flex; align-items: center; gap: 5px; }
-.therapy-cal-legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
-.therapy-cal-legend i.met { background: color-mix(in srgb, var(--cal-met) 45%, transparent); }
-.therapy-cal-legend i.low { background: color-mix(in srgb, var(--cal-low) 50%, transparent); }
-.therapy-cal-legend i.none { background: var(--cal-none); }
-.therapy-cal-legend i.ahi { width: 8px; height: 8px; border-radius: 50%; background: var(--cal-ahi); }
-.therapy-cal-hint { margin-left: auto; }
 @media (max-width: 520px) {
-  .therapy-cal-day { min-height: 42px; }
-  .therapy-cal-hrs { font-size: 10px; }
+  .therapy-cal { --cal-ring: 36px; padding: 12px 8px; }
+  .therapy-cal-num { font-size: 12px; }
+  .therapy-cal-hrs { font-size: 9.5px; }
   .therapy-cal-sum, .therapy-cal-hint { margin-left: 0; }
   .therapy-cal-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-:root[data-theme='dark'] .therapy-cal-chip.low { color: #fbbf24; }
-:root[data-theme='dark'] .therapy-cal-chip.met { color: #4ade80; }
