@@ -15,6 +15,8 @@ import { parseReportFile, parseTd1File, isTd1Data, dateRangeOf, daysFromRecords 
 import { buildTherapyReportHTML, openTherapyReport } from '../services/therapyReport';
 import { RANGE_PRESETS as PRESETS, presetRange } from '../services/reportRange';
 import ThemeToggle from '../components/ThemeToggle';
+import TherapyCalendar from '../components/TherapyCalendar';
+import { calendarSummary } from '../services/therapyCalendar';
 
 const MAX_BYTES = 8 * 1024 * 1024;
 const today = () => localKeyNow(new Date());
@@ -99,6 +101,9 @@ export default function SdCardReport() {
     // Single day starts on the last day in the file; pick another with the date.
     setRange(days === 1 ? { start: next.end, end: next.end } : next);
   };
+
+  const calendarDays = useMemo(() => calendarSummary(parsed?.days || []), [parsed]);
+  const pickDates = (start, end) => { setSingleDay(start === end); setPreset(start === end ? 1 : null); setRange({ start, end }); };
 
   const rangeInvalid = Boolean(range.start && range.end && range.start > range.end);
 
@@ -228,6 +233,10 @@ export default function SdCardReport() {
               </label>
             )}
           </div>
+          {parsed && dataRange.end && (
+            <TherapyCalendar byDay={calendarDays} dataEnd={dataRange.end} selection={range} onPick={pickDates}
+              onReport={() => openReport()} />
+          )}
           {parsed && !rangeInvalid && (
             <p className="sdr-help">{sessionsInRange ? `${sessionsInRange} session${sessionsInRange === 1 ? '' : 's'} on these dates.` : 'No therapy on these dates. The report will show them as unused.'}</p>
           )}

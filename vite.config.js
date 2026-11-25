@@ -20,6 +20,8 @@ export default defineConfig(({ command }) => ({
     __APP_BUILD__: JSON.stringify(command === 'serve' ? `dev server, started at ${buildId()}` : buildId()),
     __APP_BUILT_AT__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC'),
   },
+  // The live site prints nothing to the console (see src/services/consoleGuard.js).
+  esbuild: command === 'build' ? { drop: ['console', 'debugger'] } : undefined,
   server: {
     proxy: {
       '/api-proxy': {

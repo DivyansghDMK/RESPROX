@@ -14,6 +14,8 @@ import { useAccess } from '../context/AccessContext';
 import { ChartSkeleton } from '../components/Skeleton';
 import { FileIcon, DownloadIcon, InfoIcon, CheckIcon, TrashIcon } from '../components/Icons';
 import { RANGE_PRESETS, presetRange } from '../services/reportRange';
+import TherapyCalendar from '../components/TherapyCalendar';
+import { calendarSummary } from '../services/therapyCalendar';
 import { parseReportFile, parseTd1File, isTd1Data, dateRangeOf, daysToCSV, PARSER_CONSTANTS, TD1_RECORD_BYTES } from '../services/reportFileParser';
 
 // recharts is ~300 kB; this page is useful before any chart is needed, so the
@@ -211,6 +213,12 @@ export default function AdminDataUpload() {
     setRange(days === 1 ? { start: next.end, end: next.end } : next);
   }, [parsed]);
   const singleDay = preset === 1;
+
+  const calendarDays = useMemo(() => calendarSummary(parsed?.days || []), [parsed]);
+  const pickDates = useCallback((start, end) => {
+    setPreset(start === end ? 1 : null);
+    setRange({ start, end });
+  }, []);
 
   const deviceData = useMemo(() => {
     if (!parsed) return null;
@@ -464,6 +472,11 @@ export default function AdminDataUpload() {
                   onClick={() => applyQuickRange(d)} title={d === 1 ? 'One day: change it with the Day date' : undefined}>{text}</button>
               ))}
             </div>
+
+            {parsed.days.length > 0 && (
+              <TherapyCalendar byDay={calendarDays} records={parsed.records} dataEnd={dateRangeOf(parsed).end}
+                selection={range} onPick={pickDates} onReport={() => generate()} />
+            )}
 
             <div className="reports-filters-grid" style={{ marginTop: 12 }}>
               <div className="input-field">
