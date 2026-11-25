@@ -11,6 +11,8 @@ import { useTherapy } from '../context/TherapyContext';
 import { devicesAPI } from '../services/respireeApi';
 import { parseReportRows } from '../services/reportFileParser';
 import SessionLog from '../components/SessionLog';
+import TherapyCalendar from '../components/TherapyCalendar';
+import { calendarSummary } from '../services/therapyCalendar';
 
 export default function Reports() {
   const notify = useNotify();
@@ -65,6 +67,12 @@ export default function Reports() {
   // A new device starts over in range mode.
   useEffect(() => { setSingleDay(false); }, [activeSerial]);
   const rangeLabel = (key) => (key ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(`${key}T00:00:00`)) : '…');
+  // The calendar's days: from the stored session reports, else the day rows.
+  const calendarDays = useMemo(() => {
+    const parsedDays = parseReportRows(deviceData?.reports || []).days;
+    return calendarSummary(parsedDays.length ? parsedDays : sessions);
+  }, [deviceData?.reports, sessions]);
+  const pickDay = (key) => { setSingleDay(true); setStartDate(key); setEndDate(key); };
   const [syncing, setSyncing] = useState(false);
   const sync = useSyncProgress();
 
@@ -283,6 +291,9 @@ export default function Reports() {
                 title={d === 1 ? 'One day: pick it with Start Date' : undefined}>{label}</button>
             ))}
           </div>
+          {dataRange.end && (
+            <TherapyCalendar byDay={calendarDays} dataEnd={dataRange.end} selection={{ start: startDate, end: endDate }} onPick={pickDay} />
+          )}
           {rangeInvalid && <p className="reports-range-error" role="alert">The end date is before the start date. Pick an end date on or after {rangeLabel(startDate)}.</p>}
 
           <div className="reports-actions-bar">
