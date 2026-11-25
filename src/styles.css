@@ -7644,3 +7644,17 @@ a.icon-text-button { text-decoration: none; }
 .session-log-bytes th, .session-log-bytes td { padding: 3px 10px 3px 0; text-align: left; border-bottom: 1px solid var(--line); }
 .session-log-bytes tr.not-stored td { color: var(--muted); font-style: italic; }
 .session-log-json { max-height: 280px; overflow: auto; padding: 8px; border-radius: 6px; font-size: 11.5px; background: var(--bg-ffffff, #fff); border: 1px solid var(--line); }
+
+/* Reports: tick sessions of one day for a report of just those */
+.session-pick { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+.glass-table tr.session-picked td { background: var(--bg-f3f7fd); }
+.session-pick-bar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;
+  padding: 10px 14px; border-radius: 10px; font-size: 13px;
+  background: var(--bg-f3f7fd); border: 1px solid var(--line); color: var(--text);
+}
+.session-pick-bar > span { margin-right: auto; }
+.session-pick-clear {
+  padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: none;
+  color: var(--muted); font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
