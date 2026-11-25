@@ -140,3 +140,15 @@ test('session pressure from the step counters, kept between min and set max', ()
     assert.equal(steppedPressure({ minPressure, maxPressure, pressureChangeCount, rateChangeFactor }), want);
   }
 });
+
+test('tidal volume FF FF means not measured, not 65,535 mL', () => {
+  const row = (tidal) => ({
+    start_day: 25, start_month: 11, start_year: 26, start_hour: 22, start_minute: 0,
+    end_day: 26, end_month: 11, end_year: 26, end_hour: 6, end_minute: 0, mode: 2,
+    max_pressure: 12, min_pressure: 4, csa_count: 0, osa_count: 0, hsa_count: 0, leak: 10, tidal_volume: tidal, resp_rate: 14,
+  });
+  const { records, days } = parseReportRows([row(65535), row(500)]);
+  assert.equal(records[0].tidalVolume, null);
+  assert.equal(days[0].report.tidal, 500);
+  assert.equal(days[0].tidalVolume, 500);
+});

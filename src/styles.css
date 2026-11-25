@@ -7621,3 +7621,26 @@ a.icon-text-button { text-decoration: none; }
 .sdr-theme svg { width: 18px; height: 18px; }
 
 :root[data-theme='dark'] .skel::after { background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent); }
+
+/* Reports: one session's log under its row */
+.session-log-row td { background: var(--bg-f3f7fd); }
+.session-log { padding: 6px 4px 10px; font-size: 12.5px; color: var(--text); white-space: normal; }
+.session-log h4 { display: flex; align-items: center; gap: 8px; margin: 10px 0 6px; font-size: 13px; }
+.session-log h4 button {
+  font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg-ffffff, #fff); color: var(--text);
+}
+.session-log-steps { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
+.session-log-steps dt { font-weight: 700; color: var(--muted); }
+.session-log-steps dd { margin: 0; overflow-wrap: anywhere; }
+.session-log-hex {
+  display: block; padding: 8px 10px; border-radius: 6px; font-size: 12px; line-height: 1.6;
+  background: var(--bg-ffffff, #fff); border: 1px solid var(--line); overflow-wrap: anywhere; user-select: all;
+}
+.session-log-note { margin: 6px 0; font-size: 11.5px; color: var(--muted); }
+.session-log details { margin-top: 6px; }
+.session-log summary { cursor: pointer; font-weight: 600; }
+.session-log-bytes { border-collapse: collapse; margin-top: 6px; font-size: 12px; }
+.session-log-bytes th, .session-log-bytes td { padding: 3px 10px 3px 0; text-align: left; border-bottom: 1px solid var(--line); }
+.session-log-bytes tr.not-stored td { color: var(--muted); font-style: italic; }
+.session-log-json { max-height: 280px; overflow: auto; padding: 8px; border-radius: 6px; font-size: 11.5px; background: var(--bg-ffffff, #fff); border: 1px solid var(--line); }

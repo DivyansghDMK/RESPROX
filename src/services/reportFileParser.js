@@ -41,6 +41,7 @@ export const FIELDS = [
 const MIN_FIELDS = 39;       // through the leak value; terminator/serial optional
 const LEAK_SENTINEL = 120;   // at or above this the field is a status code
 const MAX_SESSION_HOURS = 24;
+const TIDAL_NOT_MEASURED = 0xffff;
 
 // Same numbering as the device settings: 1 = Full Face, 2 = Nasal, 3 = Pillow.
 const MASK_TYPES = { 1: 'Full Face', 2: 'Nasal', 3: 'Pillow' };
@@ -289,7 +290,8 @@ function buildRecord(f, lineNo, raw) {
       pressureChangeCount: f.pressureChangeCount,
       modeCounter: f.modeCounter,
       airFlow: f.airFlow,
-      tidalVolume: f.tidalVolume,
+      // FF FF (65535) is the device's "not measured", not 65 litres.
+      tidalVolume: f.tidalVolume === TIDAL_NOT_MEASURED ? null : f.tidalVolume,
       respRate: f.respRate,
       startEpap: f.startEpap,
 
@@ -489,7 +491,7 @@ export function parseTd1Record(b, recordNo, serial = null) {
     endDay: b[4], endMonth: b[5], endYear: b[6],
     modeCode: b[7], volumeTransfer: u16(8),
     maxPressure: p(10), minPressure: p(11), ipap: p(12), epap: p(13),
-    pressureChangeCount: b[14], modeCounter: b[15], airFlow: b[16],
+    pressureChangeCount: b[14], modeCounter: b[15], airFlow: b[16] / 10,
     tidalVolume: u16(17), respRate: b[19], startEpap: p(20),
     startHour: b[21], startMinute: b[22], endHour: b[23], endMinute: b[24],
     humidifier: b[25], rampTime: b[26], autoOnOff: b[27],

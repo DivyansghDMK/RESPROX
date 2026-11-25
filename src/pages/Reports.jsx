@@ -10,6 +10,7 @@ import { useTherapy } from '../context/TherapyContext';
 
 import { devicesAPI } from '../services/respireeApi';
 import { parseReportRows } from '../services/reportFileParser';
+import SessionLog from '../components/SessionLog';
 
 export default function Reports() {
   const notify = useNotify();
@@ -138,6 +139,7 @@ export default function Reports() {
           leak: r.leakValid ? `${r.leak} L/min` : '—',
           pressure: has(r.sessionPressure) ? `${r.sessionPressure} cmH₂O` : '—',
           compliance: dayMinutes.get(r.dayKey) >= 240 ? 'Yes' : 'No',
+          record: r,
         };
       })
       .reverse();
@@ -146,6 +148,9 @@ export default function Reports() {
   // The table shows what the report will cover: only the chosen dates.
   const shownEntries = useMemo(() => reportEntries.filter((e) => inRange(e.dayKey)), [reportEntries, inRange]);
   const shownDays = useMemo(() => new Set(shownEntries.map((e) => e.dayKey)).size, [shownEntries]);
+
+  // The session whose log is open under its row.
+  const [openLog, setOpenLog] = useState(null);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -298,7 +303,8 @@ export default function Reports() {
                   </thead>
                   <tbody>
                     {paginatedEntries.map((report) => (
-                      <tr key={report.id}>
+                      <React.Fragment key={report.id}>
+                      <tr>
                         <td>
                           <strong>{report.date}</strong>
                           {report.session && <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>{report.session}</div>}
@@ -324,8 +330,22 @@ export default function Reports() {
                               <FileIcon /> Day report
                             </button>
                           )}
+                          {report.record && (
+                            <button type="button" className="day-report-btn" style={{ marginLeft: 6 }}
+                              aria-expanded={openLog === report.id}
+                              onClick={() => setOpenLog((id) => (id === report.id ? null : report.id))}
+                              title="How this session was worked out, with its raw payload">
+                              {openLog === report.id ? 'Hide log' : 'Log'}
+                            </button>
+                          )}
                         </td>
                       </tr>
+                      {openLog === report.id && report.record && (
+                        <tr className="session-log-row">
+                          <td colSpan={8}><SessionLog record={report.record} /></td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
