@@ -219,3 +219,16 @@ test('the report prints the session-pressure statistics; Unknown stays N/A', () 
   assert.match(html, /<td class="ml">Unknown:<\/td><td class="mv">N\/A<\/td>/);
   assert.match(html, /Median \(avg\)<\/span>\s*<span class="stat-value"[^>]*>14.2</);
 });
+
+test('a report of selected sessions says which ones it covers', () => {
+  const r = (h, m, eh, em) => ({
+    start_day: 24, start_month: 11, start_year: 26, start_hour: h, start_minute: m,
+    end_day: 24, end_month: 11, end_year: 26, end_hour: eh, end_minute: em, mode: 2,
+    max_pressure: 18, min_pressure: 5, pressure_change_count: 10, rate_change_factor: 0, csa_count: 0, osa_count: 1, hsa_count: 0, leak: 20,
+  });
+  const only = parseReportRows([r(22, 34, 23, 50)]);
+  const html = buildTherapyReportHTML({ deviceData: { serial: 'CVT1' }, sessions: only.days, startDate: '2026-11-24', endDate: '2026-11-24', note: 'Selected 1 of 4 sessions: 22:34 – 23:50' });
+  assert.match(html, /<p class="report-note">Selected 1 of 4 sessions: 22:34 – 23:50<\/p>/);
+  assert.match(html, /Usage hours<\/span><span>01 Hours, 16 Minutes/);
+  assert.doesNotMatch(buildTherapyReportHTML({ deviceData: { serial: 'CVT1' }, sessions: only.days, startDate: '2026-11-24', endDate: '2026-11-24' }), /report-note">/);
+});

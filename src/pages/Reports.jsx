@@ -10,6 +10,7 @@ import { useTherapy } from '../context/TherapyContext';
 
 import { devicesAPI } from '../services/respireeApi';
 import { parseReportRows } from '../services/reportFileParser';
+import SessionLog from '../components/SessionLog';
 
 export default function Reports() {
   const notify = useNotify();
@@ -138,6 +139,7 @@ export default function Reports() {
           leak: r.leakValid ? `${r.leak} L/min` : '—',
           pressure: has(r.sessionPressure) ? `${r.sessionPressure} cmH₂O` : '—',
           compliance: dayMinutes.get(r.dayKey) >= 240 ? 'Yes' : 'No',
+          record: r,
         };
       })
       .reverse();
@@ -146,6 +148,33 @@ export default function Reports() {
   // The table shows what the report will cover: only the chosen dates.
   const shownEntries = useMemo(() => reportEntries.filter((e) => inRange(e.dayKey)), [reportEntries, inRange]);
   const shownDays = useMemo(() => new Set(shownEntries.map((e) => e.dayKey)).size, [shownEntries]);
+
+  // The session whose log is open under its row.
+  const [openLog, setOpenLog] = useState(null);
+
+  // Sessions ticked for a report of just those. One day at a time: ticking a
+  // session on another day starts a new selection there.
+  const [picked, setPicked] = useState({ day: null, ids: new Set() });
+  useEffect(() => { setPicked({ day: null, ids: new Set() }); }, [activeSerial]);
+  const togglePick = (entry) => setPicked((p) => {
+    const ids = new Set(p.day === entry.dayKey ? p.ids : []);
+    if (ids.has(entry.id)) ids.delete(entry.id); else ids.add(entry.id);
+    return { day: ids.size ? entry.dayKey : null, ids };
+  });
+  const pickedEntries = useMemo(
+    () => reportEntries.filter((e) => picked.ids.has(e.id)).sort((a, b) => a.record.start - b.record.start),
+    [reportEntries, picked],
+  );
+  const dayTotal = picked.day ? reportEntries.filter((e) => e.dayKey === picked.day).length : 0;
+  const reportPicked = () => {
+    if (!pickedEntries.length) return;
+    const only = parseReportRows(pickedEntries.map((e) => e.record.raw));
+    const times = pickedEntries.map((e) => e.time).join(', ');
+    const note = pickedEntries.length === dayTotal
+      ? `All ${dayTotal} sessions of the night: ${times}`
+      : `Selected ${pickedEntries.length} of ${dayTotal} sessions: ${times}`;
+    handleGeneratePDF(picked.day, picked.day, { days: only.days, note });
+  };
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -164,13 +193,16 @@ export default function Reports() {
   // The report template and its SVG charts live in their own module so this
   // route's chunk stays small — it is fetched the first time a report is asked for.
   const [building, setBuilding] = useState(false);
-  /** The report for [from, to]: the chosen range, or one day from a session row. */
-  const handleGeneratePDF = async (from = startDate, to = endDate) => {
+  /**
+   * The report for [from, to]: the chosen range, or one day from a session row.
+   * `only` builds it from just those day rows (the sessions ticked in the table).
+   */
+  const handleGeneratePDF = async (from = startDate, to = endDate, only = null) => {
     if (building) return;
     setBuilding(true);
     try {
       const { openTherapyReport } = await import('../services/therapyReport');
-      const result = openTherapyReport({ deviceData, sessions, startDate: from, endDate: to });
+      const result = openTherapyReport({ deviceData, sessions: only?.days || sessions, startDate: from, endDate: to, note: only?.note });
       if (result.reason === 'build-failed') {
         notify.fromError(result.error, { action: 'build the therapy report', subject: activeSerial });
       } else if (!result.ok) {
@@ -283,9 +315,19 @@ export default function Reports() {
           <div className="table-responsive">
             {paginatedEntries.length ? (
               <>
+                {picked.ids.size > 0 && (
+                  <div className="session-pick-bar" role="status">
+                    <span><strong>{picked.ids.size}</strong> of {dayTotal} session{dayTotal === 1 ? '' : 's'} selected · {rangeLabel(picked.day)}</span>
+                    <button type="button" className="icon-text-button" onClick={reportPicked} disabled={building}>
+                      <FileIcon /><span>{building ? 'Building report…' : 'Report for selected sessions'}</span>
+                    </button>
+                    <button type="button" className="session-pick-clear" onClick={() => setPicked({ day: null, ids: new Set() })}>Clear</button>
+                  </div>
+                )}
                 <table className="glass-table">
                   <thead>
                     <tr>
+                      <th><span className="sr-only">Select for a report</span></th>
                       <th>Date</th>
                       <th>Time</th>
                       <th>Usage</th>
@@ -298,7 +340,16 @@ export default function Reports() {
                   </thead>
                   <tbody>
                     {paginatedEntries.map((report) => (
-                      <tr key={report.id}>
+                      <React.Fragment key={report.id}>
+                      <tr className={picked.ids.has(report.id) ? 'session-picked' : undefined}>
+                        <td>
+                          {report.record && (
+                            <input type="checkbox" className="session-pick" checked={picked.ids.has(report.id)}
+                              onChange={() => togglePick(report)}
+                              aria-label={`Select ${report.date} ${report.time} for a report`}
+                              title="Tick sessions of one day to make a report of just those" />
+                          )}
+                        </td>
                         <td>
                           <strong>{report.date}</strong>
                           {report.session && <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>{report.session}</div>}
@@ -324,8 +375,22 @@ export default function Reports() {
                               <FileIcon /> Day report
                             </button>
                           )}
+                          {report.record && (
+                            <button type="button" className="day-report-btn" style={{ marginLeft: 6 }}
+                              aria-expanded={openLog === report.id}
+                              onClick={() => setOpenLog((id) => (id === report.id ? null : report.id))}
+                              title="How this session was worked out, with its raw payload">
+                              {openLog === report.id ? 'Hide log' : 'Log'}
+                            </button>
+                          )}
                         </td>
                       </tr>
+                      {openLog === report.id && report.record && (
+                        <tr className="session-log-row">
+                          <td colSpan={9}><SessionLog record={report.record} /></td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>

@@ -254,7 +254,8 @@ function logoMarkup() {
 
 // ── main builder ──────────────────────────────────────────────────────────────
 
-export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDate }) {
+/** `note`: an optional line under the title, e.g. which sessions a report covers. */
+export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDate, note }) {
   const r = buildReportData({ rows: sessions, startDate, endDate });
   const { usage, events, days } = r;
   const settings = deviceData?.settings || {};
@@ -442,6 +443,8 @@ ${chartSection('Minute Ventilation (L/min)', [
     margin: 0 12mm;
   }
 
+  .report-note { margin: -6px 0 10px; font-size: 12px; color: #555; }
+
   @media print {
     .toolbar { display: none; }
     body { padding: 0; }
@@ -467,6 +470,7 @@ ${logoMarkup()}
 
 <section>
   <h2>Therapy Report (${esc(period)})</h2>
+  ${note ? `<p class="report-note">${esc(note)}</p>` : ''}
   <div class="rule">${kvRows(settingsRows)}</div>
 </section>
 
