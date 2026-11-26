@@ -2,7 +2,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   clearCognitoSession, forgetRefreshToken, getCognitoSession, loginWithAlias, loginWithCognito, loginWithTeamKey,
-  readTokenClaims, TEAM_KEY_STORAGE,
+  markSignedIn, readTokenClaims, signedInAt, TEAM_KEY_STORAGE,
 } from '../services/respireeAuth';
 import { clearApiCaches } from '../services/respireeApi';
 
@@ -51,6 +51,7 @@ export function AuthProvider({ children }) {
   const [teamSigningIn, setTeamSigningIn] = useState(() => canAutoSignIn && !hasStoredToken);
 
   const applySession = (res, shown) => {
+    markSignedIn();
     localStorage.setItem('adminToken', res.idToken);
     localStorage.setItem('adminUsername', res.username);
     localStorage.setItem('adminEmail', res.username || shown);
@@ -81,6 +82,8 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     // Keyed on the token, not isAuthenticated: VITE_SKIP_LOGIN marks the app signed in without one.
     if (canAutoSignIn && !hasStoredToken) teamSignIn();
+    // Signed in before the 7-day limit existed: the 7 days start now.
+    if (hasStoredToken && !signedInAt()) markSignedIn();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const login = async (user, pass, { remember = true, doctor = false } = {}) => {

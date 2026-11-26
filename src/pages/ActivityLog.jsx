@@ -18,6 +18,7 @@ import GlassCard from '../components/GlassCard';
 import { devicesAPI } from '../services/respireeApi';
 import { buildActivity, buildFleetActivity } from '../services/activityLog';
 import ErrorPanel from '../components/ErrorPanel';
+import PacketLog from '../components/PacketLog';
 import { TimelineSkeleton } from '../components/Skeleton';
 import { therapyLabel } from '../services/deviceStatus';
 import { useAccess } from '../context/AccessContext';
@@ -63,6 +64,7 @@ function SourceBadge({ source }) {
 
 function EventRow({ e, showDevice }) {
   const when = new Date(e.at);
+  const [logOpen, setLogOpen] = useState(false);
   return (
     <li className={`activity-row kind-${e.kind}`}>
       <span className="activity-time">{Number.isNaN(when.getTime()) ? '—' : clockLabel.format(when)}</span>
@@ -73,6 +75,12 @@ function EventRow({ e, showDevice }) {
           <SourceBadge source={e.source} />
           <span>{e.title}</span>
           {e.status && <span className={`activity-status ${e.status.key}`}>{e.status.label}</span>}
+          {e.row && (
+            <button type="button" className="activity-log-btn" aria-expanded={logOpen} onClick={() => setLogOpen((o) => !o)}
+              title="The bytes the device sent, field by field">
+              {logOpen ? 'Hide log' : 'Log'}
+            </button>
+          )}
         </div>
         {e.detail && <div className="activity-detail">{e.detail}</div>}
         {e.changes?.length > 0 && (
@@ -85,6 +93,7 @@ function EventRow({ e, showDevice }) {
           </div>
         )}
         {e.kind === 'full-sync' && !e.changes?.length && <div className="activity-detail">No values changed.</div>}
+        {logOpen && e.row && <div className="activity-packet-log"><PacketLog row={e.row} /></div>}
       </div>
     </li>
   );

@@ -6,6 +6,9 @@ import LiveBars from '../components/LiveBars';
 import SyncReportsButton from '../components/SyncReportsButton';
 import SyncProgress, { useSyncProgress } from '../components/SyncProgress';
 import ErrorPanel from '../components/ErrorPanel';
+import PacketLog from '../components/PacketLog';
+import SessionLog from '../components/SessionLog';
+import { rebuildPacket } from '../services/packetLog';
 import { therapyLabel } from '../services/deviceStatus';
 import { DeviceDashboardSkeleton } from '../components/Skeleton';
 import { createPortal } from 'react-dom';
@@ -493,6 +496,7 @@ function DeviceDashboardView() {
   }, [deviceData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sortedSessions = useMemo(() => {
+    // Therapy sessions and the settings packets the device sent, newest first.
     const rows = [...(device?.sessions || []), ...(device?.settings_history || [])];
     return rows.sort((a, b) => {
       const getMs = (item) => {
@@ -1129,7 +1133,7 @@ function DeviceDashboardView() {
                               )
                             )}
                             <span style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 8 }}>
-                              {isExpanded ? '▲ Hide' : '▼ Inspect'}
+                              {isExpanded ? '▲ Hide' : '▼ Log'}
                             </span>
                           </div>
                         </td>
@@ -1137,6 +1141,16 @@ function DeviceDashboardView() {
                       {isExpanded && (
                         <tr className="session-log-detail" style={{ background: 'var(--panel-deep, var(--abg-f8fafc))' }}>
                           <td colSpan={6} style={{ padding: '16px 20px', borderBottom: '1px solid var(--line)' }}>
+                            {/* A settings packet (the 70-byte FULL_SYNC, or an UPDATE): its bytes.
+                                A therapy day: each session's log, as on Reports. */}
+                            {rebuildPacket(s.raw) ? <PacketLog row={s.raw} /> : s.raw?.records?.length ? (
+                              s.raw.records.map((r, k) => (
+                                <div key={k} className="dash-session-log">
+                                  <strong>Session {k + 1} of {s.raw.records.length}: {r.startClock} → {r.endClock}</strong>
+                                  <SessionLog record={r} />
+                                </div>
+                              ))
+                            ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
                               <div>
                                 <strong style={{ color: 'var(--text-strong)' }}>Packet ID:</strong>{' '}
@@ -1168,6 +1182,7 @@ function DeviceDashboardView() {
                                 </div>
                               </div>
                             </div>
+                            )}
                           </td>
                         </tr>
                       )}
@@ -1267,6 +1282,10 @@ function DeviceDashboardView() {
   );
 }
 
+/**
+ * The settings packets the device sent (the 70-byte FULL_SYNC, and UPDATEs),
+ * newest first, each with its byte log.
+ */
 // ── Shared styles ──────────────────────────────────────────────────────────────
 const card = {
   background: 'var(--panel-strong, var(--abg-fff))',

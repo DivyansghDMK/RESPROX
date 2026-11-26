@@ -1,4 +1,5 @@
-import { clearCognitoSession, getCognitoSession, refreshCognitoSession, loginWithTeamKey, TEAM_KEY_STORAGE } from './respireeAuth';
+import { clearCognitoSession, getCognitoSession, refreshCognitoSession, loginWithTeamKey, signedInAt, TEAM_KEY_STORAGE } from './respireeAuth';
+import { sessionOver } from './sessionLength';
 import { parseReportRows } from './reportFileParser';
 import { extractStatus } from './deviceStatus';
 import { currentSettingsRow, telemetryRows } from './currentSettings';
@@ -268,7 +269,9 @@ function normalizeDeviceDetail(summary, latest, history, syncState, reports = []
   // Live history is mostly FULL_SYNC settings frames. They are not nights of
   // therapy, so they must never feed usage, AHI or compliance figures.
   const sessions = allSessions.filter((s) => s.type !== 'SETTINGS_UPDATE');
-  const settingsHistory = allSessions.filter((s) => s.type === 'SETTINGS_UPDATE');
+  // Settings packets (FULL_SYNC, UPDATE) always come from live history, even
+  // when the sessions come from stored reports; the dashboard lists them apart.
+  const settingsHistory = normalizeSessions(history).filter((s) => s.type === 'SETTINGS_UPDATE');
   const actualSyncState = syncState?.data || syncState || {};
 
   const latestDataWrapper = latest?.data || latest?.telemetry || latest || {};
@@ -421,7 +424,9 @@ function recoverSession() {
   if (!sessionRecovery) {
     sessionRecovery = (async () => {
       const session = getCognitoSession();
-      if (session.refreshToken) {
+      // Seven days after the password was entered, the session is not renewed.
+      const weekOver = sessionOver(signedInAt());
+      if (session.refreshToken && !weekOver) {
         try {
           await refreshCognitoSession(session.refreshToken);
           return true;
@@ -441,7 +446,9 @@ function recoverSession() {
       }
       // The refresh token is gone or rejected: the user must sign in again.
       clearCognitoSession();
-      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('resprox:session-expired'));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('resprox:session-expired', { detail: { reason: weekOver ? 'week' : 'expired' } }));
+      }
       return false;
     })().finally(() => { sessionRecovery = null; });
   }
