@@ -9,6 +9,8 @@ const STORAGE_KEYS = {
   refreshToken: 'respireeRefreshToken',
   username: 'respireeUsername',
   expiresAt: 'respireeExpiresAt',
+  // When the password was entered; the session ends 7 days later (sessionLength.js).
+  signedInAt: 'respireeSignedInAt',
 };
 
 function storeSession(session) {
@@ -228,6 +230,16 @@ export async function refreshCognitoSession(refreshTokenInput) {
  */
 export function forgetRefreshToken() {
   localStorage.removeItem(STORAGE_KEYS.refreshToken);
+}
+
+/** A sign-in with a password starts the 7 days; a token refresh does not. */
+export function markSignedIn(at = Date.now()) {
+  localStorage.setItem(STORAGE_KEYS.signedInAt, String(at));
+}
+
+/** When this browser's session started (ms), or 0 if not recorded. */
+export function signedInAt() {
+  return Number(localStorage.getItem(STORAGE_KEYS.signedInAt) || 0) || 0;
 }
 
 /** The ID token's claims (name, email, custom:*), or {} if it can't be read. */

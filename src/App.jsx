@@ -10,6 +10,11 @@ import ErrorBoundary from './components/ErrorBoundary';
 import ErrorPanel from './components/ErrorPanel';
 import DeviceBar from './components/DeviceBar';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { signedInAt } from './services/respireeAuth';
+import { sessionOver } from './services/sessionLength';
+
+// How often an open tab checks whether its 7 days are up.
+const SESSION_CHECK_MS = 5 * 60 * 1000;
 import ConnectionBanner from './components/ConnectionBanner';
 import { NotifyProvider } from './context/NotifyContext';
 import { AccessProvider, useAccess } from './context/AccessContext';
@@ -50,20 +55,37 @@ const DEVICE_PAGES = new Set(['/reports', '/trends', '/mask-fit', '/settings', '
 function AppContent() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout, teamSignIn, loginPath } = useAuth();
+  const { logout, teamSignIn, loginPath, token } = useAuth();
   const { accountBlocked, reloadDealer, accountError, accountLoading, isDealer } = useAccess();
 
   // The API layer raises this when the session can no longer be refreshed.
   useEffect(() => {
-    const onExpired = async () => {
+    const onExpired = async (e) => {
       if (await teamSignIn()) return; // team browsers renew silently
       const path = loginPath();
       logout();
-      navigate(path, { replace: true, state: { reason: 'expired' } });
+      navigate(path, { replace: true, state: { reason: e?.detail?.reason === 'week' ? 'week' : 'expired' } });
     };
     window.addEventListener('resprox:session-expired', onExpired);
     return () => window.removeEventListener('resprox:session-expired', onExpired);
   }, [logout, navigate, teamSignIn, loginPath]);
+
+  // A sign-in lasts 7 days (sessionLength.js). Checked here, beside the
+  // listener above, so the check never runs before something can act on it:
+  // on opening, every few minutes, and when the tab comes back into view.
+  useEffect(() => {
+    if (!token) return undefined;
+    const check = () => {
+      if (sessionOver(signedInAt())) {
+        window.dispatchEvent(new CustomEvent('resprox:session-expired', { detail: { reason: 'week' } }));
+      }
+    };
+    check();
+    const timer = setInterval(check, SESSION_CHECK_MS);
+    const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
+  }, [token]);
 
   const { adminActiveSerial } = useTherapy();
   const activeSerial = adminActiveSerial || '';

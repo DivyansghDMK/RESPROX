@@ -64,6 +64,7 @@ export default function Login({ variant = 'admin' }) {
     if (isAuthenticated) navigate('/devices', { replace: true });
   }, [isAuthenticated, navigate]);
   const sessionExpired = location.state?.reason === 'expired';
+  const weekOver = location.state?.reason === 'week';
   const justSignedUp = location.state?.reason === 'signed-up';
 
   const handleLoginSubmit = async (e) => {
@@ -132,6 +133,9 @@ export default function Login({ variant = 'admin' }) {
           {sessionExpired && (
             <p className="auth-notice" role="status">Your session expired. Please sign in again.</p>
           )}
+          {weekOver && (
+            <p className="auth-notice" role="status">You were signed in for 7 days. Please sign in again.</p>
+          )}
         </div>
 
         <form onSubmit={handleLoginSubmit} className="auth-form">
@@ -186,7 +190,7 @@ export default function Login({ variant = 'admin' }) {
                 onChange={() => setRememberMe(!rememberMe)} 
               />
               <span className="checkmark"></span>
-              Keep me signed in
+              Keep me signed in for 7 days
             </label>
             <Link to="/forgot-password" className="forgot-link">
               Forgot password?
