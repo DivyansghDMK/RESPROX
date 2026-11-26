@@ -154,7 +154,7 @@ export function buildActivity({ telemetry = [], records = [], commands = null } 
         if (activeMode && group && activeMode !== group) changes.push({ key: 'mode', label: 'Mode', from: activeMode, to: group });
         for (const g of Object.keys(r.decoded_payload)) changes.push(...diff(state[g], r.decoded_payload[g]).map((c) => ({ ...c, label: `${c.label}${g === group || g === 'COMFORT' || g === 'OPTIONS' ? '' : ` (${g})`}` })));
       }
-      events.push({ id: `fs-${id}`, at, kind: 'full-sync', source: 'device', title: 'Device sent all its settings', group, changes });
+      events.push({ id: `fs-${id}`, at, kind: 'full-sync', source: 'device', title: 'Device sent all its settings', group, changes, row: r });
       state = { ...r.decoded_payload };
       activeMode = group || activeMode;
       continue;
@@ -176,7 +176,7 @@ export function buildActivity({ telemetry = [], records = [], commands = null } 
     events.push({
       id: `up-${id}`, at, kind: 'settings', source: 'device',
       title: `${GROUP_LABELS[group] || 'Settings'} changed on the device`,
-      group, changes,
+      group, changes, row: r,
     });
   }
 

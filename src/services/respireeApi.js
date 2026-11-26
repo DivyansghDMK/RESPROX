@@ -269,7 +269,9 @@ function normalizeDeviceDetail(summary, latest, history, syncState, reports = []
   // Live history is mostly FULL_SYNC settings frames. They are not nights of
   // therapy, so they must never feed usage, AHI or compliance figures.
   const sessions = allSessions.filter((s) => s.type !== 'SETTINGS_UPDATE');
-  const settingsHistory = allSessions.filter((s) => s.type === 'SETTINGS_UPDATE');
+  // Settings packets (FULL_SYNC, UPDATE) always come from live history, even
+  // when the sessions come from stored reports; the dashboard lists them apart.
+  const settingsHistory = normalizeSessions(history).filter((s) => s.type === 'SETTINGS_UPDATE');
   const actualSyncState = syncState?.data || syncState || {};
 
   const latestDataWrapper = latest?.data || latest?.telemetry || latest || {};

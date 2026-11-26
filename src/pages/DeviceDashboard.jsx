@@ -6,6 +6,7 @@ import LiveBars from '../components/LiveBars';
 import SyncReportsButton from '../components/SyncReportsButton';
 import SyncProgress, { useSyncProgress } from '../components/SyncProgress';
 import ErrorPanel from '../components/ErrorPanel';
+import PacketLog from '../components/PacketLog';
 import { therapyLabel } from '../services/deviceStatus';
 import { DeviceDashboardSkeleton } from '../components/Skeleton';
 import { createPortal } from 'react-dom';
@@ -493,7 +494,7 @@ function DeviceDashboardView() {
   }, [deviceData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sortedSessions = useMemo(() => {
-    const rows = [...(device?.sessions || []), ...(device?.settings_history || [])];
+    const rows = [...(device?.sessions || [])];
     return rows.sort((a, b) => {
       const getMs = (item) => {
         if (item.timestamp) return item.timestamp;
@@ -503,7 +504,7 @@ function DeviceDashboardView() {
       };
       return getMs(b) - getMs(a); // Descending order: Newest dates on top!
     });
-  }, [device?.sessions, device?.settings_history]);
+  }, [device?.sessions]);
 
   const totalPages = useMemo(() => {
     return Math.max(1, Math.ceil(sortedSessions.length / RECORDS_PER_PAGE));
@@ -1262,6 +1263,72 @@ function DeviceDashboardView() {
           </div>
         </div>
 
+        <SettingsPackets rows={device.settings_history} />
+
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The settings packets the device sent (the 70-byte FULL_SYNC, and UPDATEs),
+ * newest first, each with its byte log.
+ */
+const receivedAt = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+function SettingsPackets({ rows = [] }) {
+  const [open, setOpen] = useState(null);
+  const packets = useMemo(() => [...rows].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)), [rows]);
+  return (
+    <div style={sectionCard}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px 12px', marginBottom: 12 }}>
+        <div style={{ ...sectionLabel, marginBottom: 0 }}>Settings packets</div>
+        <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>
+          Latest {packets.length} from the device · FULL_SYNC is 70 bytes
+        </div>
+      </div>
+      <div className="admin-table-wrap" style={{ margin: 0, borderRadius: 10, border: '1px solid var(--line)' }}>
+        <table className="admin-table session-log-table">
+          <thead><tr>{['Received', 'Packet', 'Machine', 'Mode / group', ''].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+          <tbody>
+            {!packets.length && (
+              <tr><td colSpan={5} style={{ padding: '22px 12px', textAlign: 'center', color: 'var(--muted)' }}>
+                No settings packets from this device yet. It sends one (FULL_SYNC) when it connects.
+              </td></tr>
+            )}
+            {packets.map((p, i) => {
+              const key = p.raw?.id ?? i;
+              const isOpen = open === key;
+              const full = p.raw?.packet_type === 'FULL_SYNC';
+              return (
+                <React.Fragment key={key}>
+                  <tr className={isOpen ? 'admin-table-row-selected' : ''}>
+                    <td><strong>{p.timestamp ? receivedAt.format(new Date(p.timestamp)) : p.date}</strong></td>
+                    <td>
+                      <span className="admin-badge" style={{ background: full ? 'var(--bg-e0f2fe)' : 'var(--bg-f0f4ff)', color: full ? 'var(--fg-0369a1)' : 'var(--afg-4338ca)' }}>
+                        {full ? 'FULL_SYNC · 70 B' : p.raw?.packet_type || '—'}
+                      </span>
+                    </td>
+                    <td>{p.raw?.device_type || '—'}</td>
+                    <td>{p.mode || '—'}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button type="button" className="day-report-btn" aria-expanded={isOpen}
+                        onClick={() => setOpen(isOpen ? null : key)}
+                        title="The bytes the device sent, field by field">
+                        {isOpen ? 'Hide log' : 'Log'}
+                      </button>
+                    </td>
+                  </tr>
+                  {isOpen && (
+                    <tr className="session-log-row">
+                      <td colSpan={5}><PacketLog row={p.raw} /></td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );
