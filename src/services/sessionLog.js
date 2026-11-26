@@ -96,6 +96,9 @@ export function sessionSteps(r) {
   steps.push(['Mode', `code ${r.modeCode} → ${r.modeLabel}`]);
   if (r.mode === 'bipap') {
     steps.push(['Session pressure', `IPAP ${r.ipap}`]);
+  } else if (r.mode === 'cpap') {
+    const from = r.maxPressure > 0 ? `max (byte 10) = ${r.maxPressure}` : `min (byte 11) = ${r.minPressure}`;
+    steps.push(['Session pressure', `CPAP holds one pressure: ${from} → ${r.sessionPressure} cmH₂O`]);
   } else {
     const up = r.pressureChangeCount || 0;
     const down = r.rateChangeFactor || 0;

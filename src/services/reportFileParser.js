@@ -39,6 +39,7 @@ export const FIELDS = [
 ];
 
 const MIN_FIELDS = 39;       // through the leak value; terminator/serial optional
+const MIN_YEAR = 2020;       // earlier dates come from a reset device clock
 const LEAK_SENTINEL = 120;   // at or above this the field is a status code
 const MAX_SESSION_HOURS = 24;
 const TIDAL_NOT_MEASURED = 0xffff;
@@ -105,6 +106,17 @@ export function steppedPressure({ minPressure, maxPressure, pressureChangeCount,
   const net = Math.max(0, (pressureChangeCount || 0) - (rateChangeFactor || 0));
   const p = minPressure + net * 0.5;
   return Number.isFinite(maxPressure) && maxPressure > 0 ? Math.min(maxPressure, p) : p;
+}
+
+/**
+ * A CPAP session's set pressure. The device writes it in one of the two
+ * pressure bytes and 0 in the other, and which one has varied (25 Nov 2026:
+ * max = 6, min = 0; 26 Nov: min = 7, max = 0), so it is whichever is set.
+ * The step counters don't apply: CPAP holds one pressure.
+ */
+export function cpapPressure({ minPressure, maxPressure }) {
+  if (Number.isFinite(maxPressure) && maxPressure > 0) return maxPressure;
+  return Number.isFinite(minPressure) && minPressure > 0 ? minPressure : NaN;
 }
 
 function clock(hour, minute) {
@@ -212,6 +224,8 @@ function buildRecord(f, lineNo, raw) {
   let end = makeDate(f.endDay, f.endMonth, f.endYear, f.endHour, f.endMinute);
   if (!start) return { error: { lineNo, text, reason: 'unreadable start date/time' } };
   if (!end) return { error: { lineNo, text, reason: 'unreadable end date/time' } };
+  // A device whose clock was reset writes dates around 2000 (e.g. 31 Dec 1999).
+  if (start.getFullYear() < MIN_YEAR) return { error: { lineNo, text, reason: `dated ${start.getFullYear()}: the device clock was not set` } };
 
   const { maxPressure, minPressure, ipap, epap, modeCode } = f;
 
@@ -280,12 +294,14 @@ function buildRecord(f, lineNo, raw) {
       epap,
       // Set therapy pressure: the file records what the device was told to
       // deliver. It carries no measured pressure trace.
-      setPressure: mode === 'bipap' ? ipap : maxPressure,
-      // The pressure the session ran at: BiPAP's IPAP, else from the step
-      // counters (see steppedPressure).
+      setPressure: mode === 'bipap' ? ipap : mode === 'cpap' ? cpapPressure({ minPressure, maxPressure }) : maxPressure,
+      // The pressure the session ran at: BiPAP's IPAP; CPAP's one set
+      // pressure; AUTO from the step counters (see steppedPressure).
       sessionPressure: mode === 'bipap'
         ? ipap
-        : steppedPressure({ minPressure, maxPressure, pressureChangeCount: f.pressureChangeCount, rateChangeFactor: f.rateChangeFactor }),
+        : mode === 'cpap'
+          ? cpapPressure({ minPressure, maxPressure })
+          : steppedPressure({ minPressure, maxPressure, pressureChangeCount: f.pressureChangeCount, rateChangeFactor: f.rateChangeFactor }),
 
       pressureChangeCount: f.pressureChangeCount,
       modeCounter: f.modeCounter,
@@ -391,6 +407,8 @@ function aggregateDays(records) {
  * volume and breathing rate are averaged over sessions that report them.
  * Leak status codes (LEAK_SENTINEL and up) are not readings and are left out.
  */
+const lastOf = (records, mode) => [...records].reverse().find((r) => r.mode === mode && !r.suspect) || null;
+
 function reportDay(all) {
   const leaks = all.filter((r) => r.leakValid).map((r) => r.leak);
   const nonZero = (key) => all.map((r) => r[key]).filter((v) => Number.isFinite(v) && v > 0);
@@ -407,6 +425,11 @@ function reportDay(all) {
     // What the device was set to in the day's last session (BiPAP: IPAP / EPAP).
     setMax: last.mode === 'bipap' ? last.ipap : last.maxPressure,
     setMin: last.mode === 'bipap' ? last.epap : last.minPressure,
+    // The day's last CPAP set pressure, and last AUTO min / max, so a range
+    // that mixes modes prints each mode's own settings.
+    setFixed: lastOf(all, 'cpap')?.setPressure ?? null,
+    setAutoMin: lastOf(all, 'auto')?.minPressure ?? null,
+    setAutoMax: lastOf(all, 'auto')?.maxPressure ?? null,
     csa: all.reduce((sum, r) => sum + r.csa, 0),
     osa: all.reduce((sum, r) => sum + r.osa, 0),
     hsa: all.reduce((sum, r) => sum + r.hsa, 0),

@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseReportFile, parseRecordLine, parseReportRows, parseTd1File, parseTd1Record, isTd1Data, steppedPressure, daysFromRecords } from './reportFileParser.js';
+import { parseReportFile, parseRecordLine, parseReportRows, parseTd1File, parseTd1Record, isTd1Data, steppedPressure, cpapPressure, daysFromRecords } from './reportFileParser.js';
+import { buildReportData } from './reportCalc.js';
+import { buildTherapyReportHTML } from './therapyReport.js';
 
 const GOOD = 'S,29,3,26,29,3,26,4,352,16,5,0,0,2,0,216,656,0,0,21,55,21,56,2,0,2,0,39,0,0,0,0,0,1,2,2,1,0,4,A,24000425';
 
@@ -166,4 +168,34 @@ test('daysFromRecords builds the day from just the chosen sessions', () => {
   assert.equal(day.sessionCount, 2);
   assert.equal(day.report.usageMinutes, 70);
   assert.equal(day.report.leak, 31);
+});
+
+test('a CPAP session runs at its one set pressure, from whichever pressure byte holds it', () => {
+  const cpap = { ...GOOD_ROW, mode: 1, pressure_change_count: 6, rate_change_factor: 0 };
+  // CVT3000010, 25 Nov 2026: max = 6, min = 0, six steps up. Still 6, not 0 + 6 × 0.5.
+  const [inMax] = parseReportRows([{ ...cpap, max_pressure: 6, min_pressure: 0 }]).records;
+  assert.equal(inMax.mode, 'cpap');
+  assert.equal(inMax.sessionPressure, 6);
+  // 26 Nov: the firmware wrote it in min instead.
+  const [inMin] = parseReportRows([{ ...cpap, max_pressure: 0, min_pressure: 7 }]).records;
+  assert.equal(inMin.sessionPressure, 7);
+  assert.equal(cpapPressure({ minPressure: 0, maxPressure: 0 }), NaN);
+});
+
+test('a range that mixes AUTO and CPAP prints each mode its own settings', () => {
+  const auto = { ...GOOD_ROW, mode: 2, max_pressure: 18, min_pressure: 5, start_day: 25, end_day: 25, start_month: 11, end_month: 11 };
+  const cpapRow = { ...GOOD_ROW, mode: 1, max_pressure: 0, min_pressure: 7, start_day: 26, end_day: 26, start_month: 11, end_month: 11 };
+  const { days } = parseReportRows([auto, cpapRow]);
+  const d = buildReportData({ rows: days, startDate: '2026-11-25', endDate: '2026-11-26' });
+  assert.equal(d.set.fixed, 7);
+  assert.equal(d.set.autoMin, 5);
+  assert.equal(d.set.autoMax, 18);
+  const html = buildTherapyReportHTML({ deviceData: { serial: 'CVT1', settings: {} }, sessions: days, startDate: '2026-11-25', endDate: '2026-11-26' });
+  assert.match(html, /<span>Set Pressure<\/span><span>7<\/span>/);
+});
+
+test('a session dated before 2020 (a reset device clock) is reported, not counted', () => {
+  const out = parseReportRows([{ ...GOOD_ROW, start_year: 0, end_year: 0, start_month: 1, end_month: 1, start_day: 1, end_day: 1 }]);
+  assert.equal(out.records.length, 0);
+  assert.match(out.errors[0].reason, /device clock/);
 });

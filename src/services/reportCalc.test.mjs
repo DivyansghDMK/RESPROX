@@ -174,7 +174,7 @@ test('pressure: every session of the range in one list, not one value per day', 
   assert.equal(d.pressure.median, 9);
   assert.equal(d.pressure.p95.toFixed(1), '11.7');
   // Settings come from the range's last session, not today's device settings.
-  assert.deepEqual(d.set, { max: 12, min: 5 });
+  assert.deepEqual(d.set, { max: 12, min: 5, fixed: null, autoMin: null, autoMax: null });
 });
 
 test('the report shows the settings recorded in the range', () => {
