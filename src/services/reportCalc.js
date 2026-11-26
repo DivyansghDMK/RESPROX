@@ -60,6 +60,9 @@ export function dayValues(row) {
       pressures: r.pressures || (r.maxPressure > 0 ? [r.maxPressure] : []),
       setMax: r.setMax,
       setMin: r.setMin,
+      setFixed: r.setFixed,
+      setAutoMin: r.setAutoMin,
+      setAutoMax: r.setAutoMax,
       csa: r.csa, osa: r.osa, hsa: r.hsa, hasSplit: true,
       events: r.csa + r.osa + r.hsa,
       leak: r.leak,
@@ -165,6 +168,7 @@ export function buildReportData({ rows = [], startDate, endDate } = {}) {
   const pressure = stats3(sessionPressures);
   // The settings in force during the range: the last session that recorded them.
   const lastSet = [...days].reverse().find((d) => Number(d.setMax) > 0) || null;
+  const lastWith = (key) => [...days].reverse().find((d) => Number(d[key]) > 0)?.[key] ?? null;
 
   return {
     days,
@@ -196,7 +200,14 @@ export function buildReportData({ rows = [], startDate, endDate } = {}) {
     avgLeak: leaks.length ? leaks.reduce((a, b) => a + b, 0) / leaks.length : NaN,
     leakThreshold: LEAK_THRESHOLD,
     pressure,
-    set: lastSet ? { max: lastSet.setMax, min: lastSet.setMin } : null,
+    set: lastSet ? {
+      max: lastSet.setMax,
+      min: lastSet.setMin,
+      // Per mode, from the last session that ran in it.
+      fixed: lastWith('setFixed'),
+      autoMin: lastWith('setAutoMin'),
+      autoMax: lastWith('setAutoMax'),
+    } : null,
     tidal: stats3(ascending('tidal')),
     respMax: resps.length ? resps[resps.length - 1] : NaN,
     minuteVent: stats3(ascending('minuteVent')),

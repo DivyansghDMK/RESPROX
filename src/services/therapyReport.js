@@ -279,9 +279,11 @@ export function buildTherapyReportHTML({ deviceData, sessions, startDate, endDat
   const lastUsed = [...days].reverse().find((d) => d.maxPressure > 0);
   // Pressure settings as recorded by the sessions in this range; the device's
   // current settings only when the sessions don't carry them.
-  const setMax = r.set?.max ?? settings.max_pressure;
-  const setMin = r.set?.min ?? settings.min_pressure;
-  const setFixed = r.set?.max ?? settings.pressure ?? lastUsed?.maxPressure;
+  // Each mode's settings from the last session that ran in it: a range that
+  // mixes AUTO and CPAP must not print AUTO's max as the CPAP pressure.
+  const setMax = (auto ? r.set?.autoMax : null) ?? r.set?.max ?? settings.max_pressure;
+  const setMin = (auto ? r.set?.autoMin : null) ?? r.set?.min ?? settings.min_pressure;
+  const setFixed = r.set?.fixed ?? settings.pressure ?? r.set?.max ?? lastUsed?.maxPressure;
   // A-Flex and mask as the sessions in the range recorded them (the same from
   // a server sync, a .td1 or REPORTFL.TXT); today's settings only as fallback.
   const aflexLevel = Number(settings.aflex);
