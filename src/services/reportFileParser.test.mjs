@@ -34,7 +34,9 @@ const GOOD_ROW = {
 };
 
 test('an API report row gives the same day as the equivalent file line', () => {
-  assert.deepEqual(parseReportRows([GOOD_ROW]).days, parseReportFile(GOOD).days);
+  // A day's records keep their source (`raw`): the server row, or the file line.
+  const plain = (days) => days.map((d) => ({ ...d, records: d.records.map(({ raw, ...r }) => r) }));
+  assert.deepEqual(plain(parseReportRows([GOOD_ROW]).days), plain(parseReportFile(GOOD).days));
 });
 
 test('API rows keep decimal pressures and derive AHI from events over usage', () => {
