@@ -379,6 +379,8 @@ function aggregateDays(records) {
 
         // The day as the therapy report counts it (reportCalc.js).
         report: reportDay(all),
+        // The day's sessions, for each one's log (SessionLog).
+        records: all,
       };
     });
 }

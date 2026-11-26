@@ -7627,6 +7627,8 @@ a.icon-text-button { text-decoration: none; }
 
 /* Reports: one session's log under its row */
 .session-log-row td { background: var(--bg-f3f7fd); }
+.dash-session-log { padding: 4px 0 8px; font-size: 12.5px; white-space: normal; }
+.dash-session-log + .dash-session-log { margin-top: 8px; padding-top: 12px; border-top: 1px dashed var(--line); }
 .session-log { padding: 6px 4px 10px; font-size: 12.5px; color: var(--text); white-space: normal; }
 .session-log h4 { display: flex; align-items: center; gap: 8px; margin: 10px 0 6px; font-size: 13px; }
 .session-log h4 button {
