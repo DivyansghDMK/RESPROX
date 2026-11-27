@@ -51,12 +51,12 @@ export default function Calibration() {
   const [confirm, setConfirm] = useState(null);     // 'save' | 'leave'
   const [savedAt, setSavedAt] = useState(null);
 
+  // Therapy running doesn't block calibration: the blower has to run for the manometer to read.
   const deviceOnline = Boolean(deviceData?.device_online);
-  const therapyRunning = Boolean(deviceData?.therapy_running);
   const phoneConnected = Boolean(deviceData?.phone_connected) || /app connected/i.test(String(
     deviceData?.raw?.remarks ?? deviceData?.raw?.Remarks ?? deviceData?.raw?.offline_reason ?? ''
   ));
-  const blocked = !deviceOnline || therapyRunning || phoneConnected;
+  const blocked = !deviceOnline || phoneConnected;
   const touched = Object.keys(steps).length > 0;
 
   // A new device starts from scratch.
@@ -138,12 +138,6 @@ export default function Calibration() {
         </span>
       </header>
 
-      {therapyRunning && (
-        <div className="settings-unavailable" role="status">
-          <strong>Therapy is running</strong>
-          <span>Stop therapy on the device before calibrating.</span>
-        </div>
-      )}
       {phoneConnected && (
         <div className="settings-unavailable" role="status">
           <strong>Connected to a phone</strong>
